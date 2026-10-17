@@ -4173,7 +4173,7 @@ function bindData(el){
    on signal: games go up whenever there is a connection (the iPad on school Wi-Fi, or a coach's hotspot).
    Our hitters' names never leave the device: only lineup slot, bats and a random roster id go up.
    The Firebase code (fb.js) is a separate file that loads only after sync is set up. */
-const SYNC_BUILD = null;
+const SYNC_BUILD = {"firebase": {"apiKey": "AIzaSyCyN6S8LZaMUMNvdzin07xP-TUe_585HBc", "authDomain": "moundbook-ghs.firebaseapp.com", "projectId": "moundbook-ghs", "storageBucket": "moundbook-ghs.firebasestorage.app", "messagingSenderId": "617364475301", "appId": "1:617364475301:web:04b8df85a146057a6c2c4c"}, "owner": "kevcriswell@gmail.com"};
 const SYNC_RULES = "rules_version = '2';\n// Mound Book live sync. Only people Coach lets in can read or write anything.\n// The owner email below is filled in by Mound Book when it shows you these rules.\nservice cloud.firestore {\n  match /databases/{db}/documents {\n    function signedIn() { return request.auth != null; }\n    function member() { return signedIn() && exists(/databases/$(db)/documents/members/$(request.auth.uid)); }\n    function role() { return get(/databases/$(db)/documents/members/$(request.auth.uid)).data.role; }\n    function owner() { return member() && role() == 'owner'; }\n    function ownerEmail() { return request.auth.token.email != null && request.auth.token.email.lower() == '__OWNER_EMAIL__'; }\n\n    // Claiming the program: only the owner email, only once, and only together with the owner's member record.\n    match /config/owner {\n      allow read: if signedIn();\n      allow create: if signedIn() && ownerEmail()\n        && request.resource.data.uid == request.auth.uid\n        && getAfter(/databases/$(db)/documents/members/$(request.auth.uid)).data.role == 'owner';\n      allow update, delete: if false;\n    }\n    // Pitch-count rules and pitch types: everyone reads, Coach sets them.\n    match /config/{name} {\n      allow read: if member();\n      allow write: if owner() && name != 'owner';\n    }\n    match /members/{uid} {\n      allow read: if signedIn() && (request.auth.uid == uid || member());\n      allow create: if owner()\n        || (signedIn() && uid == request.auth.uid && ownerEmail()\n            && request.resource.data.role == 'owner'\n            && !exists(/databases/$(db)/documents/config/owner)\n            && existsAfter(/databases/$(db)/documents/config/owner));\n      allow update, delete: if owner();\n    }\n    // \"Let me in\" requests from a new phone. Coach approves them inside Mound Book.\n    match /requests/{uid} {\n      allow read: if signedIn() && (uid == request.auth.uid || owner());\n      allow create, update: if signedIn() && uid == request.auth.uid\n        && request.resource.data.keys().hasOnly(['email', 'name', 'at']);\n      allow delete: if owner() || (signedIn() && uid == request.auth.uid);\n    }\n    // Which devices are running which version, so Coach can see the iPad is up to date.\n    match /devices/{dev} {\n      allow read: if member();\n      allow create, update: if member() && request.resource.data.uid == request.auth.uid;\n      allow delete: if owner();\n    }\n    // One document per game. Our hitters' names never come here, only lineup slot and bats.\n    // A copy can't go backwards: rev never decreases. A game moves to another device only when Coach moves it\n    // or a signed-in coach taps Take over (that copy names them in takeover).\n    match /games/{gid} {\n      allow read: if member();\n      // Only Coach deletes a game for everyone, or brings a deleted one back.\n      allow create: if member() && request.resource.data.id == gid\n        && (request.resource.data.deleted == false || owner());\n      allow update: if member()\n        && request.resource.data.rev >= resource.data.rev\n        && (request.resource.data.deleted == false || owner())\n        && (resource.data.deleted == false || owner())\n        && (request.resource.data.writerDev == resource.data.writerDev || owner() || request.resource.data.takeover == request.auth.uid);\n      allow delete: if owner();\n    }\n    // Opposing pitchers. A merged-away kid stays as a tombstone naming the record he joined (mergedInto).\n    match /pitchers/{pid} {\n      allow read: if member();\n      allow create, update: if member() && request.resource.data.id == pid;\n      allow delete: if owner();\n    }\n  }\n}\n";
 Sync = (()=>{
   const ver = MB_VERSION;
@@ -4187,7 +4187,8 @@ Sync = (()=>{
     // heads: the last body this device wrote for each game ({head, rev}); pend: the one on its way. Their echo is skipped.
     const b=S.sync; b.pushed=b.pushed||{}; b.ph=b.ph||{}; b.hidden=b.hidden||{}; b.heads=b.heads||{}; b.pend=b.pend||{}; return b;
   }
-  function conf(){ return box().config || SYNC_BUILD; }
+  // A build with the team's setup in it is on everywhere, unless this device was turned off.
+  function conf(){ const b=box(); return b.config || (b.off ? null : SYNC_BUILD); }
   function configured(){ const c=conf(); return !!(c && c.firebase && c.firebase.apiKey && c.firebase.projectId); }
   function live(){ return st.phase==="live"; }
   function writerOf(g){ return (g && (g.writerDev || (g.created && g.created.dev))) || ""; }
@@ -4323,7 +4324,7 @@ Sync = (()=>{
   function memberErr(err){
     handleErr(err); stopData(); st.subs=[];
     const denied=String((err && err.code)||"").includes("permission-denied");
-    if(denied && !st.memOk) st.err=`The cloud won't let this device in. ${ownerHere()?"Did you publish the security rules? (Firebase console › Firestore Database › Rules)":"Did Coach publish the security rules?"}`;
+    if(denied && !st.memOk) st.err=`The cloud won't let this device in. ${ownerHere()?"Did you publish the security rules? Copy them here, then paste them in Firebase console › Firestore Database › Rules and Publish.":"Did Coach publish the security rules?"}`;
     st.phase="error"; st.memErr=true; st.role=null;
     st.memBack=Math.min(60000, (st.memBack||2500)*2);
     clearTimeout(st.memT); st.memT=setTimeout(()=>{ if(st.memErr && st.uid && st.fb){ st.claimTried=false; listenMembers(); } }, st.memBack);
@@ -5078,8 +5079,8 @@ Sync = (()=>{
     try{ if(st.fb && st.auth) await withTimeout(st.fb.signOut(st.auth), 5000); }catch(e){}
     try{ Object.keys(localStorage).filter(k=>k.startsWith("firebase:authUser:")).forEach(k=>localStorage.removeItem(k)); }catch(e){}   // also when fb.js never loaded
   }
-  async function setConfig(c){ const old=conf(); if(old && JSON.stringify(old)!==JSON.stringify(c)) await signOutHere(); box().config=c; save(); saveThenReload(); }
-  async function turnOff(){ await signOutHere(); const b=box(); b.config=null; b.uid=null; b.pushed={}; b.since=0; b.ph={}; b.rh=""; save(); saveThenReload(); }
+  async function setConfig(c){ const old=conf(); if(old && JSON.stringify(old)!==JSON.stringify(c)) await signOutHere(); const b=box(); b.config=c; b.off=false; save(); saveThenReload(); }
+  async function turnOff(){ await signOutHere(); const b=box(); b.config=null; b.off=true; b.uid=null; b.pushed={}; b.since=0; b.ph={}; b.rh=""; save(); saveThenReload(); }
 
   /* ----- what shows on screen ----- */
   // This revision of the game is in the team book (Coach's devices read it from there).
@@ -5134,7 +5135,7 @@ Sync = (()=>{
     if(!configured()){
       const f=st.form||"";
       return `<h3>Live on coaches' phones</h3><p class="muted" style="margin:0 0 10px;font-size:14px">Not set up on this device. Until it is, use Send to Coach after each game.</p>
-        <div class="row"><button class="btn" data-sy="join">I have a join code</button><button class="btn" data-sy="setup">I'm Coach: set it up</button></div>
+        <div class="row">${SYNC_BUILD?`<button class="btn primary" data-sy="on">Turn live sync back on</button>`:""}<button class="btn" data-sy="join">I have a join code</button><button class="btn" data-sy="setup">I'm Coach: set it up</button></div>
         ${f==="join"?`<label class="fld" style="margin-top:10px"><span class="label">Join code from Coach (starts with MB1:)</span><textarea id="sy-join" class="mono" rows="3"></textarea></label><div class="row" style="margin-top:8px"><button class="btn primary" data-sy="joinok">Join</button></div>`:""}
         ${f==="setup"?`<ol style="font-size:14px;margin:10px 0;padding-left:20px;display:grid;gap:4px"><li>In the Firebase console, add a Web app to your project and copy its <b>firebaseConfig</b>.</li><li>Paste it below with the email you'll sign in with.</li><li>Copy the security rules this shows you into Firestore › Rules and Publish.</li></ol>
           <label class="fld"><span class="label">firebaseConfig</span><textarea id="sy-cfg" class="mono" rows="5" placeholder="apiKey: &quot;…&quot;, authDomain: &quot;…&quot;, projectId: &quot;…&quot;, appId: &quot;…&quot;"></textarea></label>
@@ -5146,7 +5147,10 @@ Sync = (()=>{
     // Never a dead end: a wrong join code, the wrong owner email or rules never published can always be undone here.
     const out=`<div class="row" style="margin-top:10px">${st.uid && st.phase!=="signedout"?`<button class="btn small" data-sy="signout">Sign out</button>`:""}<button class="btn small" data-sy="rejoin">Use a different join code</button><button class="btn small" data-sy="off">Turn off live sync here</button></div>
       ${st.form==="rejoin"?`<label class="fld" style="margin-top:10px"><span class="label">Join code from Coach (starts with MB1:)</span><textarea id="sy-join" class="mono" rows="3"></textarea></label><div class="row" style="margin-top:8px"><button class="btn primary" data-sy="joinok">Join with this code</button></div>`:""}`;
-    if(st.phase==="error") h+=`<div class="row"><button class="btn" data-sy="retry">Try again</button></div>`;
+    // Coach can always get the rules again: setting up and signing in before they're published is easy to do.
+    const rulesBtn=(c.setup || (st.phase==="error" && ownerHere()))?`<button class="btn" data-sy="copyrules">Copy security rules</button>`:"";
+    if(st.phase==="error") h+=`<div class="row"><button class="btn" data-sy="retry">Try again</button>${rulesBtn}</div>`;
+    else if(rulesBtn && st.phase!=="live") h+=`<div class="row">${rulesBtn}</div>`;
     if(st.phase==="signedout") h+=`<form id="sy-auth" class="stack" style="gap:8px;max-width:420px">
         <label class="fld"><span class="label">Email</span><input id="sy-email" type="email" autocomplete="username" required></label>
         <label class="fld"><span class="label">Password (8+ characters)</span><input id="sy-pw" type="password" autocomplete="current-password" minlength="8" required></label>
@@ -5175,6 +5179,7 @@ Sync = (()=>{
     on("join", ()=>{ st.form="join"; paint(); });
     on("rejoin", ()=>{ st.form=st.form==="rejoin"?null:"rejoin"; paint(); const t=$("#sy-join"); if(t) t.focus(); });
     on("setup", ()=>{ st.form="setup"; paint(); });
+    on("on", ()=>{ box().off=false; save(); saveThenReload(); });
     on("joinok", ()=>{ const o=readJoin($("#sy-join",el).value); if(!o){ toast("That join code didn't read. Copy all of it, starting with MB1:"); return; } setConfig(o); });
     const readSetup=()=>{ const f=parseFirebase($("#sy-cfg",el).value), owner=$("#sy-owner",el).value.trim().toLowerCase(); if(!f){ toast("Paste the whole firebaseConfig: it needs apiKey and projectId."); return null; } if(!/^\S+@\S+\.\S+$/.test(owner)){ toast("Enter your email."); return null; } return {firebase:f, owner, setup:true}; };
     on("rules", ()=>{ const o=readSetup(); if(!o) return; sheet(`<h3>Firestore security rules</h3><p class="muted" style="margin:0;font-size:14px">Firebase console › Firestore Database › Rules: replace everything with this, then Publish.</p><textarea class="mono" rows="14" readonly>${esc(rulesText(o.owner))}</textarea><div class="row" style="justify-content:flex-end"><button class="btn" data-x>Close</button><button class="btn primary" data-copy>Copy rules</button></div>`, (m)=>{ $("[data-copy]",m).onclick=()=>copyText(rulesText(o.owner),"Rules"); }); });
