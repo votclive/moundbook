@@ -517,7 +517,9 @@ const LIST_ITEM={arsenal:"ars", tells:"tell"};
 function stampList(p, k, before, after){
   if(!p || !LIST_ITEM[k]) return 0; const b=new Set((before||[]).filter(Boolean)), a=new Set((after||[]).filter(Boolean));
   const ch=[...[...a].filter(x=>!b.has(x)), ...[...b].filter(x=>!a.has(x))];
-  if(ch.length) stampP(p, ...ch.map(x=>LIST_ITEM[k]+"."+x));
+  // The whole list is stamped too (k), for older builds that read only that, and k~ says this build wrote it along with
+  // the items' own stamps. A later whole-list stamp with no k~ to match came from an older build (see mergePitcher).
+  if(ch.length){ stampP(p, k, ...ch.map(x=>LIST_ITEM[k]+"."+x)); p.ed[k+"~"]=p.ed[k]; }
   return ch.length;
 }
 function pLabel(p){ if(!p) return "?"; const n=p.num?"#"+p.num:""; return [n, p.name].filter(Boolean).join(" ") || "Unknown"; }
@@ -808,7 +810,11 @@ function mergeGame(local, incoming){
   // Ahead of the last entry both have, an entry only one copy has must have been put in there (Log insert, a sheet's fix).
   // Unmarked, it may be one the other copy took out with an older build, and only the coach can say which.
   const lastA=sa.length?inA.get(sa[sa.length-1].id):-1, lastB=sa.length?inB.get(sa[sa.length-1].id):-1;
-  if(a.some((e,i)=>i<lastA && !inB.has(e.id) && !e.ins) || b.some((e,i)=>i<lastB && !inA.has(e.id) && !e.ins)) return conflict;
+  // Not when the copy that has it is one the same device changed later than the other: it can't have taken out there what it
+  // still has, so it put it in (an older build's Log insert carries no mark).
+  const later=(x,y)=>!!(x.edited && y.edited && x.edited.dev && x.edited.dev===y.edited.dev && (+x.edited.t||0)>(+y.edited.t||0));
+  const putA=later(local, incoming), putB=later(incoming, local);
+  if(a.some((e,i)=>i<lastA && !inB.has(e.id) && !e.ins && !putA) || b.some((e,i)=>i<lastB && !inA.has(e.id) && !e.ins && !putB)) return conflict;
   if(a.length-1>lastA && b.length-1>lastB) return conflict;   // both went on past the last entry they share: the logs split
   const moreA=a.length>sa.length, moreB=b.length>sb.length;
   const lt=local.edited&&local.edited.t||0, it=incoming.edited&&incoming.edited.t||0;
@@ -827,6 +833,7 @@ function mergeGame(local, incoming){
     edited:lt>=it?local.edited:incoming.edited, sentAt:Math.max(local.sentAt||0, incoming.sentAt||0)||null});
   const cut=mergeCut(local.cut, incoming.cut); if(cut.length) merged.cut=cut; else delete merged.cut;
   if(!Object.keys(metaEd).length && !local.metaEd && !incoming.metaEd) delete merged.metaEd;
+  keepOwn(merged, local, incoming);
   // Is the result just one of the two copies? Bookkeeping fields don't count, an empty value is the same as none, and a
   // starting spot means nothing without a starting lineup (a game rebuilt from a sheet has neither). What was taken out
   // counts by id: a copy that hasn't heard of a removal isn't the result.
@@ -839,12 +846,39 @@ function mergeGame(local, incoming){
   merged.rev=Math.max(local.rev||0, incoming.rev||0)+1;
   return {kind:"updated", game:merged, merged:true};
 }
+// Our hitters' names stay ours through a merge, so they never go up with the game (sync.js pack keeps a name marked own
+// home). With another team hitting in the merged game, a name either copy marks own, or holds while we were hitting (a
+// game from before names were marked, switched to another team on the other copy), is marked own in it. So is a name in
+// the spot of one the team book left out as ours (a watching device's copy has the spot, marked own, with no name). Not
+// when the other copy has the same name unmarked and the coach said there, after this copy's last change of who's
+// hitting, that they are the other team's hitters ("Whose names are these?" stamps metaEd.names). Changes only copies
+// of what it marks.
+function keepOwn(g, a, b){
+  if(g.hitting==="us" || g.practice) return g;   // every name stays home anyway
+  const sa=metaStamps(a), sb=metaStamps(b), us=x=>x.hitting==="us" || !!x.practice;
+  const key=p=>p ? String(p.name||p.batter||"").trim().toLowerCase().replace(/\s+/g," ")+"|"+String(p.num||"").trim() : "|";
+  const same=(q, k)=>!!q && (key(q)===k || (!!q.own && key(q)==="|"));
+  const ours=(px, x, sx, py, y, sy)=>!!px && (!!px.own || us(x)) && !(py && !py.own && !us(y) && (sy.names||0)>(sx.hitting||0));
+  const fix=(p, pa, pb)=>{ const k=key(p); if(k==="|") return p;
+    if(!same(pa, k)) pa=null; if(!same(pb, k)) pb=null;
+    const own=ours(pa, a, sa, pb, b, sb) || ours(pb, b, sb, pa, a, sa); if(!pa && !pb || own===!!p.own) return p;
+    const q={...p}; if(own) q.own=true; else delete q.own; return q; };
+  if(Array.isArray(g.lineup0)) g.lineup0=g.lineup0.map((p,i)=>fix(p, (a.lineup0||[])[i], (b.lineup0||[])[i]));
+  const ia=new Map((a.log||[]).map(e=>[e.id,e])), ib=new Map((b.log||[]).map(e=>[e.id,e]));
+  g.log=g.log.map(e=>{ const ea=ia.get(e.id), eb=ib.get(e.id);
+    if(e.k==="lineup" && Array.isArray(e.lineup)){ const l=e.lineup.map((p,i)=>fix(p, ea && (ea.lineup||[])[i], eb && (eb.lineup||[])[i])); return l.some((p,i)=>p!==e.lineup[i]) ? {...e, lineup:l} : e; }
+    if(e.k==="sub" && e.player){ const p=fix(e.player, ea && ea.player, eb && eb.player); return p!==e.player ? {...e, player:p} : e; }
+    return e.k==="adj" && e.batter ? fix(e, ea, eb) : e; });
+  return g;
+}
 // Notes, box-score lines, the newer plan or card, and kids kept apart: these add up whichever way two records meet.
 // Box-score lines match by id, so a doubleheader's two lines with the same count both stay. A line with no id (older
 // data) matches by date, count and source. A line removed on either device stays removed (boxGone), and so does the line
 // an Undo brought back under a new id in place of (its from).
+// A note moved over from v2 (v2 kept one note per kid, with no date or initials) is the same note whenever it was moved.
 function addUpPitcher(out, b){
-  const key=n=>n.t+"|"+n.text; out.notes=out.notes||[]; const have=new Set(out.notes.map(key));
+  const v2=/^v2-/.test(String(out.id||"")) || /^v2-/.test(String(b.id||""));
+  const key=n=>!n.by && (n.v2 || v2) ? "v2|"+n.text : n.t+"|"+n.text; out.notes=out.notes||[]; const have=new Set(out.notes.map(key));
   (b.notes||[]).forEach(n=>{ if(n && !have.has(key(n))){ out.notes.push(n); have.add(key(n)); } });
   out.notes.sort((x,y)=>x.t-y.t);
   out.outings=out.outings||[];
@@ -887,13 +921,15 @@ function mergePitcher(a, b){
     if(k==="hand"){ if(bv && (w>0 || !a.hand)) a.hand=bv; return; }
     if(w>0 || (w===0 && !String(a[k]==null?"":a[k]) && bv)) a[k]=bv; });
   // His pitch list and tells go item by item: each pitch or tell is on or off as the copy that changed that item last says
-  // (two devices adding different ones keep both). An item neither stamped follows the copy whose whole list was stamped
-  // later (how an earlier build stamped them), and otherwise is kept from either copy.
-  Object.keys(LIST_ITEM).forEach(k=>{ const f=LIST_ITEM[k], wl=win(k), A=a[k]||[], B=b[k]||[];
+  // (two devices adding different ones keep both). Otherwise the whole list decides when an older build stamped it last
+  // (it stamps only the whole list, never k~): an item that build took off, or put on, after the item's own stamp. Anything
+  // else is kept from either copy (the same stamp on both, or an item nobody stamped, like a type a sheet brought in).
+  Object.keys(LIST_ITEM).forEach(k=>{ const f=LIST_ITEM[k], wl=win(k), A=a[k]||[], B=b[k]||[], wp=wl>0 ? b : a;
     const keep=x=>{ const inA=A.includes(x), inB=B.includes(x), w=win(f+"."+x);
       if(w) return w>0 ? inB : inA;
-      if(edStamp(a,f+"."+x) || edStamp(b,f+"."+x)) return inA || inB;   // the same stamp on both: both have it, or one is older data
-      return wl>0 ? inB : wl<0 ? inA : (inA || inB); };
+      const it=Math.max(edStamp(a,f+"."+x), edStamp(b,f+"."+x)), old=wl!==0 && edStamp(wp,k)>edStamp(wp,k+"~") && edStamp(wp,k)>it;
+      if(old && (inA!==inB || !it)) return wl>0 ? inB : inA;
+      return inA || inB; };
     a[k]=[...A, ...B.filter(x=>!A.includes(x))].filter((x,i,l)=>x && l.indexOf(x)===i && keep(x)); });
   [["check", v=>v==null], ["velo", v=>!v]].forEach(([k, blank])=>{ const A=a[k]||(a[k]={}), B=b[k]||{};
     new Set([...Object.keys(A), ...Object.keys(B), ...stampedKeys(a,k), ...stampedKeys(b,k)]).forEach(x=>{ const w=win(k+"."+x);
@@ -1203,8 +1239,8 @@ function bandsProblem(bands, max){
 /* ---------- state ---------- */
 let S = null;
 // Live sync hook. Stays a no-op until a sync module replaces it.
-let Sync = {ready:false, queue(){}, statusText(){ return ""; }, canEdit(){ return true; }, writerOf(){ return ""; }, devName(){ return "another device"; }, relayed(){}, restored(){}, gameDeleted(){ return Promise.resolve(); }, panelHTML(){ return ""; }, bindPanel(){}, init(){}, takeOver(){ return Promise.resolve(false); }, bookLocked(){ return false; }};
-const ui = {tab:"chart", type:null, h:null, zone:null, dirt:false, ttp:null, watchStart:null, report:{pid:null, games:null, view:"report"}, logConfirm:null, dataConfirm:null,
+let Sync = {ready:false, joined:false, queue(){}, statusText(){ return ""; }, canEdit(){ return true; }, writerOf(){ return ""; }, devName(){ return "another device"; }, relayed(){}, restored(){}, onTeam(){ return false; }, gameDeleted(){ return Promise.resolve(); }, panelHTML(){ return ""; }, bindPanel(){}, init(){}, takeOver(){ return Promise.resolve(false); }, bookLocked(){ return false; }};
+const ui = {tab:"chart", type:null, undoType:null, h:null, zone:null, dirt:false, ttp:null, watchStart:null, report:{pid:null, games:null, view:"report"}, logConfirm:null, dataConfirm:null,
   pulseHand:false, keyHandler:null, prefix:null, told:{}, d3Offer:null, teamSel:null, pitcherSel:null, editPlan:null, rebuild:null, embedded:false, standalone:false};
 const SAVE = {ok:true, mode:null, err:null, lastAt:null, dirty:new Set(), deleted:new Set(), metaDirty:false, busy:false, again:false, t:null, retry:null,
   idbErr:null, dropLs:false, jstamp:null, jgame:null, recovered:0};
@@ -1377,8 +1413,17 @@ function restoreBoxLine(pid, line){ const p=S.pitchers[resolvePid(pid)]; if(!p |
 // Games we charted him in on a date: a box-score line can be the official count for one of them.
 function chartedOn(pid, date){ return S.games.filter(g=>g.date===date && !g.practice && !g.conflictOf && (replay(g).live.pc[pid]||0)>0); }
 // Today's pitches for a pitcher from games before this one (doubleheader game 1, or a JV game earlier).
+// The parts of a game Keep both split in two (splitFrom, either way, or two parts split from the same game) are one game:
+// they always add up, whichever was made first and whatever the doubleheader rule says.
+const splitTwin=(x, g)=>!!((g.splitFrom && (x.id===g.splitFrom || x.splitFrom===g.splitFrom)) || (x.splitFrom && x.splitFrom===g.id));
 function earlierToday(g, pid){
-  return S.games.filter(x=>x!==g && x.date===g.date && !x.practice && !x.conflictOf && gMade(x)<gMade(g)).reduce((s,x)=>s+(replay(x).live.pc[pid]||0),0);
+  return S.games.filter(x=>x!==g && x.date===g.date && !x.practice && !x.conflictOf && !splitTwin(x, g) && gMade(x)<gMade(g)).reduce((s,x)=>s+(replay(x).live.pc[pid]||0),0);
+}
+// The board's count for him in game g: this game (with its other part), plus his earlier games today when they add up.
+function boardCount(g, pid, T, R){
+  const part=S.games.filter(x=>x!==g && x.date===g.date && !x.practice && !x.conflictOf && splitTwin(x, g)).reduce((s,x)=>s+(replay(x).live.pc[pid]||0),0);
+  const gameN=((R||replay(g)).live.pc[pid]||0)+part, earlier=earlierToday(g, pid);
+  return {gameN, earlier, dayN:gameN+(T.dh==="add"?earlier:0)};
 }
 /* ---------- pitchers: finding the kid on file ----------
    Lookup is by team + jersey number (or name when there's no number). Two records can share a team and number, say after a
@@ -1416,15 +1461,25 @@ function adoptPitcher(p, opts){
   if(!p) return null;
   const inc=newPitcher(p); let id=resolvePid(inc.id);
   inc.outings=(inc.outings||[]).filter(Boolean).map(o=>o.id?o:{...o, id:boxId(o)});   // lines from older versions get the same id everywhere
-  if(!S.pitchers[id] && !(opts && opts.match===false)){ const m=sameKidOnFile(inc, opts&&opts.among); if(m){ setAlias(inc.id, m.id); id=m.id; } }
+  // Never a stand-in, or a kid renumbered or moved into that team and number by hand with no same name on both (movedApart):
+  // only the coach can say those are one kid (live sync keeps them apart the same way).
+  if(!S.pitchers[id] && !(opts && opts.match===false) && !inc.stub){ const m=sameKidOnFile(inc, opts&&opts.among); if(m && !m.stub && !movedApart(inc, m)){ setAlias(inc.id, m.id); id=m.id; } }
   const have=S.pitchers[id];
-  if(have){ const was=have.hand;
+  if(have){ const was=have.hand, slot=pitcherKey(have.team, have.num, have.name);
     // His own record from the other device: each part (a rename, renumber, team change, hand, pitches, tells) comes from
     // whichever copy changed it last. Another record of the same kid (matched, or merged away here) joins him.
     if(id===inc.id) mergePitcher(have, inc); else joinPitchers(have, inc, {details:true});
     learnTypes(have.arsenal);
     // A hand fixed there reaches his entries in games only this device has too (the package's own games bring theirs).
-    if(have.hand!==was){ if(opts && opts.hands) opts.hands[id]=have.hand; else setPitcherHand(id, have.hand); } }
+    if(have.hand!==was){ if(opts && opts.hands) opts.hands[id]=have.hand; else setPitcherHand(id, have.hand); }
+    // Renumbered (or moved to a team) there after an earlier Send, onto a kid on file here with the same number and the same
+    // typed name: the same kid, as a first Send of him would have matched (live sync joins them the same way). The smaller
+    // id stays, so every device keeps the same one, and the merge goes along in this device's files (pitcherAlias).
+    if(id===inc.id && !(opts && opts.match===false) && pitcherKey(have.team, have.num, have.name)!==slot && !have.stub && !have.example){
+      const among=new Set(Object.keys(S.pitchers).filter(k=>k!==id && (!opts || !opts.among || opts.among.has(k))));
+      const m=sameKidOnFile(have, among);
+      if(m && !m.stub && !m.example && !movedApart(have, m)){ const to=m.id<id ? m.id : id, from=to===id ? m.id : id;
+        mergeInto(from, to, {details:true}); setPitcherHand(to, S.pitchers[to].hand); if(opts && opts.hands && opts.hands[from]){ opts.hands[to]=opts.hands[from]; delete opts.hands[from]; } return to; } } }
   else { inc.id=id; S.pitchers[id]=inc; learnTypes(inc.arsenal); }
   return id;
 }
@@ -1437,6 +1492,12 @@ function sameKidOnFile(p, among){
   if(slug(p.name) && slug(m.name) && slug(p.name)!==slug(m.name)) return null;
   if(!slug(p.team) && (normNum(m.num)!==normNum(p.num) || slug(m.name)!==slug(p.name))) return null;
   return m;
+}
+// One of the two was renumbered or moved into that team and number by hand (slotMoved). The same number and the same typed
+// name on both still says it's him; a blank name, or a match by name alone, leaves it to the coach.
+function movedApart(a, b){
+  if(!slotMoved(a) && !slotMoved(b)) return false;
+  return !(normNum(a.num) && normNum(a.num)===normNum(b.num) && slug(a.name) && slug(a.name)===slug(b.name));
 }
 // Kids the coach said are different (Keep separate on the "already on file" sheet, Different kids on a team move). Kept on
 // both records (p.apart, synced), so no device ever joins them as the same kid filed twice.
@@ -1736,7 +1797,9 @@ function recoverJournal(s, force){
   if(!loc){ s.games.push(j); done(j, j.log.length); return s; }
   const r=mergeGame(loc, j);
   if(r.kind==="kept") return s;
-  if(r.kind==="updated"){ s.games[at]={...r.game, conflictOf:loc.conflictOf||null}; done(j, r.game.log.length-loc.log.length); return s; }
+  // What came back: entries the saved copy lacked, and the ones taken out (undo, Log delete) since it was saved.
+  if(r.kind==="updated"){ const have=new Set(loc.log.map(e=>e.id)), gone=cutIds(r.game);
+    s.games[at]={...r.game, conflictOf:loc.conflictOf||null}; done(j, r.game.log.filter(e=>!have.has(e.id)).length+loc.log.filter(e=>gone.has(e.id)).length); return s; }
   if(stamp && !force){
     const have=new Set(loc.log.map(e=>e.id)), mine=new Set(j.log.map(e=>e.id));
     s.games[at]={...j, conflictOf:loc.conflictOf||null}; done(j, j.log.filter(e=>!have.has(e.id)).length+loc.log.filter(e=>!mine.has(e.id)).length); return s;
@@ -1758,6 +1821,10 @@ function upgrade(s){
   // A game stored without its date or creation time (a bad cloud copy, before sync checked them) broke every launch
   // before live sync could start: it is repaired here, or dropped when it has no log at all.
   s.games=(Array.isArray(s.games)?s.games:[]).filter(g=>{ const r=repairGame(g); if(!r){ SAVE.metaDirty=true; return false; } if(r==="fixed"){ SAVE.dirty.add(g.id); SAVE.metaDirty=true; } return true; });
+  // A v2 game with no pitches moved over at revision 0 by an earlier build: revision 1, so live sync sends it.
+  s.games.forEach(g=>{ if(g.legacyOpp!=null && !(g.rev>0) && g.log.length){ g.rev=1; SAVE.dirty.add(g.id); SAVE.metaDirty=true; } });
+  // A v2 note moved over twice (an earlier build dated it when it moved) shows once.
+  Object.values(s.pitchers||{}).forEach(p=>{ if(p && Array.isArray(p.notes) && p.notes.length>1){ const n=p.notes.length; p.notes=addUpPitcher({id:p.id, notes:[]}, p).notes; if(p.notes.length!==n) SAVE.metaDirty=true; } });
   return s;
 }
 
@@ -1796,7 +1863,8 @@ function v2GameToV3(g, pidOf, devId){
   let curP=null;
   const startPid = pidOf(first ? first.pitcher||g.pitcher : g.pitcher, g.opponent);
   // No pitches: the time comes from the game date, so the same v2 data gives the same entry everywhere.
-  if(!items.length && g.pitcher){ ng.log.push(E("pitcher",{pitcher:startPid, phand:g.pitcherHand||"R", t:Date.parse((g.date||"")+"T12:00:00")||0})); return ng; }
+  // Revision 1 like any game with an entry: live sync sends only what is above revision 0.
+  if(!items.length && g.pitcher){ ng.log.push(E("pitcher",{pitcher:startPid, phand:g.pitcherHand||"R", t:Date.parse((g.date||"")+"T12:00:00")||0})); ng.rev++; return ng; }
   items.forEach(x=>{
     const pid=pidOf(x.pitcher||g.pitcher, g.opponent);
     if(pid!==curP){ ng.log.push(E("pitcher",{pitcher:pid, phand:x.phand||g.pitcherHand||"R", t:x.t})); curP=pid; ng.rev++; }
@@ -1839,7 +1907,7 @@ function migrateV2(old, opts){
   // moved over twice, or on two devices, gives one note, not two.
   const lastT=Math.max(0, ...real.map(g=>Math.max(Date.parse((g.date||"")+"T12:00:00")||0, ...(g.pitches||[]).concat(g.events||[]).map(x=>+x.t||0))));
   Object.values(map).filter(x=>used.has(x.id)).forEach(({id, name})=>{ const o=(s2.pitchers||{})[name], sp=splitName(name);
-    s.pitchers[id]=newPitcher({id, team:"", num:sp.num, name:sp.name, hand:o&&o.hand||"R", arsenal:o?(o.arsenal||[]).filter(c=>c!=="UN"):undefined, notes:o&&o.notes?[{t:lastT||1, by:"", text:String(o.notes)}]:[]}); });
+    s.pitchers[id]=newPitcher({id, team:"", num:sp.num, name:sp.name, hand:o&&o.hand||"R", arsenal:o?(o.arsenal||[]).filter(c=>c!=="UN"):undefined, notes:o&&o.notes?[{t:lastT||1, by:"", text:String(o.notes), v2:true}]:[]}); });
   s.needsTeam=Object.keys(s.pitchers);
   s.cur=s.games.length?s.games[s.games.length-1].id:null;
   if(!s.games.length && !(opts && opts.noExample)){ addExample(s); }
@@ -1847,10 +1915,13 @@ function migrateV2(old, opts){
 }
 
 /* ---------- send to Coach and merge without overwriting ---------- */
+// A "Same kid twice?" merge made here goes along (pitcherAlias, the old ids of the kids in these games), so the other device
+// merges him too instead of keeping the merged-away record.
 function packGames(games){
   const pids=new Set(); games.forEach(g=>replay(g).order.forEach(p=>pids.add(p)));
-  const pitchers={}; pids.forEach(id=>{ if(S.pitchers[id]) pitchers[id]=S.pitchers[id]; });
-  return JSON.stringify({mb:3, kind:"games", from:{dev:S.device.id, name:S.device.name||S.settings.lastInitials||""}, at:Date.now(), games:games.map(g=>({...g, conflictOf:null})), pitchers, catalog:S.catalog});
+  const pitchers={}; pids.forEach(id=>{ const p=S.pitchers[id]||S.pitchers[resolvePid(id)]; if(p) pitchers[p.id]=p; });
+  const alias={}; Object.entries(S.pitcherAlias||{}).forEach(([k,v])=>{ if(pitchers[resolvePid(v)]) alias[k]=v; });
+  return JSON.stringify({mb:3, kind:"games", from:{dev:S.device.id, name:S.device.name||S.settings.lastInitials||""}, at:Date.now(), games:games.map(g=>({...g, conflictOf:null})), pitchers, pitcherAlias:alias, catalog:S.catalog});
 }
 function backupAll(){ return JSON.stringify({mb:3, kind:"backup", from:{dev:S.device.id}, at:Date.now(), games:S.games.filter(g=>!g.example), pitchers:Object.fromEntries(Object.entries(S.pitchers).filter(([k,p])=>!p.example)), pitcherAlias:S.pitcherAlias||{}, roster:S.roster, catalog:S.catalog, setAside:S.setAside||[], settings:{rules:S.settings.rules, ourName:S.settings.ourName}}); }
 // Merge a package or backup. Returns counts; conflicts are kept as a second copy and flagged.
@@ -1872,14 +1943,34 @@ function mergeIn(pkg, opts){
   const keyN={}; incoming.forEach(([k,p])=>{ const key=pitcherKey(p.team,p.num,p.name)+(p.example?"|ex":""); keyN[key]=(keyN[key]||0)+1; });
   incoming.forEach(([k,p])=>{ const key=pitcherKey(p.team,p.num,p.name)+(p.example?"|ex":"");
     here[p.id||k]=adoptPitcher({...p, id:p.id||k}, {among:before, match:keyN[key]===1, hands}); out.pitchers++; });
+  // A merge made on the other device ("Same kid twice?") of a kid still on file here as his own record: he joins the kid
+  // he was merged into, here too, and his games follow. Never two kids the coach here kept apart.
+  Object.entries(pkg.pitcherAlias||{}).forEach(([k,v])=>{ const src=S.pitchers[k], to=resolvePid(here[v]||v), dst=S.pitchers[to];
+    if(src && dst && !src.example && !dst.example && to!==k && !keptApart(src, dst)) mergeInto(k, to, {details:true}); });
   // Copies the coach set aside on that device stay aside here (a backup moved to the Home Screen copy, or a leftover book).
   if(Array.isArray(pkg.setAside) && (pkg.kind==="backup" || pkg.kind==="leftover")) pkg.setAside.forEach(d=>{ if(d && d.game && Array.isArray(d.ids) && !(S.setAside||[]).some(x=>sigKey(x)===sigKey(d))) S.setAside=[...(S.setAside||[]), d].slice(-30); });
   // Main copies first, so a second copy from a backup finds its game.
   const games=(pkg.games||[]).filter(g=>repairGame(g));
-  games.filter(g=>!g.conflictOf).concat(games.filter(g=>g.conflictOf)).forEach(inc=>{
+  // A backup or a season file may be this coach's own book moved over (the Data tab says to move to the Home Screen copy with
+  // a backup): then the games its device charted are this device's now, so with live sync they go up to the team book and
+  // can be fixed here. Or it is another device's book (the dugout iPad's backup) and that device still charts them. Brought
+  // into a copy with no games of its own that hasn't signed in to live sync (the site's built-in setup counts as set up on
+  // every copy), it's the move; anywhere else the coach says (out.whose, then adoptBook). Never when that device is on the
+  // team's live sync: it may still be charting them (Take over moves one). A move with no question is asked about once this
+  // copy signs in, if the team book has those games as the other copy's (sync.js adoptCloud).
+  const from=opts.carry && pkg.from && pkg.from.dev, other=!!from && from!==S.device.id && !Sync.onTeam(from);
+  const adopt=other && !Sync.joined && !S.games.some(g=>!g.example && (g.writerDev || (g.created && g.created.dev))===S.device.id);
+  // A game Keep both split off lands before the game it came from, so that game finds it (partSplitOff). One that holds only
+  // what that game here has already waits for it (opts.parts), and comes in only if that game gives its part to it.
+  // opts.splitOf: the games this file holds a split-off part of (see landGame).
+  opts.parts=[]; opts.splitOf=new Set(games.filter(g=>!g.conflictOf && g.splitFrom).map(g=>g.splitFrom));
+  games.filter(g=>!g.conflictOf && g.splitFrom).concat(games.filter(g=>!g.conflictOf && !g.splitFrom), games.filter(g=>g.conflictOf)).forEach(inc=>{
     inc.log.forEach(e=>{ if(e.k==="pitcher" && e.pitcher!=null){ const id=here[e.pitcher]||resolvePid(e.pitcher); if(id!==e.pitcher) e.pitcher=id; } });
-    out[landGame(inc, opts)]++;
+    const k=landGame(inc, opts); if(k!=="waits") out[k]++;
   });
+  opts.parts.forEach(h=>{ out[S.games.includes(h) ? "added" : "kept"]++; });
+  if(other){ const ids=gamesOf(from, games.map(g=>g.id));
+    if(adopt) adoptBook(from, ids, true); else if(ids.length) out.whose={from, ids, season:pkg.kind==="season"}; }
   // A hand fixed on the other device, once its games are in: stamping this device's copy of a game it sent first would make
   // that copy newer than the one that came, so it would stay unsent here and go back as a change.
   Object.keys(hands).forEach(id=>setPitcherHand(id, hands[id]));
@@ -1888,10 +1979,22 @@ function mergeIn(pkg, opts){
   games.forEach(inc=>{ learnTypes(gameTypes(inc)); const g=S.games.find(x=>x.id===inc.id && !x.conflictOf); if(g && handsFromRecords(g, Sync.canEdit(g) && !g.relay)) saveGame(g); });
   if(pkg.roster && !S.roster.varsity.length && !S.roster.jv.length) S.roster=pkg.roster;
   if(pkg.kind==="backup" && pkg.settings) backupSettings(pkg.settings, out);
+  if(opts.part) out.part=opts.part;
   if(!S.cur && S.games.length) S.cur=S.games[S.games.length-1].id;
   save(); return out;
 }
 function sameLog(a, b){ return a.log.length===b.log.length && a.log.every((e,i)=>sameEntry(e, b.log[i])); }
+// The games here (of these ids) that device charted.
+function gamesOf(from, ids){ return S.games.filter(g=>ids.includes(g.id) && !g.conflictOf && !g.example && (g.writerDev || (g.created && g.created.dev))===from).map(g=>g.id); }
+// The coach's own book moved over from another copy: this device charts its games now. With live sync they go up as this
+// device's, even when one already went up from here as the other copy's (takeover). On a copy that hasn't signed in yet,
+// the other copy is remembered (adoptFrom): one of these games the team book has as that copy's is taken over here once
+// this copy signs in, or, for a move nobody was asked about (ask), the coach is asked then (sync.js adoptCloud).
+function adoptBook(from, ids, ask){
+  gamesOf(from, ids).forEach(id=>{ const g=S.games.find(x=>x.id===id && !x.conflictOf); g.writerDev=S.device.id; delete g.relay;
+    if(Sync.joined) g.takeover=true; else g.adoptFrom={dev:from, ...(ask?{ask:true}:{})}; saveGame(g); });
+  save();
+}
 // Entries another copy still has that the device which last changed this one had made before that change, and left out of
 // it: that device took them out. An undo or Log delete from before they left a mark in g.cut looks just like this, so they
 // don't come back from an older file or a phone that still holds them. A Log insert (ins) is never one of these, nor is
@@ -1899,6 +2002,9 @@ function sameLog(a, b){ return a.log.length===b.log.length && a.log.every((e,i)=
 function leftOut(newer, other){
   const ed=newer && newer.edited, d=ed && ed.dev, t=+(ed && ed.t)||0;
   if(!d || !t || !other || !Array.isArray(other.log) || !Array.isArray(newer.log)) return other;
+  // A copy that same device changed after this one can't hold what it took out before then: what this one lacks, it put in
+  // since (an older build marks no Log insert), or charted.
+  const oe=other.edited; if(oe && oe.dev===d && (+oe.t||0)>t) return other;
   const have=new Set(newer.log.map(e=>e.id));
   const log=other.log.filter(e=>have.has(e.id) || e.ins || e.dev!==d || !((+e.t||0)<t));
   return log.length===other.log.length ? other : {...other, log};
@@ -1911,14 +2017,44 @@ function landGame(inc, opts){
   const got=g=>{ if(opts.own) return g;
     g.sentAt=Math.max(g.sentAt||0, opts.carry ? (inc.sentAt||0) : ((g.edited&&g.edited.t)||0))||null; return g; };
   const at=S.games.findIndex(g=>g.id===inc.id);
+  // mine: a game this device just changed (a split-off game its own pitches joined): it stays unsent here.
+  const add=(g, mine)=>{
+    if((S.deletedIds||[]).includes(g.id)) Sync.restored(g);   // deleted before: Coach's copy goes back to the team book
+    S.deletedIds=(S.deletedIds||[]).filter(x=>x!==g.id);
+    S.games.push(mine ? g : got(g)); Sync.relayed(g); saveGame(g); return "added"; };
   if(at<0){
     if(inc.conflictOf) return secondCopy(inc, inc.conflictOf, true);
-    if((S.deletedIds||[]).includes(inc.id)) Sync.restored(inc);   // deleted before: Coach's copy goes back to the team book
-    S.deletedIds=(S.deletedIds||[]).filter(x=>x!==inc.id);
-    S.games.push(got(inc)); Sync.relayed(inc); saveGame(inc); return "added";
+    // A game Keep both split off whose own part is in that game here (this device charted it): never the same pitches in
+    // two games. It waits for that game (partSplitOff below), or holds nothing new.
+    const main=inc.splitFrom && S.games.find(g=>g.id===inc.splitFrom && !g.conflictOf);
+    if(main && opts.parts && heldIn(inc, main)){ opts.parts.push(inc); return "waits"; }
+    return add(inc);
   }
-  // What this copy's device took out since (an undo from before undo left a mark) stays out (leftOut).
-  const loc=S.games[at], orig=inc; inc=leftOut(loc, inc); const r=mergeGame(loc, inc);
+  // What this copy's device took out since (an undo from before undo left a mark) stays out (leftOut). Not for a game rebuilt
+  // from a sheet (opts.sheet): its rows carry this device's id and the sheet's times, but they are what the coach says the
+  // game holds, a row put in among them too. What was undone here still stays out (g.cut).
+  const loc=S.games[at], orig=inc; if(!opts.sheet) inc=leftOut(loc, inc);
+  // Keep both on another device made this device's part a game of its own (partSplitOff): loc takes the team copy, and this
+  // device's own pitches are that game's. The team copy is sent only when it is exactly the one that came (a game detail kept
+  // from loc, like an End game, is not).
+  const takePart=sp=>{ const g={...sp.game, id:loc.id, conflictOf:null, created:loc.created}; if(sp.exact && sameLog(g, orig)) got(g); else g.sentAt=loc.sentAt||null;
+    if(loc.writerDev) g.writerDev=loc.writerDev; g.rev=Math.max(g.rev||0, (loc.rev||0)+1); replaceGame(loc, g); Sync.relayed(loc); saveGame(loc);
+    if(!S.games.includes(sp.part)) add(sp.part, sp.changed);
+    // This device's own pitches are in that game now: the chart follows them there, and the coach is told (out.part).
+    if(S.cur===loc.id && Sync.canEdit(sp.part)){ S.cur=sp.part.id; opts.part={n:sp.part.log.filter(e=>e.k==="pitch").length, ended:!!sp.part.endedAt}; }
+    return "updated"; };
+  if(!loc.conflictOf){
+    const parts=S.games.filter(g=>g.splitFrom===loc.id && !g.conflictOf);
+    // What inc's device took out (an undo of its last pitch) is out of the games Keep both split off this one here too.
+    cutParts(parts, inc);
+    // A game Keep both split off here: what inc has past the team copy is that game's part first, so the team copy never
+    // takes those pitches in as well (after the coach took his own duplicates out, inc lines up with the team copy).
+    for(const h of parts){ const j=joinSplit(h, loc, inc); if(j) return j; }
+    // The file holds a game Keep both split off this one on the other device, and this device's part of it is here in loc:
+    // it moves to that game even where the two copies line up (the coach there took his own pitches out), never in both.
+    if(opts.splitOf && opts.splitOf.has(loc.id)){ const sp=partSplitOff(loc, inc, opts.parts); if(sp) return takePart(sp); }
+  }
+  const r=mergeGame(loc, inc);
   if(r.kind==="kept"){
     // Exactly what the other device has: it's been sent, as far as this device is concerned (for a backup's copy: if it was).
     if(!opts.own && !loc.conflictOf && sameLog(loc, orig) && (loc.edited&&loc.edited.t||0)<=(inc.edited&&inc.edited.t||0) && (loc.sentAt||0)<(loc.edited&&loc.edited.t||0)){
@@ -1938,8 +2074,10 @@ function landGame(inc, opts){
   if(!loc.conflictOf){
     if(showsAll(inc, loc) || setAsideHolds(loc.id, inc)) return "kept";   // never the copy the coach set aside, either
     // Still the game this device has: who made it and when (doubleheader order, and who charts it with live sync), as a merge keeps.
-    if(showsAll(loc, inc)){ const g=got({...inc, created:loc.created, conflictOf:null}); if(loc.writerDev) g.writerDev=loc.writerDev;
+    if(showsAll(loc, inc)){ const g=keepOwn(got({...inc, created:loc.created, conflictOf:null}), loc, inc); if(loc.writerDev) g.writerDev=loc.writerDev;
       g.rev=Math.max(g.rev||0, (loc.rev||0)+1); replaceGame(loc, g); Sync.relayed(loc); saveGame(loc); return "updated"; }
+    const sp=partSplitOff(loc, inc, opts.parts);
+    if(sp) return takePart(sp);
   }
   return secondCopy(inc, loc.conflictOf||loc.id, false);
 }
@@ -1953,23 +2091,35 @@ function showsAll(a, b){
   const played=e=>e.k==="pitch"||e.k==="ev"; let last=-1; a.log.forEach((e,i)=>{ if(played(e)) last=i; });
   if(last<0 || a.log.some((e,i)=>!played(e) && (i>last || (e.k!=="pitcher" && e.k!=="adj")))) return false;
   const gone=cutIds(a); if(b.log.some(e=>gone.has(e.id))) return false;   // a took out something b still has
+  // A game rebuilt from a v2 sheet (rows with no entry ids) and the same game moved over from v2 on another device (b): the
+  // same pitches and plays in the same order, under other ids. They are matched in order, and the sheet's pitching team is
+  // the v2 opponent b keeps.
+  let idOf=id=>id; const legacy=b.legacyOpp!=null && !a.log.some(e=>played(e) && b.log.some(y=>y.id===e.id));
+  if(legacy){ const pa=a.log.filter(played), pb=b.log.filter(played); if(pa.length>pb.length) return false;
+    const m=new Map(pa.map((e,i)=>[e.id, pb[i].id])); idOf=id=>m.has(id) ? m.get(id) : id; }
   const RA=replay(a), RB=replay(b), seen=new Map(), at=new Map(b.log.map((e,i)=>[e.id,i]));
   RB.pitches.concat(RB.events).forEach(x=>seen.set(x.id, x));
   // What an entry says: every field it has, and every one a sheet can show (a missing flag there is a cleared flag).
   const skip=new Set(["id","t","dev","ed","grp","ins"]), nv=v=>v==null||v===false?"":canon(v);
   const says=(x,y)=>[...new Set([...Object.keys(x), ...Object.keys(CSV_FIELD)])].every(k=>skip.has(k) || nv(x[k])===nv(y[k]));
   const keys=["inning","outs","r1","r2","r3","balls","strikes","hand","batter","paNo","pa","phand","extra"];
-  let prev=-1;
+  // A pitch b took out (an undo after the sheet was made) may be missing from it, and one b changed in place after a's
+  // copy of it (a star, a retype in the Log) says what b says: b is the newer copy of that pitch.
+  const cutB=cutIds(b), newerB=(x, y)=>(+y.ed||0)>Math.max(+x.ed||0, +x.t||0);
+  let prev=-1; const shown=new Set();
   for(const x of RA.pitches.concat(RA.events).sort((p,q)=>p.idx-q.idx)){
-    const y=seen.get(x.id), j=at.get(x.id); if(!y || j<=prev) return false; prev=j;
+    const id=idOf(x.id), y=seen.get(id), j=at.get(id);
+    if(!y && cutB.has(id)) continue;
+    if(!y || j<=prev) return false; prev=j; shown.add(id);
     // A book catch-up pitch is in no at-bat, so who was up just then says nothing about it.
-    if(!says(a.log[x.idx], b.log[j]) || keys.some(k=>!(x.extra && (k==="batter"||k==="hand")) && nv(x[k])!==nv(y[k])) || resolvePid(x.pitcher)!==resolvePid(y.pitcher)) return false;
+    const ea=a.log[x.idx], eb=b.log[j], fresh=newerB(ea, eb);
+    if((!fresh && !says(ea, eb)) || keys.some(k=>!(x.extra && (k==="batter"||k==="hand")) && nv(x[k])!==nv(y[k])) || resolvePid(x.pitcher)!==resolvePid(y.pitcher)) return false;
   }
-  const mineA=new Set(a.log.filter(played).map(e=>e.id));
-  if(b.log.slice(0, prev).some(e=>played(e) && !mineA.has(e.id))) return false;
+  if(b.log.slice(0, prev).some(e=>played(e) && !shown.has(e.id))) return false;
   // A starting spot says nothing without a starting lineup (game 2 of a doubleheader with none has spot 0), as in a merge.
   const ma=metaStamps(a), mb=metaStamps(b), set=v=>!(v==null || v==="" || v===false || (Array.isArray(v)&&!v.length));
-  if(GAME_DETAILS.concat(["endedAt","endReason","lineup0","spot0"]).some(k=>!(k==="spot0" && !set(a.lineup0)) && set(a[k]) && nv(a[k])!==nv(b[k]) && (ma[k]||0)>=(mb[k]||0))) return false;
+  const bv=k=>legacy && k==="pTeam" ? (b.pTeam || b.legacyOpp) : b[k];
+  if(GAME_DETAILS.concat(["endedAt","endReason","lineup0","spot0"]).some(k=>!(k==="spot0" && !set(a.lineup0)) && set(a[k]) && nv(a[k])!==nv(bv(k)) && (ma[k]||0)>=(mb[k]||0))) return false;
   const pb=new Set((b.pop||[]).filter(Boolean).map(popKey));
   return (a.pop||[]).every(x=>!x || pb.has(popKey(x)));
 }
@@ -1983,6 +2133,7 @@ function secondCopy(inc, mainId, fromBackup){
   if(fromBackup && mergeGame(main, inc).kind==="kept") return "kept";
   if(setAsideHolds(mainId, inc)) return "kept";
   for(const h of S.games.filter(g=>g.splitFrom===mainId && !g.conflictOf)){
+    const j=joinSplit(h, main, inc); if(j) return j;
     const r=mergeGame(h, inc); if(r.kind==="kept") return "kept";
     if(r.kind==="updated"){ const g={...r.game, id:h.id, splitFrom:mainId, conflictOf:null, sentAt:h.sentAt||null, rev:Math.max(r.game.rev||0, (h.rev||0)+1)}; if(h.writerDev) g.writerDev=h.writerDev; else delete g.writerDev;
       replaceGame(h, g); saveGame(h); return "updated"; }
@@ -1995,10 +2146,13 @@ function secondCopy(inc, mainId, fromBackup){
   }
   const c={...inc, id:fromBackup?inc.id:uid(), conflictOf:mainId}; S.games.push(c); saveGame(c); return "conflicts";
 }
-// "Keep both" on this device's copy that sync kept beside the team copy (c.mine), so that no pitch counts twice. What the
-// copy changed or put in among the entries both have (a Log fix, a Log insert, a delete) joins the team copy, the way a
-// file's fix does (relayed to the device charting it). What it charted after the two went different ways becomes a game of
-// its own (splitTail). Returns {joined, split, conflict}: joined, the team copy took the copy's changes; split, c is now that
+// A copy that holds nothing the game lacks and only takes entries out of it (a sheet with rows deleted): keeping both would
+// count every pitch twice, and Keep both's join would just take the rows out, so it gets only the other two choices.
+function onlyTakesOut(c, main){ const have=new Set(main.log.map(e=>e.id)), gone=cutIds(c); return c.log.every(e=>have.has(e.id)) && main.log.some(e=>gone.has(e.id)); }
+// "Keep both" on a second copy that shares entries with its game (this device's copy that sync kept beside the team copy, or
+// another device's from a file), so that no pitch counts twice. What the copy changed or put in among the entries both have
+// (a Log fix, a Log insert, a delete) joins the team copy, the way a file's fix does (relayed to the device charting it).
+// What it charted after the two went different ways becomes a game of its own (splitTail). Returns {joined, split, conflict}: joined, the team copy took the copy's changes; split, c is now that
 // game of its own (else it holds nothing of its own and the caller drops it); conflict, its changes can't join (an entry
 // is missing from the middle of one copy), so everything the team copy lacks goes in the game of its own instead.
 // Null when the two share nothing: c is a game of its own as it is.
@@ -2006,15 +2160,22 @@ function keepBoth(c, main){
   const have=new Set(main.log.map(e=>e.id)), gone=cutIds(main); let last=-1; c.log.forEach((e,i)=>{ if(have.has(e.id)) last=i; });
   if(last<0) return null;
   const upTo=c.log[last].t||0, head={...clone(c), id:main.id, conflictOf:null, log:clone(c.log.slice(0, last+1)), pop:(c.pop||[]).filter(x=>x && (x.t||0)<=upTo)};
+  // A game detail the copy changed after the two split (End game, Reopen, an Edit game while apart) belongs to its own part
+  // (splitTail's game keeps it), never to the team copy another device may still be charting.
+  { const mc=metaStamps(c), mm=metaStamps(main), me={};
+    Object.keys(mc).forEach(k=>{ if((mc[k]||0)>upTo){ head[k]=main[k]; if(mm[k]!=null) me[k]=mm[k]; } else me[k]=mc[k]; }); head.metaEd=me; }
   const r=mergeGame(main, head), conflict=r.kind==="conflict"; let joined=false;
-  if(r.kind==="updated"){
-    const g={...r.game, id:main.id, conflictOf:null, sentAt:main.sentAt||null}; ["mine","splitFrom","relay","takeover","undelete"].forEach(k=>{ delete g[k]; });
-    if(main.writerDev) g.writerDev=main.writerDev; else delete g.writerDev;
-    g.rev=Math.max(g.rev||0, (main.rev||0)+1); const theirs=!Sync.canEdit(main);
-    replaceGame(main, g); if(theirs) Sync.relayed(main); saveGame(main); joined=true;
-  }
+  if(r.kind==="updated"){ joinMain(main, r.game); joined=true; }
   const own=new Set(c.log.filter((e,i)=>!have.has(e.id) && !gone.has(e.id) && (conflict || i>last)).map(e=>e.id));
   return {joined, conflict, split:own.size ? splitTail(c, main, own) : false};
+}
+// The team copy takes a change to the part it shares with another copy (Keep both's join, a split game's copy again). It
+// stays the same game: its writer, what was sent, never a lower revision, and it goes up to the device charting it.
+function joinMain(main, x){
+  const g={...x, id:main.id, conflictOf:null, sentAt:main.sentAt||null}; ["mine","splitFrom","relay","takeover","undelete"].forEach(k=>{ delete g[k]; });
+  if(main.writerDev) g.writerDev=main.writerDev; else delete g.writerDev;
+  g.rev=Math.max(g.rev||0, (main.rev||0)+1); const theirs=!Sync.canEdit(main);
+  replaceGame(main, g); if(theirs) Sync.relayed(main); saveGame(main);
 }
 // The copy c becomes a game of its own holding only its entries in own (by default: what it has after the last entry the
 // team copy also has). Each run of them starts from where the game was just then on c (pitcher, inning, outs, runners,
@@ -2025,24 +2186,124 @@ function splitTail(c, main, own){
   if(!c.log.some(e=>have.has(e.id))) return false;
   if(!own){ let last=-1; c.log.forEach((e,i)=>{ if(have.has(e.id)) last=i; }); own=new Set(c.log.filter((e,i)=>i>last && !gone.has(e.id)).map(e=>e.id)); }
   if(!own.size) return false;
-  const log=[]; let lineup0=null, spot0=null, run=false;
+  const log=[], made=[]; let lineup0=null, spot0=null, run=false;
+  const add=e=>{ log.push(e); made.push(e.id); };
   c.log.forEach((e,i)=>{
     if(!own.has(e.id)){ run=false; return; }
     if(!run){
       const L=replay({...c, log:c.log.slice(0,i), rev:-1}).live, N=lineup0 ? replay({...c, lineup0, spot0, log:log.slice(), rev:-1}).live : null;
       if(!N){ lineup0=clone(L.lineup); spot0=L.lineup.length ? L.spot : null; }
-      if(L.pitcher!=null && (!N || N.pitcher!==L.pitcher || N.phand!==L.phand)) log.push(entry("pitcher",{pitcher:L.pitcher, phand:L.phand||"R"}, dev()));
-      if(N && canon(N.lineup)!==canon(L.lineup)) log.push(entry("lineup",{lineup:clone(L.lineup), spot:L.lineup.length ? L.spot : null}, dev()));
+      if(L.pitcher!=null && (!N || N.pitcher!==L.pitcher || N.phand!==L.phand)) add(entry("pitcher",{pitcher:L.pitcher, phand:L.phand||"R"}, dev()));
+      if(N && canon(N.lineup)!==canon(L.lineup)) add(entry("lineup",{lineup:clone(L.lineup), spot:L.lineup.length ? L.spot : null}, dev()));
       const at={inning:L.inning, outs:L.outs, r1:L.r1, r2:L.r2, r3:L.r3, balls:L.balls, strikes:L.strikes, why:"split"};
       if(!L.lineup.length && L.batter){ at.batter=L.batter; if(c.hitting==="us" || c.practice) at.own=true; }
       else if(N && L.lineup.length && N.spot!==L.spot) at.spot=L.spot;
-      log.push(entry("adj", at, dev())); run=true;
+      add(entry("adj", at, dev())); run=true;
     }
     log.push(e);
   });
   const pops=new Set((main.pop||[]).filter(Boolean).map(popKey));
-  Object.assign(c, {lineup0, spot0, log, pop:(c.pop||[]).filter(x=>x && !pops.has(popKey(x))), rev:(c.rev||0)+1});
+  // splitOf.made: the entries made here to start each part, not the copy's own (see joinSplit).
+  Object.assign(c, {lineup0, spot0, log, pop:(c.pop||[]).filter(x=>x && !pops.has(popKey(x))), rev:(c.rev||0)+1, splitOf:{main:main.id, made}});
   delete c.cut; return true;
+}
+// The entries a split game's own part starts with (pitcher, lineup, where the game was: splitTail made them). A split game
+// from an earlier build has no list: its "split" adjs and the pitcher and lineup entries just before each.
+function splitMade(h){
+  if(h.splitOf && Array.isArray(h.splitOf.made)) return new Set(h.splitOf.made);
+  const m=new Set(); h.log.forEach((e,i)=>{ if(e.k==="adj" && e.why==="split"){ m.add(e.id); for(let j=i-1; j>=0 && (h.log[j].k==="pitcher"||h.log[j].k==="lineup") && !m.has(h.log[j].id); j--) m.add(h.log[j].id); } });
+  return m;
+}
+// A copy of a game that Keep both split in two (inc: the same file again, an earlier one, or one with more pitches), and h,
+// the game its part became. Up to the last entry inc shares with the team copy is the team copy's part: what inc changed
+// there (a Log fix, a delete, an insert) joins the team copy, as Keep both's own join does. The rest is h's part, and lands
+// in h, in place. "kept" when inc holds nothing beyond the two; "updated" when either changed; null when it doesn't line up
+// that way (a part that went another way): a second copy, as before.
+function joinSplit(h, main, inc){
+  const mHave=new Map(main.log.map(e=>[e.id,e])), mGone=cutIds(main);
+  let last=-1; inc.log.forEach((e,i)=>{ if(mHave.has(e.id)) last=i; });
+  const tail=inc.log.filter((e,i)=>i>last && !mGone.has(e.id));
+  if(!tail.length) return null;
+  const made=splitMade(h), real={...h, log:h.log.filter(e=>!made.has(e.id))};
+  if(!real.log.length) return null;
+  // Each copy keeps only its own part's removals, and none of inc's game details reach the team copy (they are h's).
+  const shared=new Set(inc.log.slice(0, last+1).map(e=>e.id)), ownCut=x=>(inc.cut||[]).filter(c=>c && x(c.id));
+  // The team copy keeps its own edit stamp: it still holds this device's pitches that inc's device never had, and inc's stamp
+  // on it would read as that device having taken them out (leftOut), so the same file again would drop its own last pitches.
+  const head={...main, log:inc.log.slice(0, last+1), cut:ownCut(id=>mHave.has(id)), edited:main.edited};
+  const r=mergeGame(real, {...inc, id:h.id, log:tail, cut:ownCut(id=>!mHave.has(id) && !shared.has(id) && !mGone.has(id)), lineup0:real.lineup0, spot0:real.spot0, pop:(inc.pop||[]).filter(x=>x && !(main.pop||[]).some(y=>y && popKey(y)===popKey(x)))});
+  const m=mergeGame(main, head);
+  if(r.kind==="conflict" || m.kind==="conflict") return null;
+  if(m.kind==="updated") joinMain(main, m.game);
+  if(r.kind==="kept") return m.kind==="updated" ? "updated" : "kept";
+  // h's own entries as the merge has them (an in-place fix, one taken out), and each new one right after the entry before it.
+  const by=new Map(r.game.log.map(e=>[e.id,e])), log=h.log.filter(e=>made.has(e.id) || by.has(e.id)).map(e=>by.get(e.id)||e);
+  let at=-1;
+  r.game.log.forEach(e=>{ const k=log.findIndex(x=>x.id===e.id); if(k>=0){ at=k; return; }
+    if(at<0){ at=log.findIndex(x=>!made.has(x.id))-1; if(at<-1) at=log.length-1; }
+    log.splice(++at, 0, e); });
+  const g={...r.game, id:h.id, splitFrom:main.id, splitOf:h.splitOf, conflictOf:null, lineup0:h.lineup0, spot0:h.spot0, log, sentAt:h.sentAt||null, rev:Math.max(r.game.rev||0, (h.rev||0)+1)};
+  if(h.writerDev) g.writerDev=h.writerDev; else delete g.writerDev; if(!g.splitOf) delete g.splitOf;
+  replaceGame(h, g); saveGame(h); return "updated";
+}
+// Keep both on another device made this device's part past the team copy (loc's entries inc lacks) a game of its own, and
+// that game is here (splitFrom): the team copy takes this game's place, so nothing is lost and nothing counts twice. What
+// this device charted on its part after that (and a fix made here to it) carries on in that game, in place.
+// parts: such games from the same file, not here yet (they wait for this one). Returns {game: the game to put in loc's
+// place, part: that game of its own}, or null.
+function partSplitOff(loc, inc, parts){
+  const iHave=new Set(inc.log.map(e=>e.id)), iGone=cutIds(inc), extra=loc.log.filter(e=>!iHave.has(e.id) && !iGone.has(e.id));
+  if(!extra.length) return null;
+  const lHave=new Map(loc.log.map(e=>[e.id,e])), ids=new Set(extra.map(e=>e.id)), all=S.games.concat(parts||[]).filter(g=>g.splitFrom===loc.id && !g.conflictOf);
+  const ownOf=h=>{ const made=splitMade(h); return h.log.filter(e=>!made.has(e.id)).map(e=>e.id); };
+  // A game detail loc changed after its part began (End game, an Edit game) goes to that game too, as Keep both's own part
+  // keeps one: the chart follows this device's pitches there.
+  const i0=loc.log.findIndex(e=>e.id===extra[0].id), upTo=i0>0 ? (+loc.log[i0-1].t||0) : 0, ml=metaStamps(loc);
+  for(const h of all){
+    // Its part first (one of them taken out there still counts as its own), in its order. Whatever else loc has past inc is
+    // new to it (a pitch charted after this device's Send, a Log insert among its own) and goes in after the entry before it.
+    const hv=new Set(h.log.map(e=>e.id).concat([...cutIds(h)])), made=splitMade(h), pos=new Map(h.log.map((e,i)=>[e.id,i]));
+    if(!hv.has(extra[0].id)) continue;
+    const inH=extra.filter(e=>pos.has(e.id)); if(inH.some((e,i)=>i>0 && pos.get(e.id)<pos.get(inH[i-1].id))) continue;
+    const base={...loc, log:loc.log.filter(e=>!ids.has(e.id))}, r=mergeGame(base, inc);
+    if(r.kind==="conflict") continue;
+    // Never the same pitches in two games: the team copy may not take in what another game split off it holds as its own
+    // (both devices tapped Keep both: that game's own part is this device's, and the team copy here has it already).
+    const bIds=new Set(base.log.map(e=>e.id)), gained=new Set(r.game.log.filter(e=>!bIds.has(e.id)).map(e=>e.id));
+    if(gained.size && all.some(o=>o!==h && ownOf(o).some(id=>gained.has(id)))) continue;
+    const log=h.log.map(e=>lHave.get(e.id)||e); let at=-1;
+    extra.forEach(e=>{ const k=log.findIndex(x=>x.id===e.id); if(k>=0){ at=k; return; } if(hv.has(e.id)) return;
+      if(at<0){ at=log.findIndex(x=>!made.has(x.id))-1; if(at<-1) at=log.length-1; }
+      log.splice(++at, 0, e); });
+    const mh=metaStamps(h), late={}, lateEd={...mh};
+    Object.keys(ml).forEach(k=>{ if((ml[k]||0)>upTo && (ml[k]||0)>(mh[k]||0)){ late[k]=loc[k]; lateEd[k]=ml[k]; } });
+    const m=mergeGame(h, {...h, ...late, metaEd:lateEd, log, cut:(loc.cut||[]).filter(c=>c && hv.has(c.id))});
+    if(m.kind==="conflict") continue;
+    // What this device adds to that game is a change made here: it stays unsent until the other device has it.
+    let changed=false;
+    if(m.kind==="updated"){ const g={...m.game, id:h.id, splitFrom:loc.id, conflictOf:null, sentAt:h.sentAt||null, rev:Math.max(m.game.rev||0, (h.rev||0)+1)};
+      if(h.writerDev) g.writerDev=h.writerDev; else delete g.writerDev; replaceGame(h, g); touch(h, dev()); saveGame(h); changed=true; }
+    const exact=r.kind==="updated" ? !r.merged : mergeGame(inc, base).kind==="kept";
+    return {game:r.kind==="updated" ? r.game : base, part:h, exact, changed};
+  }
+  return null;
+}
+// What the device that sent inc took out (an undo of one of its last pitches) reaches the games Keep both split off loc
+// here: their own part may be those pitches.
+function cutParts(parts, inc){
+  const ic=(inc.cut||[]).filter(c=>c && c.id!=null); if(!ic.length) return;
+  parts.forEach(h=>{ const hv=new Set(h.log.map(e=>e.id)), mine=ic.filter(c=>hv.has(c.id)); if(!mine.length) return;
+    const m=mergeGame(h, {...h, cut:mine}); if(m.kind!=="updated") return;
+    const g={...m.game, id:h.id, splitFrom:h.splitFrom, conflictOf:null, sentAt:h.sentAt||null, rev:Math.max(m.game.rev||0, (h.rev||0)+1)};
+    if(h.writerDev) g.writerDev=h.writerDev; else delete g.writerDev; replaceGame(h, g); saveGame(h); });
+}
+// Is the own part of the game Keep both split off (h) pitches main has here? Matched by id: a fix the other device made to one
+// of them there (a retype) doesn't make it a new pitch. Then it is the same pitches again: it waits for main's copy in the same
+// file (partSplitOff moves them over, with the fix), and never lands beside main. One whose own pitches were all taken back
+// there holds nothing to add.
+function heldIn(h, main){
+  const by=new Set(main.log.map(e=>e.id)), gone=cutIds(main), made=splitMade(h), own=h.log.filter(e=>!made.has(e.id));
+  return own.every(e=>gone.has(e.id) || by.has(e.id));
 }
 // A copy the coach set aside on the Data tab, kept small: each entry's id and in-place edit time, when each game detail
 // last changed, and its pop times (a warm-up pop time has no log entry). S.setAside holds the last few, for this device
@@ -2084,7 +2345,7 @@ function importText(text){
   if(t.startsWith("{")){
     let o; try{ o=JSON.parse(t); }catch(e){ throw new Error("That text got cut off or changed. Copy the whole thing again."); }
     if(o.mb===3) return mergeIn(o);
-    if(o.games){ const s=migrateV2(o, {noExample:true}); const r=mergeIn({games:s.games, pitchers:s.pitchers, catalog:s.catalog}); S.needsTeam=[...new Set([...(S.needsTeam||[]), ...Object.keys(s.pitchers).map(resolvePid).filter(id=>S.pitchers[id] && !S.pitchers[id].team)])]; save(); return r; }
+    if(o.games){ const s=migrateV2(o, {noExample:true, device:S.device}); const r=mergeIn({games:s.games, pitchers:s.pitchers, catalog:s.catalog}); S.needsTeam=[...new Set([...(S.needsTeam||[]), ...Object.keys(s.pitchers).map(resolvePid).filter(id=>S.pitchers[id] && !S.pitchers[id].team)])]; save(); return r; }
     throw new Error("That isn't a Mound Book file.");
   }
   return importCSV(t);
@@ -2275,17 +2536,31 @@ function importCSV(text){
   if(miss.length) throw new Error("Missing columns: "+miss.join(", ")+". Use a file exported from Mound Book.");
   const by={}; rows.slice(1).forEach(r=>{ const v=k=>{ const i=ix(k); return i<0?"":(r[i]||"").trim(); }; (by[v("game_id")]=by[v("game_id")]||[]).push(v); });
   const games=[], pitchers={}, keyIds={}, patches=[];   // rows with no pitcher_id: one new id per team + number (or name) in this file
+  // A sheet v2 made (an opponent column, no entry or pitcher ids): its pitchers get the ids moving v2's data over gives them
+  // (store.js migrateV2), so a kid this device or another moved over from v2 is the same record.
+  const v2sheet=ix("opponent")>=0 && ix("pitcher_id")<0 && ix("entry_id")<0;
   const csvPid=(v, team)=>{
     const pnum=v("pitcher_num"), pname=v("pitcher_name")||(!v("pitcher_id")?v("pitcher"):"");
     const pn=pnum||splitName(pname).num, pnm=pnum?pname:splitName(pname).name, key=pitcherKey(team, pn, pnm);
-    const pid=v("pitcher_id")||keyIds[key]||(keyIds[key]=newPitcherId());
-    if(!pitchers[pid]) pitchers[pid]=newPitcher({id:pid, team, num:pn, name:pnm, hand:v("pitcher_hand")||"R", arsenal:[]});
+    const v2id=v2sheet && v("pitcher") ? "v2-"+textHash(String(v("pitcher"))+"\u0001"+slug(v("opponent"))) : null;
+    const pid=v("pitcher_id")||v2id||keyIds[key]||(keyIds[key]=newPitcherId());
+    if(!pitchers[pid]){ const have=v2id && S.pitchers[resolvePid(v2id)];
+      pitchers[pid]=have ? newPitcher({...clone(have), id:pid}) : newPitcher({id:pid, team, num:pn, name:pnm, hand:v("pitcher_hand")||"R", arsenal:[]}); }
     return pid;
   };
   for(const gid in by){
     const rs=by[gid].sort((a,b)=>(+a("seq")||0)-(+b("seq")||0)); const f=rs[0];
     const team=f("pitching_team")||f("opponent")||"";
     const list=rs.map((v,i)=>({v, eid:v("entry_id")||(gid+".r"+(v("seq")||i+1))}));
+    // A v2 sheet of a game moved over from v2 here: its rows are that game's pitches and plays, in order (they have no ids).
+    // They line up as far as each row is the same kind of pitch or play with the same result; from the first that isn't,
+    // the sheet went another way (an undo in v2 after this device's copy), and the rows are new.
+    const old=S.games.find(g=>g.id===gid && !g.conflictOf);
+    if(ix("entry_id")<0 && old && old.legacyOpp!=null){
+      const ps=old.log.filter(e=>(e.k==="pitch"||e.k==="ev") && String(e.id).startsWith(gid+".v"));
+      for(let i=0;i<list.length && i<ps.length;i++){ const v=list[i].v, kind=v("row_type")||"pitch", e=ps[i];
+        if(kind==="pitch" ? (e.k!=="pitch" || e.result!==v("result")) : (e.k!=="ev" || e.kind!==kind)) break;
+        list[i].eid=e.id; } }
     list.forEach(({v})=>{ const pid=csvPid(v, team), type=v("pitch_type")||"UN";
       if((v("row_type")||"pitch")!=="pitch" || !RESULTS[v("result")]) return;
       if(type!=="UN" && !pitchers[pid].arsenal.includes(type)) pitchers[pid].arsenal.push(type);
@@ -2296,7 +2571,7 @@ function importCSV(text){
     csvAppend(g, list, v=>csvPid(v, team));
     games.push(g);
   }
-  const r=mergeIn({games, pitchers}), has=new Set(hdr); r.cut=0; r.stale=0; r.ignored=0;
+  const r=mergeIn({games, pitchers}, {sheet:true}), has=new Set(hdr); r.cut=0; r.stale=0; r.ignored=0;
   patches.forEach(({g, plan, team, list})=>{ const pidFor=v=>resolvePid(csvPid(v, team));
     if(csvIgnored(g, list, plan)) r.ignored++;
     const res=csvApply(g, plan, pidFor, list, has); if(res.stale || plan.unsure) r.stale++;
@@ -2330,7 +2605,8 @@ function packSeason(year){
   Object.entries(S.pitcherAlias||{}).forEach(([k,v])=>{ if(pitchers[resolvePid(v)]) alias[k]=v; });
   return JSON.stringify({mb:3, kind:"season", season:year, from:{dev:S.device.id, name:S.device.name||""}, at:Date.now(), games, pitchers, pitcherAlias:alias, catalog:S.catalog});
 }
-function markSeasonSaved(year){ S.seasonSaved=S.seasonSaved||{}; S.seasonSaved[year]={at:Date.now(), sig:seasonSig(year), games:seasonGames(year).length}; save(); }
+// how: "copied" when the coach copied it out by hand and said it's kept (the Claude viewer can't save a file).
+function markSeasonSaved(year, how){ S.seasonSaved=S.seasonSaved||{}; S.seasonSaved[year]={at:Date.now(), sig:seasonSig(year), games:seasonGames(year).length}; if(how) S.seasonSaved[year].how=how; save(); }
 // Returns how many games came off, or 0 when the season wasn't saved as it is now.
 function removeSeason(year){
   if(!/^\d{4}$/.test(year) || year>=today().slice(0,4) || !seasonSaved(year)) return 0;
@@ -2491,10 +2767,12 @@ function toast(m, o){
   if(o.action) $("button",t).onclick=()=>{ t.hidden=true; o.fn(); };
   clearTimeout(toastT); toastT=setTimeout(()=>{ t.hidden=true; if(o.done) o.done(); }, o.ms||2200);
 }
-function copyText(text, label){
-  const done=()=>toast((label||"Text")+" copied");
-  const fallback=()=>{ const ta=document.createElement("textarea"); ta.value=text; ta.setAttribute("readonly",""); ta.style.position="fixed"; ta.style.opacity="0"; document.body.appendChild(ta); ta.select(); let ok=false; try{ ok=document.execCommand("copy"); }catch(e){} ta.remove(); ok?done():toast("Couldn't copy. Use the text box below."); };
-  try{ navigator.clipboard.writeText(text).then(done, fallback); }catch(e){ fallback(); }
+// Copies text, and says so. Resolves to whether it worked. o.box: the sheet it's in shows the text, to copy by hand.
+function copyText(text, label, o){
+  const done=()=>{ toast((label||"Text")+" copied"); return true; };
+  const fallback=()=>{ const ta=document.createElement("textarea"); ta.value=text; ta.setAttribute("readonly",""); ta.style.position="fixed"; ta.style.opacity="0"; document.body.appendChild(ta); ta.select(); let ok=false; try{ ok=document.execCommand("copy"); }catch(e){} ta.remove();
+    if(ok) return done(); toast(o && o.box ? "Couldn't copy. Use the text box below." : "Couldn't copy on this device.", {ms:4000}); return false; };
+  try{ return navigator.clipboard.writeText(text).then(done, fallback); }catch(e){ return Promise.resolve(fallback()); }
 }
 async function shareFile(text, name, title){
   try{
@@ -2521,7 +2799,8 @@ function whenText(t){
 }
 // Sent to Coach: this device's Send, or this revision is in the team book. A game another device charts is that
 // device's to send: this one only watches it (a copy brought in from a file, still going up, isn't sent yet).
-function sentOK(g){ let other=false; try{ other=(!g.relay && !Sync.canEdit(g)) || !!(Sync.inBook && Sync.inBook(g)); }catch(e){} return other || (!!g.sentAt && g.sentAt>=((g.edited&&g.edited.t)||0)-2000); }
+// sentAt is the time of the copy that went (its last change), so any change after it, however soon, is not sent yet.
+function sentOK(g){ let other=false; try{ other=(!g.relay && !Sync.canEdit(g)) || !!(Sync.inBook && Sync.inBook(g)); }catch(e){} return other || (!!g.sentAt && g.sentAt>=((g.edited&&g.edited.t)||0)); }
 function unsent(){ return S.games.filter(g=>!g.example && !g.practice && !g.conflictOf && g.log.length>1 && !sentOK(g)); }
 function renderSaveBanner(){ renderBanners(); }
 function renderBanners(){
@@ -2576,7 +2855,7 @@ function fixState(g, o, why){ const r=act(g, [entry("adj", Object.assign({why:wh
 
 function boardPC(g, R){
   const L=R.live, pid=L.pitcher, T=rulesFor(g.level);
-  const gameN=L.pc[pid]||0, earlier=earlierToday(g,pid), dayN=gameN+(T.dh==="add"?earlier:0);
+  const {gameN, earlier, dayN}=boardCount(g, pid, T, R);
   const bi=Math.min(4,bandIndex(T,dayN));
   let hint;
   if(dayN>T.max) hint=`Over the ${T.max} max`;
@@ -2700,7 +2979,7 @@ function kbdHelp(){ return "Keys: <b>1-9</b> pitch, <b>0</b> ?, <b>B</b> ball, <
 function gameOverHTML(g, R, watch){
   const sent = sentOK(g);
   return `<div class="panel"><h3>Game over <span class="h3note">${esc(g.endReason||"")}</span></h3>
-    <p style="margin:0 0 10px">${R.order.map(id=>`${esc(pLabel(P(id)))}: ${R.live.pc[id]||0} pitches`).join(" · ")}</p>
+    <p style="margin:0 0 10px">${R.order.filter(id=>R.live.pc[id]).map(id=>{ const n=R.live.pc[id]; return `${esc(pLabel(P(id)))}: ${n} pitch${n===1?"":"es"}`; }).join(" · ")}</p>
     ${sent?`<p class="muted" style="margin:0 0 10px">Sent to Coach ✓</p>`:`<div class="flag" style="margin-bottom:10px"><span>Not sent to Coach yet.</span></div>`}
     <div class="row"><button class="btn primary" data-act="sendone">Send to Coach</button><button class="btn" data-act="game2">Start game 2</button><button class="btn" data-act="newgame">New game</button>${watch?"":`<button class="btn" data-act="reopen">Reopen this game</button>`}</div>
     ${pregameHTML()}</div>`;
@@ -2761,7 +3040,7 @@ function commitPitch(g, o){
   if(!isCharter()){ if(S.settings.loc==="height" && ui.h && !e.h) e.h=ui.h; if(S.settings.loc==="zone" && ui.zone) e.zone=ui.zone; }
   if(e.dirt) e.h="D";
   const done=act(g,[e]);
-  ui.type=null; ui.h=null; ui.zone=null; ui.ttp=null;
+  ui.type=null; ui.undoType=null; ui.h=null; ui.zone=null; ui.ttp=null;
   if(!done){ renderChart(); return; }
   g=editTarget(g)||g;
   const R=replay(g); const p=R.pitches[R.pitches.length-1];
@@ -2772,6 +3051,9 @@ function commitPitch(g, o){
   else toast(p.pa ? `${lab}: ${paLabel(p.pa)}` : `${lab} · now ${R.live.balls}-${R.live.strikes}`);
 }
 function addEvent(g, kind, base, extra){ if(!act(g,[entry("ev", clean(Object.assign({kind, base}, extra||{})), dev())])){ renderChart(); return; } const R=replay(editTarget(g)||g); const x=R.events[R.events.length-1]; renderChart(); toast(evLabel(x)); }
+// Tapping a pitch type picks it, and tapping it again clears it. Right after Undo the undone pitch's type is picked already,
+// so the charter's habit (type, then result) keeps it picked for that one tap instead of clearing it.
+function tapType(c){ const keep=!!ui.undoType && ui.undoType===ui.type && ui.type===c; ui.undoType=null; if(!keep) ui.type = ui.type===c ? null : c; }
 function undoAction(g){
   if(!editTarget(g)){ toast(`Charting for this game moved to ${Sync.devName(Sync.writerOf(g))}. Nothing was undone here.`, {ms:5000}); renderChart(); return; }
   g=editTarget(g);
@@ -2780,14 +3062,14 @@ function undoAction(g){
   do { x=undoLast(g, dev()); if(x) n++; } while(x && grp && g.log.length && g.log[g.log.length-1].grp===grp);
   if(!x){ toast("Nothing to undo"); return; }
   saveGame(g);
-  if(x.k==="pitch" && !x.est){ ui.type=x.type!=="UN"?x.type:null; ui.h=x.h||null; ui.zone=x.zone||null; ui.ttp=x.ttp||null; toast(`Removed ${pname(x.type)} · ${resLabel(x)}`); }
+  if(x.k==="pitch" && !x.est){ ui.type=x.type!=="UN"?x.type:null; ui.undoType=ui.type; ui.h=x.h||null; ui.zone=x.zone||null; ui.ttp=x.ttp||null; toast(`Removed ${pname(x.type)} · ${resLabel(x)}`); }
   else toast(n>1?`Removed ${n} entries`:x.k==="ev"?`Removed ${evLabel(x)}`:x.k==="pitcher"?"Removed the pitching change":x.k==="adj"?"Removed a fix":"Removed");
   renderChart();
 }
 function bindChart(el, g, R){
   const L=R.live;
   const on=(sel,fn)=>$$(sel,el).forEach(b=>b.onclick=()=>fn(b));
-  on("[data-type]", b=>{ if(bounced("type:"+b.dataset.type)) return; ui.type = ui.type===b.dataset.type?null:b.dataset.type; renderChart(); });
+  on("[data-type]", b=>{ if(bounced("type:"+b.dataset.type)) return; tapType(b.dataset.type); renderChart(); });
   on("[data-h]", b=>{ ui.h = ui.h===b.dataset.h?null:b.dataset.h; renderChart(); });
   $$(".zsel .zc",el).forEach(r=>bindTap(r, ()=>{ const z=+r.dataset.z; ui.zone=ui.zone===z?null:z; renderChart(); }));
   on("[data-hand]", b=>{ ui.pulseHand=false; if(L.hand!==b.dataset.hand) fixState(g,{hand:b.dataset.hand},"side"); else renderChart(); });
@@ -3107,8 +3389,10 @@ function lineupSheet(g){
         // and "who's up now" still points at the right batter.
         const last=rows.reduce((k,r,i)=>(r.name||r.num)?i:k,-1);
         if(last<0){ toast("Add at least one batter"); return; }
+        // A name marked ours stays ours (the coach said so, or it was typed while we were hitting): saving the sheet with
+        // another team hitting never sends it to the team book.
         const own=ownNames(g);
-        const lu=rows.slice(0,last+1).map(r=>clean({name:r.name, num:r.num, hand:r.hand, rid:r.rid, own:own && !!(r.name||r.num)})); const spot=Math.min(now, lu.length-1);
+        const lu=rows.slice(0,last+1).map(r=>clean({name:r.name, num:r.num, hand:r.hand, rid:r.rid, own:(own || !!r.own) && !!(r.name||r.num)})); const spot=Math.min(now, lu.length-1);
         close();
         const ok=!started ? change(g, x=>setGameInfo(x,{lineup0:lu, spot0:spot},dev())) : act(g,[entry("lineup",{lineup:lu, spot},dev())]);
         renderChart(); if(ok) toast("Lineup saved"); };
@@ -3137,6 +3421,8 @@ function gameSheet(g){
   const last=S.games.filter(x=>!x.example).slice(-1)[0];
   const d = g ? g : {date:today(), pTeam:"", bTeam:"", hitting:"us", level:last?last.level:"varsity", practice:false, chartedBy:S.settings.lastInitials||"", brk:false};
   const teams=teamsList().filter(Boolean);
+  // Names marked ours (typed while we were hitting) in a game another team hits in: the coach can always say they're theirs.
+  const marked=!!g && g.hitting!=="us" && !g.practice && ownedNames(g)>0;
   sheet(`<h3>${g?"Edit game":"New game"}</h3>
     ${g?"":pregameHTML()}
     <form id="gameform" class="stack" style="margin-top:0">
@@ -3149,11 +3435,12 @@ function gameSheet(g){
       <div class="fld"><span class="label">Can the charter tell a curve from a slider?</span><div class="seg"><button type="button" data-brk="0" aria-pressed="${!d.brk}">Yes</button><button type="button" data-brk="1" aria-pressed="${!!d.brk}">No: one "breaking ball" button</button></div></div>
       <div class="row"><label class="fld"><span class="label">Charter's initials</span><input type="text" id="gf-by" value="${esc(d.chartedBy)}" maxlength="4" style="width:90px"></label>
         <label class="checks" style="align-self:flex-end"><label><input type="checkbox" id="gf-pr" ${d.practice?"checked":""}> Practice (intrasquad, fall ball, our bullpen): keep it out of reports and pitch counts</label></label></div>
+      ${marked?`<label class="checks" id="gf-theirs-w"><label><input type="checkbox" id="gf-theirs"> The hitters' names in this game are the batting team's, not ours (ours never go to the team book)</label></label>`:""}
       <div class="row" style="justify-content:flex-end"><button type="button" class="btn" data-x>Cancel</button><button type="submit" class="btn primary">${g?"Save":"Next: lineup"}</button></div>
     </form>`, (m, close)=>{
       let hitting=d.hitting, level=d.level, brk=!!d.brk;
       const seg=(attr,fn)=>$$(`[${attr}]`,m).forEach(b=>b.onclick=()=>{ $$(`[${attr}]`,m).forEach(x=>x.setAttribute("aria-pressed",String(x===b))); fn(b.getAttribute(attr)); });
-      seg("data-hit",v=>{ hitting=v; $("#gf-bt-w",m).hidden=v==="us"; });
+      seg("data-hit",v=>{ hitting=v; $("#gf-bt-w",m).hidden=v==="us"; const w=$("#gf-theirs-w",m); if(w) w.hidden=v==="us"; });
       seg("data-lv",v=>level=v); seg("data-brk",v=>brk=v==="1");
       const pt=$("#gf-pt",m);
       // Only the "arms we've seen" list follows the team field, so typing never loses focus.
@@ -3163,14 +3450,17 @@ function gameSheet(g){
         const o={pTeam:pt.value.trim(), date:$("#gf-d",m).value||today(), hitting, bTeam:hitting==="us"?(S.settings.ourName||"Us"):$("#gf-bt",m).value.trim(), level, brk, chartedBy:$("#gf-by",m).value.trim().toUpperCase(), practice:$("#gf-pr",m).checked};
         if(!o.pTeam){ toast("Enter the pitching team"); return; }
         if(o.chartedBy) S.settings.lastInitials=o.chartedBy;
-        if(g){ const oldTeam=g.pTeam, toOther=g.hitting==="us" && o.hitting!=="us";
+        if(g){ const oldTeam=g.pTeam, toOther=g.hitting==="us" && o.hitting!=="us", theirs=o.hitting!=="us" && !!($("#gf-theirs",m)||{}).checked;
           close();
-          const t=change(g, x=>{ if(toOther) markOwn(x); setGameInfo(x,o,dev()); });
+          const t=change(g, x=>{ if(toOther) markOwn(x); if(theirs) releaseNames(x); setGameInfo(x,o,dev()); });
           save();
           const redraw=()=>{ refreshGamePick(); setTab(ui.tab); };
           if(!t){ redraw(); return; }
-          // Our hitters typed in while we were hitting stay on this device until the coach says they are the other team's.
-          const finish=()=>{ redraw(); if(toOther && ownedNames(t)) whoseNamesSheet(t, redraw); };
+          if(theirs) toast(`Saved as ${o.bTeam||"the other team"}'s hitters`);
+          // Our hitters typed in while we were hitting stay off the team book until the coach says they are the other team's.
+          // Any device that can join live sync asks (the marks ride along in a Send, so one that joins later, or Coach's phone,
+          // keeps them); the Claude viewer can't join, and the box above says it there later too.
+          const finish=()=>{ redraw(); if(toOther && ownedNames(t) && !EMBEDDED) whoseNamesSheet(t, redraw); };
           // His pitchers move to the new team; a kid on file there with the same number asks "same kid?" (teams.js).
           const ids=slug(oldTeam)!==slug(o.pTeam) ? replay(t).order.map(resolvePid).filter(id=>S.pitchers[id] && slug(S.pitchers[id].team)===slug(oldTeam)) : [];
           if(ids.length){ moveArmsToTeam(ids, o.pTeam, {done:finish, cancel:finish}); return; }
@@ -3188,14 +3478,18 @@ function eachName(g, fn){ (g.lineup0||[]).forEach(p=>{ if(p && (p.name||p.num)) 
   g.log.forEach(e=>{ if(e.k==="lineup") (e.lineup||[]).forEach(p=>{ if(p && (p.name||p.num)) fn(p); }); if(e.k==="sub" && e.player && (e.player.name||e.player.num)) fn(e.player); if(e.k==="adj" && e.batter) fn(e); }); }
 function markOwn(g){ eachName(g, p=>{ p.own=true; }); }
 function ownedNames(g){ let n=0; eachName(g, p=>{ if(p.own) n++; }); return n; }
-// Asked once, when Edit game switches who's hitting from us to another team and the game has our names in it.
+// The coach said the names are the other team's. Stamped (metaEd.names), so this answer wins over an older copy that still
+// holds the names as ours (engine.js keepOwn).
+function releaseNames(x){ eachName(x, p=>{ delete p.own; }); x.metaEd={...metaStamps(x), names:Date.now()}; }
+// Asked once, when Edit game switches who's hitting from us to another team and the game has our names in it. On a device
+// not on live sync yet it says what the answer means once it is.
 function whoseNamesSheet(g, done){
   const team=g.bTeam||"the other team", us=S.settings.ourName||"us";
   sheet(`<h3>Whose names are these?</h3><p style="margin:0">This game has hitters' names typed in while ${esc(us)} was hitting. Are they ${esc(team)}'s hitters, or ours?</p>
-    <p class="muted" style="margin:0;font-size:13px">Our hitters' names stay on this device. The other team's names go to the team book with the game.</p>
-    <div class="row" style="justify-content:flex-end"><button class="btn" data-ours>Ours: keep them here</button><button class="btn primary" data-theirs>${esc(team)}'s hitters</button></div>`, (m, close)=>{
-      $("[data-ours]",m).onclick=()=>{ close(); toast("Kept on this device"); done(); };
-      $("[data-theirs]",m).onclick=()=>{ close(); change(g, x=>{ eachName(x, p=>{ delete p.own; }); touch(x, dev()); }); toast(`Saved as ${team}'s hitters`); done(); };
+    <p class="muted" style="margin:0;font-size:13px">${Sync.joined?"Our":"With live sync, our"} hitters' names never go to the team book. The other team's names go there with the game.</p>
+    <div class="row" style="justify-content:flex-end"><button class="btn" data-ours>Ours: keep them out</button><button class="btn primary" data-theirs>${esc(team)}'s hitters</button></div>`, (m, close)=>{
+      $("[data-ours]",m).onclick=()=>{ close(); toast(Sync.joined ? "Kept out of the team book" : "Saved as our hitters"); done(); };
+      $("[data-theirs]",m).onclick=()=>{ close(); change(g, x=>{ releaseNames(x); touch(x, dev()); }); toast(`Saved as ${team}'s hitters`); done(); };
     });
 }
 function endSheet(g){
@@ -3206,17 +3500,18 @@ function endSheet(g){
 }
 function sendSheet(games){
   games=games.filter(Boolean); if(!games.length){ toast("Nothing to send"); return; }
-  const text=packGames(games); const name=`moundbook-${slug(games[0].pTeam||"game")}-${games[0].date}${games.length>1?"-and-"+(games.length-1)+"-more":""}.json`;
+  const text=packGames(games), packedAt=new Map(games.map(x=>[x.id, (x.edited&&x.edited.t)||0])); const name=`moundbook-${slug(games[0].pTeam||"game")}-${games[0].date}${games.length>1?"-and-"+(games.length-1)+"-more":""}.json`;
   const canShare=!!navigator.share && !EMBEDDED;
   sheet(`<h3>Send to Coach</h3>
     <p class="muted" style="margin:0;font-size:14px">${games.length} game${games.length>1?"s":""}: ${games.map(x=>esc(gameName(x))).join("; ")}. Coach opens Mound Book, goes to Data, and pastes or picks the file. It merges without overwriting anything.</p>
     <div class="row">${canShare?`<button class="btn primary" data-share>Share (AirDrop, Messages, email)</button>`:""}<button class="btn ${canShare?"":"primary"}" data-copy>Copy game</button>${EMBEDDED?"":`<button class="btn" data-dl>Save file</button>`}</div>
     <textarea class="mono" readonly style="min-height:60px">${esc(text)}</textarea>
     <div class="row between"><span class="muted" style="font-size:13px">The "Not sent" reminder stays until you tap this.</span><div class="row"><button class="btn" data-x>Close</button><button class="btn primary" data-sent>I sent it</button></div></div>`, (m, close)=>{
-      const sh=$("[data-share]",m); if(sh) sh.onclick=async()=>{ const r=await shareFile(text, name, "Mound Book game"); if(r==="unsupported") copyText(text,"Game"); };
-      $("[data-copy]",m).onclick=()=>copyText(text,"Game");
+      const sh=$("[data-share]",m); if(sh) sh.onclick=async()=>{ const r=await shareFile(text, name, "Mound Book game"); if(r==="unsupported") copyText(text,"Game",{box:true}); };
+      $("[data-copy]",m).onclick=()=>copyText(text,"Game",{box:true});
       const dl=$("[data-dl]",m); if(dl) dl.onclick=()=>downloadFile(text, name, "application/json");
-      $("[data-sent]",m).onclick=()=>{ const t=Date.now(); games.forEach(x=>{ x.sentAt=t+5000; saveGame(x); }); S.lastSentAt=t; save(); close(); toast("Marked as sent"); setTab(ui.tab); };
+      // Sent as of the copy in this file: any change after it (a fix just after tapping this) is not sent yet.
+      $("[data-sent]",m).onclick=()=>{ const t=Date.now(); games.forEach(x=>{ x.sentAt=Math.max(x.sentAt||0, Math.min(t, packedAt.get(x.id)||t)); saveGame(x); }); S.lastSentAt=t; save(); close(); toast("Marked as sent"); setTab(ui.tab); };
     });
 }
 // Doubleheader: same opponent, date and lineup; only asks for the new pitcher. Anyone who threw in game 1 keeps his day total.
@@ -4023,10 +4318,10 @@ function renderData(){
     <div class="row" style="margin-top:8px"><button class="btn small" data-act="persist">Ask this device to keep Mound Book's data</button><label class="fld" style="flex-direction:row;align-items:center;gap:8px"><span class="label">Device name</span><input type="text" id="dv-name" value="${esc(S.device.name||"")}" placeholder="e.g. Dugout iPad" style="width:170px"></label></div>
   </div>
   ${conf.length?`<div class="panel"><h3>Changed on two devices</h3><p class="muted" style="margin:0 0 8px;font-size:14px">Nothing was overwritten. Pick which copy to keep, or keep both as separate games.</p>
-    ${conf.map(c=>{ const o=S.games.find(g=>g.id===c.conflictOf); return `<div class="row" style="margin-bottom:8px;border-bottom:1px solid var(--line);padding-bottom:8px"><span style="flex:1;min-width:200px">${esc(gameName(c))}<br>${c.mine?`<span class="muted" style="font-size:13px">Team copy: ${o?o.log.length:0} entries, edited ${o?esc(edWhen(o)):"?"} · This device's, never sent: ${c.log.length} entries, edited ${esc(edWhen(c))}</span></span>
-      <button class="btn small" data-cf-keep="${c.id}">Keep the team copy</button><button class="btn small" data-cf-use="${c.id}">Use this device's</button><button class="btn small" data-cf-both="${c.id}">Keep both</button></div>`
+    ${conf.map(c=>{ const o=S.games.find(g=>g.id===c.conflictOf), both=!o || !onlyTakesOut(c, o) ? `<button class="btn small" data-cf-both="${c.id}">Keep both</button>` : ""; return `<div class="row" style="margin-bottom:8px;border-bottom:1px solid var(--line);padding-bottom:8px"><span style="flex:1;min-width:200px">${esc(gameName(c))}<br>${c.mine?`<span class="muted" style="font-size:13px">Team copy: ${o?o.log.length:0} entries, edited ${o?esc(edWhen(o)):"?"} · This device's, never sent: ${c.log.length} entries, edited ${esc(edWhen(c))}</span></span>
+      <button class="btn small" data-cf-keep="${c.id}">Keep the team copy</button><button class="btn small" data-cf-use="${c.id}">Use this device's</button>${both}</div>`
       :`<span class="muted" style="font-size:13px">This device: ${o?o.log.length:0} entries, edited ${o?esc(edWhen(o)):"?"} · Other copy: ${c.log.length} entries, edited ${esc(edWhen(c))}</span></span>
-      <button class="btn small" data-cf-keep="${c.id}">Keep this device's</button><button class="btn small" data-cf-use="${c.id}">Use the other copy</button><button class="btn small" data-cf-both="${c.id}">Keep both</button></div>`}`; }).join("")}</div>`:""}
+      <button class="btn small" data-cf-keep="${c.id}">Keep this device's</button><button class="btn small" data-cf-use="${c.id}">Use the other copy</button>${both}</div>`}`; }).join("")}</div>`:""}
   <div class="two">
     <div class="panel"><h3>Send to Coach</h3><p class="muted" style="margin-top:0;font-size:14px">${us.length?`${us.length} game${us.length>1?"s":""} not sent yet.`:"Everything has been sent."} The file merges on Coach's device without overwriting anything.</p>
       <div class="row"><button class="btn primary" data-act="sendunsent" ${us.length?"":"disabled"}>Send unsent games</button><button class="btn" data-act="sendall" ${realGames.length?"":"disabled"}>Send every game</button></div>
@@ -4072,7 +4367,7 @@ function seasonsHTML(){
   const rows=list.map(x=>{ const n=`${x.games} game${x.games===1?"":"s"}`, y=esc(x.year);
     if(!x.past) return `<div class="row" style="margin-bottom:8px"><b style="min-width:56px">${y}</b><span class="muted">${n}. This season.</span></div>`;
     const stale=!x.saved && (S.seasonSaved||{})[x.year];
-    return `<div class="row" style="margin-bottom:8px;border-bottom:1px solid var(--line);padding-bottom:8px"><b style="min-width:56px">${y}</b><span style="flex:1;min-width:120px">${n}${x.saved?`<br><span class="muted" style="font-size:13px">Saved to a file ${esc(new Date(x.saved.at).toLocaleDateString())}</span>`:stale?`<br><span class="muted" style="font-size:13px">Changed since you saved it. Save it again.</span>`:""}</span>
+    return `<div class="row" style="margin-bottom:8px;border-bottom:1px solid var(--line);padding-bottom:8px"><b style="min-width:56px">${y}</b><span style="flex:1;min-width:120px">${n}${x.saved?`<br><span class="muted" style="font-size:13px">${x.saved.how==="copied"?"Copied out":"Saved to a file"} ${esc(new Date(x.saved.at).toLocaleDateString())}</span>`:stale?`<br><span class="muted" style="font-size:13px">Changed since you saved it. Save it again.</span>`:""}</span>
       <button class="btn small" data-season-save="${y}">Save ${y} to a file</button><button class="btn small" data-season-rm="${y}" ${x.saved?"":"disabled"}>Remove ${y} from this device</button></div>`; }).join("");
   const past=list.filter(x=>x.past);
   return `<div class="panel"><h3>Seasons</h3><p class="muted" style="margin:0 0 8px;font-size:14px">${past.length?"Save a past season to a file. Then you can take it off this device. Pitchers, notes and box-score lines stay. To bring a season back, pick its file under Receive.":"When a season is over, you can save it to a file here and take it off this device."}</p>
@@ -4087,14 +4382,28 @@ function doImport(text){
       r.stale?`${gs(r.stale)} changed here after the sheet was saved, so some of the sheet's changes weren't brought in. Save a new sheet and make them there.`:"",
       r.ignored?"A sheet doesn't change pitchers or the pitching team. Use the Teams tab or Edit game for those.":"",
       // The backup's pitch-count rules on a device whose rules come from Coach's book: said, not used.
-      r.rulesLocked?"The backup's pitch-count rules weren't used: the team's rules come from Coach's device.":""].filter(Boolean);
+      r.rulesLocked?"The backup's pitch-count rules weren't used: the team's rules come from Coach's device.":"",
+      // Keep both on the other device made this device's last pitches a game of their own, and the chart moved to it.
+      r.part?`The other device kept both copies of this game. Your last ${r.part.n===1?"pitch is":r.part.n+" pitches are"} now a game of their own, and ${r.part.ended?"the chart shows that one":"you're charting that one"}.`:""].filter(Boolean);
     let msg=[r.added?`${r.added} new`:"", r.updated?`${r.updated} updated`:"", r.kept?`${r.kept} already had`:"", r.conflicts?`${r.conflicts} changed on both: pick one below`:"", r.restored?`brought back your ${r.restored.join(" and ")}`:""].filter(Boolean).join(", ");
     msg=msg ? msg.charAt(0).toUpperCase()+msg.slice(1) : (more.length ? "" : "Nothing new");
     if(more.length) msg=[msg && msg+".", ...more].filter(Boolean).join(" ");
     // A backup with edited rules that differ from this device's edited rules: the coach picks.
     if(r.rulesDiffer) toast(msg+". The backup has different pitch-count rules than this device.", {ms:10000, action:"Use the backup's rules", fn:()=>{ if(!useRules(r.rulesDiffer)){ toast("The team's rules come from Coach's device."); return; } setTab(ui.tab); toast("The backup's rules are in. Check them on the Data tab."); }});
     else toast(msg, {ms:more.length?10000:4000});
+    if(r.whose) whoseBookSheet(r.whose);
   }catch(e){ toast(e.message||"Couldn't read that"); }
+}
+// A backup or season file from another device: the coach's own book moving to this copy, or a device that still charts
+// those games (the dugout iPad's backup)? Only his own book's games are charted and fixed here from now on (store.js adoptBook).
+function whoseBookSheet(w){
+  const n=w.ids.length, gs=`${n} game${n===1?"":"s"}`, these=n===1?"that game":`those ${gs}`, what=w.season?"This season file":"This backup";
+  sheet(`<h3>Whose games are these?</h3><p style="margin:0">${what} has ${gs} charted on another device. Is it your own book, moving to this copy of Mound Book? Or is it from a device that still charts, like the dugout iPad?</p>
+    <p class="muted" style="margin:0;font-size:13px">Your own book's games are charted and fixed here from now on. Another device's stay that device's to chart.</p>
+    <div class="row" style="justify-content:flex-end"><button class="btn" data-theirs>A device that charts</button><button class="btn primary" data-mine>My own book</button></div>`, (m, close)=>{
+      $("[data-mine]",m).onclick=()=>{ close(); adoptBook(w.from, w.ids); refreshGamePick(); setTab(ui.tab); toast(`This device charts ${these} now.`); };
+      $("[data-theirs]",m).onclick=()=>{ close(); toast(`${these.charAt(0).toUpperCase()+these.slice(1)} ${n===1?"stays":"stay"} that device's to chart.`); };
+    });
 }
 function bindData(el){
   const act=(a,fn)=>$$(`[data-act="${a}"]`,el).forEach(b=>b.onclick=fn);
@@ -4116,8 +4425,13 @@ function bindData(el){
   $$("[data-season-save]",el).forEach(b=>b.onclick=async()=>{ const y=b.dataset.seasonSave, text=packSeason(y), name=`moundbook-season-${y}.json`;
     if(!EMBEDDED){ downloadFile(text, name, "application/json"); markSeasonSaved(y); renderData(); toast(`${y} saved to a file. Keep it somewhere safe, like Files or an email to yourself.`, {ms:6000}); return; }
     const r=await shareFile(text, name, `Mound Book ${y} season`); if(r==="cancelled") return;
-    if(r==="unsupported") copyText(text, `The ${y} season`);
-    markSeasonSaved(y); renderData(); if(r==="shared") toast(`${y} saved`); });
+    if(r==="shared"){ markSeasonSaved(y); renderData(); toast(`${y} saved`); return; }
+    // The viewer can't save a file here: the season is shown to copy out, and it counts as kept only once the coach says so.
+    sheet(`<h3>Save ${esc(y)}</h3><p class="muted" style="margin:0;font-size:14px">This viewer can't save a file. Copy the season and paste it somewhere safe (a note, or an email to yourself), then tap I kept it.</p>
+      <textarea class="mono" readonly style="min-height:60px">${esc(text)}</textarea>
+      <div class="row" style="justify-content:flex-end"><button class="btn" data-x>Close</button><button class="btn" data-copy>Copy</button><button class="btn primary" data-kept>I kept it</button></div>`, (m, close)=>{
+        $("[data-copy]",m).onclick=()=>copyText(text, `The ${y} season`, {box:true});
+        $("[data-kept]",m).onclick=()=>{ markSeasonSaved(y, "copied"); close(); renderData(); toast(`${y} marked as kept`); }; }); });
   $$("[data-season-rm]",el).forEach(b=>b.onclick=()=>{ const y=b.dataset.seasonRm, n=seasonGames(y).length, gw=`game${n===1?"":"s"}`;
     if(!seasonSaved(y)){ toast(`Save ${y} to a file first`); return; }
     sheet(`<h3>Remove ${esc(y)} from this device?</h3><p style="font-size:15px;margin:0 0 8px">This takes ${n} ${gw} off this device. Pitchers, notes and box-score lines stay.</p><p class="muted" style="font-size:14px;margin:0 0 12px">Only do this if the ${esc(y)} file is saved somewhere safe. To bring the games back, pick that file under Receive.</p>
@@ -4144,17 +4458,21 @@ function bindData(el){
     if(!Sync.canEdit(main)){ keep.writerDev=S.device.id; keep.takeover=true; }
     touch(keep,dev()); replaceGame(main, keep); saveGame(main);
     const wasCur=S.cur===c.id; dropGame(c.id); if(wasCur||!cur()) S.cur=main.id; save(); refreshGamePick(); renderData(); toast("Using the other copy"); });
-  // This device's copy that sync kept: its fixes join the team copy and what it charted after the two went different ways
-  // becomes a game of its own, charted by this device, so it goes up to the team book too (store.js keepBoth). Nothing counts twice.
+  // Any second copy that shares entries with its game (this device's copy that sync kept, or another device's from a file):
+  // its fixes join the game and what it has after the two went different ways becomes a game of its own, charted by this
+  // device, so it goes up to the team book too (store.js keepBoth). Nothing counts twice.
   $$("[data-cf-both]",el).forEach(b=>b.onclick=()=>{ const c=S.games.find(g=>g.id===b.dataset.cfBoth); if(!c) return; const main=S.games.find(g=>g.id===c.conflictOf && !g.conflictOf);
-    const k=c.mine && main ? keepBoth(c, main) : null;
+    if(main && onlyTakesOut(c, main)) return;
+    const k=main ? keepBoth(c, main) : null;
+    // The two named as the row names them: sync's copy against the team copy, or a file's other copy against this device's.
+    const was=c.mine, game=was ? "the team copy" : "this device's game", copy=was ? "this device's copy" : "the other copy", Copy=copy[0].toUpperCase()+copy.slice(1);
     if(k && !k.split){
-      if(k.conflict && !k.joined){ toast("These two copies can't be joined. Pick Keep the team copy or Use this device's.", {ms:5000}); return; }
+      if(k.conflict && !k.joined){ toast(`These two copies can't be joined. Pick ${was?"Keep the team copy or Use this device's":"Keep this device's or Use the other copy"}.`, {ms:5000}); return; }
       const wasCur=S.cur===c.id; dropGame(c.id); if(wasCur || !cur()) S.cur=main.id; save(); refreshGamePick(); renderData();
-      toast(k.joined ? "Kept both. This device's copy has no pitches after the two split, so its changes joined the team copy." : "Nothing to keep: the team copy already has everything in this device's copy.", {ms:5000}); return;
+      toast(k.joined ? `Kept both. ${Copy} has no pitches after the two split, so its changes joined ${game}.` : `Nothing to keep: ${game} already has everything in ${copy}.`, {ms:5000}); return;
     }
-    c.splitFrom=c.conflictOf; c.conflictOf=null; if(c.mine){ delete c.mine; c.writerDev=S.device.id; } touch(c,dev()); saveGame(c); refreshGamePick(); renderData();
-    toast(!k ? "Kept both as separate games" : k.conflict ? "Kept both. The new game holds only what the team copy doesn't have, so no pitch counts twice." : k.joined ? "Kept both. This device's fixes joined the team copy, and what it charted after the two split is a game of its own, so no pitch counts twice."
+    c.splitFrom=c.conflictOf; c.conflictOf=null; delete c.mine; if(was || k) c.writerDev=S.device.id; touch(c,dev()); saveGame(c); refreshGamePick(); renderData();
+    toast(!k ? "Kept both as separate games" : k.conflict ? `Kept both. The new game holds only what ${game} doesn't have, so no pitch counts twice.` : k.joined ? `Kept both. ${was?"This device's":"The other copy's"} fixes joined ${game}, and what it has after the two split is a game of its own, so no pitch counts twice.`
       : "Kept both. The new game starts where the two copies split, so no pitch counts twice.", {ms:k?5000:2500}); });
   $$("[data-theme-set]",el).forEach(b=>b.onclick=()=>{ S.settings.theme=b.dataset.themeSet; applyTheme(); save(); renderData(); });
   $$("[data-loc]",el).forEach(b=>b.onclick=()=>{ S.settings.loc=b.dataset.loc; save(); renderData(); });
@@ -4180,7 +4498,7 @@ Sync = (()=>{
   const st = {phase:"off", err:"", uid:null, email:"", name:"", role:null, fb:null, auth:null, db:null,
     subs:[], dataSubs:[], dirty:new Set(), timer:null, pushing:false, again:false, net:true, lastOk:0, quota:false,
     requests:[], members:[], devices:{}, hiddenAt:0, backoff:0, claimTried:false, rt:null, form:null, busy:false,
-    pend:null, ptr:0, devTried:{}, heard:0, stale:false, seen:{}, bt:{}, bw:null, bsub:null, beatAt:0, beatBusy:false, probeAt:0, devAt:0, names:{}};
+    pend:null, ptr:0, devTried:{}, heard:0, stale:false, seen:{}, bt:{}, bw:null, bsub:null, beatAt:0, beatBusy:false, probeAt:0, devAt:0, names:{}, skew:null, along:{}, raw:{}, adopt:{}};
 
   function box(){
     if(!S.sync) S.sync={config:null, uid:null, pushed:{}, since:0, ph:{}, rh:"", hidden:{}};
@@ -4215,7 +4533,7 @@ Sync = (()=>{
   const normName=n=>String(n||"").trim().toLowerCase().replace(/\s+/g," ");
   function rosterNames(){ const s=new Set(); ["varsity","jv"].forEach(lv=>((S.roster||{})[lv]||[]).forEach(r=>{ if(r && r.name) s.add(normName(r.name)); })); return s; }
   function pack(g){
-    const o=JSON.parse(JSON.stringify(g)); delete o.relay; delete o.takeover; delete o.undelete;
+    const o=JSON.parse(JSON.stringify(g)); delete o.relay; delete o.takeover; delete o.undelete; delete o.adoptFrom;
     o.writerDev=writerOf(g)||S.device.id;
     // Each name saved while we were hitting is marked own and stays home, whatever "who's hitting" says now. So does a
     // typed name that is a kid on our roster.
@@ -4350,6 +4668,9 @@ Sync = (()=>{
   function sinceTs(){ return st.fb.Timestamp.fromMillis(Math.max(0, (box().since||0) - 120000)); }
   function bump(srv){ if(srv && srv.toMillis){ const t=srv.toMillis(); if(t>(box().since||0)) box().since=t; } }
   function goLive(){
+    // This device's clock offset from the last time it went live, until this session measures it (clockFrom): the first
+    // copies and beats that come in are late news, dated with it.
+    if(!st.skewNow && typeof box().skew==="number") st.skew=box().skew;
     restartData();
     touchDevice(); loadDevices(true);
     S.games.forEach(g=>queue(g)); kick(800);
@@ -4362,14 +4683,17 @@ Sync = (()=>{
     st.relisten=setTimeout(()=>{ st.relisten=null; if(live()) restartData(); }, st.lisBack);
   }
   function restartData(){
-    stopData(); const {fb, db}=st; const ds=st.dataSubs;
+    stopData(); const {fb, db}=st; const ds=st.dataSubs; let first=true;
     ds.push(fb.onSnapshot(fb.query(fb.collection(db,"games"), fb.where("srv",">",sinceTs())), snap=>{
-      const touched=[], v0=view(), now=Date.now(); let who=false;
+      // What waited while this device couldn't hear the cloud: the first copies after (re)starting, or anything that comes while
+      // it was cut off. It is not news from now (madeAt). Everything else arrives as it is sent, so it is.
+      const touched=[], v0=view(), now=Date.now(), late=first || !st.net || st.stale; let who=false;
+      if(!snap.metadata.fromCache) first=false;
       snap.docChanges().forEach(ch=>{ if(ch.type==="removed" || ch.doc.metadata.hasPendingWrites) return; const d=ch.doc.data(); bump(d.srv); noteName(d);
         // A device we haven't heard of charts this game (it joined after we went live): look up its name once.
         if(d.writerDev && d.writerDev!==S.device.id && !st.devices[d.writerDev] && !st.devTried[d.writerDev]){ st.devTried[d.writerDev]=true; who=true; }
-        // When the charting device last sent this game: a change that comes in now is news from it now.
-        if(d.id){ const t=ch.type==="added" && d.srv && d.srv.toMillis ? Math.min(now, d.srv.toMillis()) : now; if(t>(st.seen[d.id]||0)) st.seen[d.id]=t; }
+        // When the charting device last sent this game.
+        if(d.id) seenAt(d.id, d.srv, late, now);
         try{ const id=recvGame(d); if(id) touched.push(id); }catch(e){ console.warn("sync: bad game", d.id, e); } });
       st.net=!snap.metadata.fromCache; st.lastOk=Date.now(); st.lisBack=0; if(!snap.metadata.fromCache){ heard(); quotaOk(); }
       if(who) loadDevices(true);
@@ -4396,10 +4720,32 @@ Sync = (()=>{
       ds.push(fb.onSnapshot(fb.collection(db,"members"), s=>{ st.members=[]; s.forEach(d=>st.members.push({uid:d.id, ...d.data()})); paint(); }, listenErr));
     }
   }
+  // sent: this device's clock as it writes, beside the server's (at). Read back once it is in (one read each time it goes
+  // live), the two say how far this device's clock is from the server's (clockFrom). Only from a write that went straight up:
+  // one that waited for signal (field Wi-Fi with no internet behind it) got its server time minutes later.
   function touchDevice(){
-    const {fb, db}=st; if(!S.device.name){ S.device.name=guessDevice(); save(); }
-    fb.setDoc(fb.doc(db,"devices",S.device.id), {uid:st.uid, email:st.email, name:S.device.name, ver, at:fb.serverTimestamp(), app:ui.standalone?"home screen":"browser"}, {merge:true}).then(()=>{ heard(); quotaOk(); }, handleErr);
+    const {fb, db}=st, ref=fb.doc(db,"devices",S.device.id), t0=Date.now(); if(!S.device.name){ S.device.name=guessDevice(); save(); }
+    fb.setDoc(ref, {uid:st.uid, email:st.email, name:S.device.name, ver, at:fb.serverTimestamp(), sent:t0, app:ui.standalone?"home screen":"browser"}, {merge:true})
+      .then(()=>{ heard(); quotaOk(); const t1=Date.now(); if(t1-t0>3000) return;
+        fb.getDoc(ref).then(s=>{ if(!s.metadata.fromCache && s.exists()) clockFrom(s.data(), t0, t1); }, ()=>{}); }, handleErr);
   }
+  // The server stamped it between sending (t0) and the answer (t1). A beat written since (another sent) says nothing.
+  // It is kept (a device's clock offset rarely changes), so the next session dates its first late news with it. What came
+  // in late before it was measured is dated again now.
+  function clockFrom(d, t0, t1){ const a=d && d.at && d.at.toMillis ? d.at.toMillis() : 0; if(!(a && d.sent===t0)) return;
+    st.skew=a-(t0+t1)/2; st.skewNow=true; const b=box(); if(b.skew!==Math.round(st.skew)){ b.skew=Math.round(st.skew); save(); }
+    Object.entries(st.raw).forEach(([id, r])=>{ if(st.seen[id]===r.t && r.srv) st.seen[id]=Math.min(r.now, r.srv-st.skew); }); st.raw={}; paintWatch(); }
+  // When game id was last sent by its charting device. late: it may have waited (madeAt); until this session knows its clock
+  // offset, the server's time is kept so clockFrom can date it again.
+  function seenAt(id, srv, late, now){
+    const t=late ? madeAt(srv, now) : now; if(!(t>(st.seen[id]||0))) return;
+    st.seen[id]=t; const s=srv && srv.toMillis ? srv.toMillis() : (typeof srv==="number" ? srv : 0);
+    if(late && !st.skewNow && s) st.raw[id]={srv:s, now, t}; else delete st.raw[id];
+  }
+  // When something the server stamped (srv) really happened, on this device's clock, and never later than now. A change or
+  // beat that waited while this device had no signal arrives late: it is not news from now. With the clock offset not known
+  // yet, the server's time is taken as it is.
+  function madeAt(srv, now){ const t=srv && srv.toMillis ? srv.toMillis() : (typeof srv==="number" ? srv : 0); return t ? Math.min(now, t-(st.skew||0)) : now; }
   // The team's devices (names, versions, last seen) for the Data tab and "charted on Dugout iPad". Read when going
   // live, when a device we don't know charts a game, and when the Data tab shows the list (at most every 2 min).
   function loadDevices(force){
@@ -4435,7 +4781,7 @@ Sync = (()=>{
   function beat(g){
     const {fb, db}=st; st.beatBusy=true; st.beatAt=Date.now();
     // Only one at a time: with no signal the write waits in the SDK, and a pile of them would all go up later.
-    fb.setDoc(fb.doc(db,"devices",S.device.id), {uid:st.uid, at:fb.serverTimestamp(), beat:fb.serverTimestamp(), game:g.id}, {merge:true})
+    fb.setDoc(fb.doc(db,"devices",S.device.id), {uid:st.uid, at:fb.serverTimestamp(), beat:fb.serverTimestamp(), sent:Date.now(), game:g.id}, {merge:true})
       .then(()=>{ heard(); quotaOk(); }, e=>{ handleErr(e); paint(); }).finally(()=>{ st.beatBusy=false; });
   }
   function unwatchWriter(){ if(st.bsub){ try{ st.bsub(); }catch(e){} } st.bsub=null; st.bw=null; }
@@ -4443,18 +4789,20 @@ Sync = (()=>{
     const w=watching(g) ? writerOf(g) : null;
     if(st.bw===w || (w && Date.now()-(st.bwErr||0)<QUIET)) return;
     unwatchWriter(); if(!w) return;
-    const {fb, db}=st; st.bw=w;
+    const {fb, db}=st; st.bw=w; let first=true;
     st.bsub=fb.onSnapshot(fb.doc(db,"devices",w), s=>{
       if(s.metadata.fromCache) return;
-      heard(); quotaOk(); if(s.exists()) gotBeat(w, s.data()); paintWatch();
+      const late=first || !st.net || st.stale; first=false;
+      heard(); quotaOk(); if(s.exists()) gotBeat(w, s.data(), late); paintWatch();
     }, e=>{ st.bsub=null; st.bw=null; st.bwErr=Date.now(); handleErr(e); });
   }
-  // A beat we hadn't seen is news from that device now. The first one we see may be old: it counts from when it was sent.
-  function gotBeat(w, d){
+  // late: the first beat seen after (re)starting, or one read while this device couldn't hear the cloud. It may be old, so it
+  // counts from when it was sent (madeAt). A beat that arrives as it is sent is news from that device now.
+  function gotBeat(w, d, late){
     st.devices[w]={...st.devices[w], ...d};
     const b=d.beat && d.beat.toMillis ? d.beat.toMillis() : 0, prev=st.bt[w];
     if(!b || b===prev) return false;
-    st.bt[w]=b; if(d.game){ const t=prev==null ? Math.min(Date.now(), b) : Date.now(); if(t>(st.seen[d.game]||0)) st.seen[d.game]=t; }
+    st.bt[w]=b; if(d.game) seenAt(d.game, b, late, Date.now());
     return prev!=null;
   }
   async function probe(g){
@@ -4468,7 +4816,7 @@ Sync = (()=>{
       heard(); quotaOk(); st.net=true;
       const d=q.docs.find(x=>x.id===w);
       // It beat since and our listener never said: the listeners are stuck, start them again.
-      if(d && gotBeat(w, d.data()) && known!=null){ st.restartAt=Date.now(); restartData(); }
+      if(d && gotBeat(w, d.data(), true) && known!=null){ st.restartAt=Date.now(); restartData(); }
     }catch(e){
       st.stale=true;
       if(Date.now()-(st.restartAt||0)>=(st.staleBack||QUIET)){ st.restartAt=Date.now(); st.staleBack=Math.min(10*60000, (st.staleBack||QUIET/2)*2); restartData(); }
@@ -4513,11 +4861,16 @@ Sync = (()=>{
     if(iWrite && (inc.rev||0)<(b.pushed[id]||0) && (inc.rev||0)<(loc.rev||0)) return null;
     if(iWrite && inc.writerDev!==S.device.id){
       if(setAsideHolds(id, inc)) return null;   // the copy the coach set aside on the Data tab doesn't come back
-      // Someone took this game over. Anything here their copy doesn't have is kept as a second copy, then we watch theirs.
-      if(adds(loc, inc)) keepCopy(loc);
-      keepNames(loc, inc); replaceGame(loc, inc); b.pushed[id]=Math.max(b.pushed[id]||0, inc.rev||0); landed(loc, false); saveGame(loc);
-      // A sheet open on this game closes with its own toast (refresh), which says so.
-      if(!(sheetOpen() && ui.sheetGame===id)) toast(`Charting for this game moved to ${devName(inc.writerDev)}. You're watching it now.`, {ms:5000}); return id;
+      // A book moved to this copy before it signed in, and the team book has it as the copy it came from: this device
+      // takes it over (the coach said it is his own book), or asks first (adoptCloud).
+      if(adoptHeld(loc, inc)){ adoptCloud(loc, d); return null; }
+      // Someone took this game over. What this device had that their copy lacks joins theirs (joinTaken), or when the two
+      // went different ways it is kept as a second copy. Then we watch theirs.
+      const how=!loc.takeover && joinTaken(loc, inc) ? "joined" : adds(loc, inc) ? "kept" : "";
+      if(how!=="joined"){ if(how) keepCopy(loc); keepNames(loc, inc); replaceGame(loc, inc); }
+      b.pushed[id]=Math.max(b.pushed[id]||0, inc.rev||0); landed(loc, false); saveGame(loc);
+      // A sheet open on this game closes with its own toast (refresh), which says so. What went along is said once it has it.
+      if(!st.hush && !(sheetOpen() && ui.sheetGame===id)) toast(movedText(inc.writerDev, how==="joined" ? "" : how), {ms:6000}); return id;
     }
     if(iWrite){ if((inc.rev||0)<(b.pushed[id]||0)) return null; return reconcile(loc, inc) ? id : null; }
     // Watching someone else's game: the charting device's copy wins unless it is older than the last one we had from
@@ -4536,12 +4889,14 @@ Sync = (()=>{
     if((loc.relay || seen==null || (loc.rev||0)>seen) && adds(own, inc)){
       const m=mergeGame(own, inc);
       if(m.kind==="conflict"){ keepCopy(own); keepNames(loc, inc); replaceGame(loc, inc); b.pushed[id]=inc.rev||0; landed(loc, false); saveGame(loc);
-        toast("This game was changed in two places. Both copies are on the Data tab.", {ms:5000}); return id; }
+        const al=st.along[id]; delete st.along[id];
+        toast(al ? movedText(al.w, "kept") : "This game was changed in two places. Both copies are on the Data tab.", {ms:al?6000:5000}); return id; }
       const g=m.game===own ? {...own} : m.game; keepNames(loc, g);
       g.rev=Math.max(g.rev||0, loc.rev||0, (inc.rev||0)+1); g.relay=true; g.writerDev=inc.writerDev||g.writerDev;   // still theirs to chart
       replaceGame(loc, g); b.pushed[id]=inc.rev||0; landed(loc, false); saveGame(loc); return id;
     }
     if(seen==null && (inc.rev||0)<(loc.rev||0) && own===loc && !adds(inc, loc)) return null;
+    alongIn(id, inc);
     keepNames(loc, inc); replaceGame(loc, inc); b.pushed[id]=inc.rev||0; landed(loc, false); saveGame(loc); return id;
   }
   /* Our own game came back from the cloud different from ours: a second tab on this device, or a relayed file or fix
@@ -4561,7 +4916,8 @@ Sync = (()=>{
       return false;
     }
     const top=Math.max(loc.rev||0, inc.rev||0);
-    if(!ours){ keepNames(loc, inc); inc.rev=top; replaceGame(loc, inc); landed(loc, true); saveGame(loc); return true; }
+    // Taken as it is, it goes up again as this device's own: the device that relayed it hears it went in (alongIn).
+    if(!ours){ keepNames(loc, inc); inc.rev=top; replaceGame(loc, inc); touch(loc, dev()); landed(loc, true); saveGame(loc); return true; }
     const m=mergeGame(loc, inc);
     if(m.kind==="conflict"){
       if(inc.writerDev===S.device.id && unsent){ otherCopy(inc, id); loc.rev=top; touch(loc, dev()); saveGame(loc); }
@@ -4593,9 +4949,38 @@ Sync = (()=>{
   // A copy that just came in: pitch types this device doesn't know yet join the catalog, and a hand fixed on his record
   // after the game's entry (a coach fixed it on a phone while the iPad was away) shows. own: this device charts the game,
   // so the fix is stamped and goes out with it; a watched copy is only shown that way.
-  function landed(g, own){ learnTypes(gameTypes(g)); return handsFromRecords(g, own); }
+  // A second copy of it that now holds nothing the game lacks (the copy a Receive kept, and the game just took that same
+  // copy from the cloud) leaves nothing to sort out on the Data tab, so it goes.
+  function landed(g, own){ learnTypes(gameTypes(g)); dropEchoes(g); return handsFromRecords(g, own); }
+  function dropEchoes(g){
+    const by=new Map(g.log.map(e=>[e.id,e]));
+    S.games.filter(c=>c.conflictOf===g.id && c.log.every(e=>sameEntry(by.get(e.id), e)) && canon(c.lineup0||[])===canon(g.lineup0||[]) && mergeGame(g, c).kind==="kept")
+      .forEach(c=>{ if(S.cur===c.id) S.cur=g.id; dropGame(c.id); });
+  }
   // Our unsent version, kept beside the team copy. "mine" tells the Data tab which side is which.
   function keepCopy(g){ const c={...JSON.parse(JSON.stringify(g)), id:uid(), conflictOf:g.id, mine:true}; delete c.relay; delete c.takeover; S.games.push(c); saveGame(c); }
+  // Charting moved while this device still had something waiting to go up (the pitch charted just before, a fix made with no
+  // signal, or a game moved over from v2 on two devices, where each one counts as its maker). When the two copies line up,
+  // ours joins the new charting device's and goes up to it (relay), as a file's fix does. Only a split keeps a second copy.
+  // It is only said to have gone along once the charting device's own copy holds it (alongIn); st.along holds what it was.
+  function joinTaken(loc, inc){
+    const own=leftOut(inc, loc); if(!adds(own, inc)) return false;
+    const m=mergeGame(own, inc); if(m.kind==="conflict") return false;
+    const g=m.game===own ? {...own} : m.game; keepNames(loc, g);
+    g.rev=Math.max(g.rev||0, loc.rev||0, (inc.rev||0)+1); g.relay=true; g.writerDev=inc.writerDev||g.writerDev; delete g.takeover;   // still theirs to chart
+    const had=new Set(inc.log.map(e=>e.id)); st.along[loc.id]={w:g.writerDev, ids:g.log.filter(e=>!had.has(e.id)).map(e=>e.id)};
+    replaceGame(loc, g); return true;
+  }
+  // The charting device's copy, taken as it is: it holds ours (it went along), or, once ours was in the team copy (sent),
+  // that device had charted on before ours reached it and kept ours as a second copy over there (reconcile).
+  function alongIn(id, inc){
+    const al=st.along[id]; if(!al) return; delete st.along[id];
+    const have=new Set(inc.log.map(e=>e.id)), gone=cutIds(inc), lost=al.ids.some(x=>!have.has(x) && !gone.has(x));
+    if(!lost) toast(movedText(al.w, "joined"), {ms:6000});
+    else if(al.sent) toast(`What you entered just before didn't go along: ${devName(al.w)} charted on first, and kept it as a second copy on its Data tab.`, {ms:6000});
+  }
+  // how: "joined" (what this device had went along), "kept" (a second copy), or "" (it had nothing new).
+  function movedText(w, how){ return `Charting for this game moved to ${devName(w)}.${how==="joined" ? " What you entered just before went along." : how==="kept" ? " What you entered just before is kept as a second copy on the Data tab." : ""} You're watching it now.`; }
   function announce(g){
     const real=S.games.filter(x=>!x.example && !x.conflictOf);
     const cg=cur();
@@ -4606,7 +4991,8 @@ Sync = (()=>{
      already had him from a scouting trip). The same strict test a Receive uses decides it's him (one kid on file with that
      team and number, no two different names), and the smaller id wins on every device, so they all agree. A merge made
      anywhere, by that test or by "Same kid twice?", goes up as a tombstone naming the survivor and is redone everywhere.
-     Never two kids the coach kept apart, and never a kid renumbered or moved into that slot by hand: only the coach can say. */
+     Never two kids the coach kept apart, and never a kid renumbered or moved into that slot by hand unless the same name is
+     typed on both (movedApart): only the coach can say. */
   function recvPitchers(list){
     const before=new Set(Object.keys(S.pitchers).filter(k=>S.pitchers[k] && !S.pitchers[k].example));
     const recs=[], keyN={};
@@ -4632,8 +5018,8 @@ Sync = (()=>{
     }
     const lp=S.pitchers[id];
     if(!lp){
-      let m=unique && !rp.example && !rp.stub && !slotMoved(rp) ? sameKidOnFile(rp, before) : null;
-      if(m && (slotMoved(m) || m.stub)) m=null;
+      let m=unique && !rp.example && !rp.stub ? sameKidOnFile(rp, before) : null;
+      if(m && (m.stub || movedApart(rp, m))) m=null;
       if(m && m.id<id){ setAlias(id, m.id); foldInto(m, rp); b.ph[id]="merged"; return true; }
       S.pitchers[id]=rp; b.ph[id]=hash(rp);
       handsToGames(id);   // games here that still show the hand from before a fix made elsewhere
@@ -4807,7 +5193,7 @@ Sync = (()=>{
 
   /* ----- sending ----- */
   function queue(g){
-    if(!g || g.example || g.conflictOf || !configured() || !box().uid || box().hidden[g.id]) return;
+    if(!g || g.example || g.conflictOf || !configured() || !box().uid || box().hidden[g.id] || st.adopt[g.id]) return;
     if(!(mine(g) || g.relay)) return;
     if((g.rev||0)<=(box().pushed[g.id]||0) && !g.takeover) return;
     st.dirty.add(g.id); kick(2500);
@@ -4833,13 +5219,13 @@ Sync = (()=>{
       await pushDeletes();
       for(const id of [...st.dirty]){
         const g=S.games.find(x=>x.id===id && !x.conflictOf);
-        if(!g || box().hidden[id] || ((g.rev||0)<=(box().pushed[id]||0) && !g.takeover)){ st.dirty.delete(id); continue; }
+        if(!g || box().hidden[id] || st.adopt[id] || ((g.rev||0)<=(box().pushed[id]||0) && !g.takeover)){ st.dirty.delete(id); continue; }
         const v0=view();
         await withTimeout(pushGame(g), 20000);
         if(lostView(v0)) refresh([id], v0);   // the cloud said someone else charts it now: the screen follows at once
         // A pitch charted while that went up is still waiting: keep it dirty so this round sends it too.
         const now=S.games.find(x=>x.id===id && !x.conflictOf);
-        if(!now || (now.rev||0)<=(box().pushed[id]||0) || !(mine(now)||now.relay)) st.dirty.delete(id); else st.again=true;
+        if(!now || st.adopt[id] || (now.rev||0)<=(box().pushed[id]||0) || !(mine(now)||now.relay)) st.dirty.delete(id); else st.again=true;
       }
       await withTimeout(pushPitchers(), 30000);
       if(st.role==="owner" && st.bookSeen) await withTimeout(pushBook(), 15000);
@@ -4869,14 +5255,16 @@ Sync = (()=>{
         } else {
           if(r.writerDev!==body.writerDev && !take) return {k:"moved", r};
           if(take && (r.rev||0)>seen) return {k:"moved", r};   // it moved on since this device looked: never overwrite unseen pitches
+          // Nor does a relayed copy (a file, a fix, or what went along after a take over): it joins the team copy first (below).
+          if(g.relay && (r.rev||0)>seen) return {k:"behind", r};
           if((r.rev||0)>rev) return {k:"behind", r};
           if((r.rev||0)===rev && !take){ if(r.writerDev===body.writerDev && r.head===head) return {k:"same"}; return {k:"behind", r}; }   // same number, different game: a second tab
         }
       }
       const doc={id:g.id, rev:wrev, head, writerDev:body.writerDev, date:g.date||"", ended:!!g.endedAt, deleted:false, ver, by:st.uid, srv:fb.serverTimestamp(), body:str};
-      // The charting device's name: this device's when it charts the game, else the one already there (a relayed fix).
-      const nm=body.writerDev===S.device.id ? (S.device.name||"") : ((snap.exists() && snap.data().writerDev===body.writerDev && snap.data().writerName) || "");
-      if(nm) doc.writerName=nm;
+      // The charting device's name, only from that device. A relayed fix leaves it out: the name already on the doc may be
+      // old (a team rename relays games ended long ago), and every phone would take it as that device's name now.
+      if(body.writerDev===S.device.id && S.device.name) doc.writerName=S.device.name;
       if(take) doc.takeover=st.uid;
       tx.set(ref, doc); return {k:"ok", wrev};
     });
@@ -4889,8 +5277,10 @@ Sync = (()=>{
       // In the team book counts as sent to Coach (the pregame line and Game over say so).
       const sent=mine(g) && !g.relay && et>(g.sentAt||0);
       if(sent) g.sentAt=et;
-      if(g.relay||g.takeover||sent){ if((g.rev||0)<=rev){ delete g.relay; } delete g.takeover; saveGame(g); }
-      save(); return;
+      if(g.relay && st.along[g.id]) st.along[g.id].sent=true;   // in the team copy: the charting device's next copy says if it took it
+      if(g.relay||g.takeover||sent||g.adoptFrom){ if((g.rev||0)<=rev){ delete g.relay; } delete g.takeover; delete g.adoptFrom; saveGame(g); }
+      save(); if(sent && g.endedAt) refresh([g.id]);   // Game over and the pregame list say it's sent now
+      return;
     }
     // Deleted from the team book: this copy stays on this device and stops trying.
     if(res.k==="deleted"){ b.hidden[g.id]=true; b.pushed[g.id]=Math.max(b.pushed[g.id]||0, g.rev||0); delete g.relay; delete g.undelete; st.dirty.delete(g.id); save(); return res.k; }
@@ -4903,6 +5293,7 @@ Sync = (()=>{
       else { delete loc.relay; st.dirty.delete(g.id); }
       return res.k;
     }
+    if(res.k==="moved" && adoptHeld(loc, inc)){ adoptCloud(loc, r); return res.k; }
     // Still ours (a second tab, an older copy pushed from elsewhere): reconcile by what each copy holds.
     if(res.k==="behind" && mine(loc) && !loc.relay && r.writerDev===S.device.id){ reconcile(loc, inc); refresh([g.id]); return res.k; }
     // A file or a sheet's fix relayed from here, and the charting device sent more meanwhile (or someone took the game
@@ -4910,12 +5301,18 @@ Sync = (()=>{
     if(loc.relay && !loc.takeover && mergeGame(loc, inc).kind!=="conflict"){
       if(adds(loc, inc)){ const m=mergeGame(loc, inc), x=m.game===loc ? {...loc} : m.game; keepNames(loc, x);
         x.rev=Math.max(x.rev||0, loc.rev||0, (inc.rev||0)+1); x.relay=true; x.writerDev=inc.writerDev||x.writerDev; replaceGame(loc, x); }
-      else { keepNames(loc, inc); replaceGame(loc, inc); }
+      else { alongIn(g.id, inc); keepNames(loc, inc); replaceGame(loc, inc); }
       b.pushed[g.id]=Math.max(b.pushed[g.id]||0, inc.rev||0); landed(loc, false); saveGame(loc); refresh([g.id]); return res.k;
     }
-    // Someone else's now, or a relay that went a different way: take theirs, keeping ours as a second copy if it had anything new.
-    if(adds(loc, inc)) keepCopy(loc);
-    keepNames(loc, inc); replaceGame(loc, inc); b.pushed[g.id]=Math.max(b.pushed[g.id]||0, inc.rev||0); landed(loc, false); saveGame(loc); refresh([g.id]);
+    // Someone else's now, or a relay that went a different way. When charting moved while ours waited to go up, what ours
+    // adds joins theirs (joinTaken). Otherwise take theirs, keeping ours as a second copy if it had anything new.
+    // What went along is said once the charting device has it (alongIn); a relay of it that went a different way says so here.
+    const moved=res.k==="moved" && !loc.relay && !loc.takeover && mine(loc), al=!moved && loc.relay && st.along[g.id];
+    const how=moved && joinTaken(loc, inc) ? "joined" : adds(loc, inc) ? "kept" : "";
+    if(how!=="joined"){ if(how) keepCopy(loc); keepNames(loc, inc); replaceGame(loc, inc); }
+    b.pushed[g.id]=Math.max(b.pushed[g.id]||0, inc.rev||0); landed(loc, false); saveGame(loc); refresh([g.id]);
+    if(moved && !(sheetOpen() && ui.sheetGame===g.id)) toast(movedText(inc.writerDev, how==="joined" ? "" : how), {ms:6000});
+    if(al && !al.sent){ delete st.along[g.id]; toast(movedText(al.w, how || "joined"), {ms:6000}); }
     return res.k;
   }
   // Coach's deletes wait here (saved with the book) until they reach the cloud, so a delete with no signal isn't lost.
@@ -5007,8 +5404,8 @@ Sync = (()=>{
   // the charting device pushes a pitch meanwhile), so the pitch it charted a second ago comes along. This device's copy
   // (as it is now, not when the button was drawn) joins in only when it holds something not sent: a relay, or changes
   // above the last cloud copy. A copy that only lags behind never does, so a pitch the charting device took back stays out.
-  async function takeOver(x){
-    const id=typeof x==="string" ? x : x && x.id;
+  async function takeOver(x, o){
+    const id=typeof x==="string" ? x : x && x.id; o=o||{};
     if(!live() || navigator.onLine===false){ toast(notLiveText(), {ms:4500}); return false; }
     const now=()=>S.games.find(y=>y.id===id && !y.conflictOf);
     if(!id || !now()) return false;
@@ -5026,7 +5423,7 @@ Sync = (()=>{
         else { const m=mergeGame(leftOut(inc, clone(g)), inc); if(m.kind==="conflict"){ base=inc; split=true; } else base=clone(m.game); }
         base.rev=Math.max(base.rev||0, (r&&r.rev)||0, g.rev||0);
         keepNames(g, base);
-        delete base.relay; delete base.takeover; delete base.undelete; base.writerDev=S.device.id; touch(base, dev());
+        delete base.relay; delete base.takeover; delete base.undelete; delete base.adoptFrom; base.writerDev=S.device.id; touch(base, dev());
         const body=pack(base), str=JSON.stringify(body), head=hash(str);
         box().pend[id]={head, rev:base.rev};
         tx.set(ref, {id, rev:base.rev, head, writerDev:S.device.id, writerName:S.device.name||"", takeover:st.uid, date:base.date||"", ended:!!base.endedAt, deleted:false, ver, by:st.uid, srv:fb.serverTimestamp(), body:str});
@@ -5038,8 +5435,50 @@ Sync = (()=>{
       b.heads[id]={head:res.head, rev:res.base.rev||0}; delete b.pend[id];
       b.pushed[id]=Math.max(b.pushed[id]||0, res.base.rev||0);
       if(g){ if(res.split) keepCopy(g); replaceGame(g, res.base); landed(g, true); saveGame(g); } else { S.games.push(res.base); landed(res.base, true); saveGame(res.base); }
-      toast("You're charting this game now."); refresh([id]); return true;
+      if(!o.quiet) toast("You're charting this game now."); refresh([id]); return true;
     }catch(e){ handleErr(e); toast("Couldn't take over: "+(st.err||"no signal")); paint(); return false; }
+  }
+  /* A book moved to this copy with Backup before it signed in (store.js adoptBook, adoptFrom): the copy it came from may have
+     put its games in the team book already, as that copy's. When the coach said "My own book", this device takes each one
+     over as it goes live (the take over joins in what only this copy has). A book moved with no question (a copy with no
+     games of its own) asks then, now that the other copy is known to be on the team book: it may be a device that still
+     charts. Until then those games don't go up from here (queue, pushAll), and nothing in them is lost either way. */
+  function adoptHeld(loc, inc){ const a=loc && loc.adoptFrom; return !!a && !!inc && !!a.dev && inc.writerDev===a.dev; }
+  function adoptCloud(loc, d){
+    const id=loc.id, a=loc.adoptFrom, w=st.adopt[id]; st.dirty.delete(id);
+    st.adopt[id]={...(w||{}), from:a.dev, d, ask:!!a.ask};
+    if(w) return;
+    if(a.ask) askAdopt(); else adoptTake([id]);
+  }
+  async function adoptTake(ids){
+    let n=0, from="";
+    for(const id of ids){ const a=st.adopt[id]; if(!a || a.busy) continue; a.busy=true; from=a.from;
+      const ok=await takeOver(id, {quiet:true}); delete st.adopt[id]; if(ok) n++; }
+    if(n) toast(`${n===1?"That game":`Those ${n} games`} from ${devName(from)} ${n===1?"is":"are"} charted here now, in the team book too.`, {ms:5000});
+  }
+  function adoptWatch(ids){
+    const touched=[], mineN=()=>S.games.filter(x=>x.conflictOf && x.mine).length, c0=mineN(); let from="";
+    st.hush=true;
+    try{ ids.forEach(id=>{ const a=st.adopt[id], loc=S.games.find(x=>x.id===id && !x.conflictOf); delete st.adopt[id]; if(!a || !loc) return; from=a.from;
+      delete loc.adoptFrom; saveGame(loc); try{ if(recvGame(a.d)) touched.push(id); }catch(e){ console.warn("sync: bad game", id, e); } }); }
+    finally{ st.hush=false; }
+    const n=ids.length; save(); refresh(touched);
+    toast(`${n===1?"That game stays":"Those games stay"} ${devName(from)}'s to chart. You're watching ${n===1?"it":"them"}.${mineN()>c0?" What this copy had that the team book lacks is kept as a second copy on the Data tab.":""}`, {ms:6000});
+  }
+  function askAdopt(){
+    clearTimeout(st.adoptT);
+    st.adoptT=setTimeout(()=>{
+      const open=Object.keys(st.adopt).filter(id=>st.adopt[id].ask && !st.adopt[id].asked && !st.adopt[id].busy); if(!open.length) return;
+      if(sheetOpen()){ askAdopt(); return; }   // after the sheet on screen closes
+      const from=st.adopt[open[0]].from, ids=open.filter(id=>st.adopt[id].from===from); ids.forEach(id=>{ st.adopt[id].asked=true; });
+      const n=ids.length, gs=`${n} game${n===1?"":"s"}`;
+      sheet(`<h3>Whose games are these?</h3><p style="margin:0">The team book has ${gs} you moved to this copy as ${esc(devName(from))}'s. Is that your own book, moved here? Or a device that still charts, like the dugout iPad?</p>
+        <p class="muted" style="margin:0;font-size:13px">Your own book's games are charted here from now on, in the team book too. Another device's stay that device's to chart, and you watch them.</p>
+        <div class="row" style="justify-content:flex-end"><button class="btn" data-theirs>A device that charts</button><button class="btn primary" data-mine>My own book</button></div>`, (m, close)=>{
+          $("[data-mine]",m).onclick=()=>{ close(); adoptTake(ids); };
+          $("[data-theirs]",m).onclick=()=>{ close(); adoptWatch(ids); };
+        });
+    }, 800);
   }
   async function gameDeleted(g){
     const b=box();
@@ -5051,6 +5490,8 @@ Sync = (()=>{
     b.hidden[g.id]=true; save();
   }
   function relayed(g){ if(configured() && box().uid && !mine(g)) g.relay=true; }
+  // A device on the team's live sync: in its devices list, or charting a game the team book sent here.
+  function onTeam(id){ const b=box(); return !!id && (!!st.devices[id] || S.games.some(g=>!g.conflictOf && !g.example && writerOf(g)===id && b.pushed[g.id]!=null)); }
   // A game deleted earlier came back in from a file (Receive). Coach's copy goes back up to the team book.
   function restored(g){ const b=box(); g.undelete=true; delete b.hidden[g.id]; if(b.delq) delete b.delq[g.id]; if(b.cloudDel) delete b.cloudDel[g.id]; save(); }
   async function signIn(email, pw){ return st.fb.signInWithEmailAndPassword(st.auth, email.trim(), pw); }
@@ -5164,7 +5605,7 @@ Sync = (()=>{
       if(devs.length) h+=`<div class="tbl-wrap"><table><thead><tr><th class="l">Device</th><th class="l">Who</th><th class="l">Version</th><th class="l">Last seen</th></tr></thead><tbody>${devs.map(([id,d])=>`<tr><td class="l">${esc(d.name||"?")}${id===S.device.id?" (this one)":""}</td><td class="l">${esc(d.email||"")}</td><td class="l">${esc(d.ver||"?")}${d.ver&&d.ver!==ver?" ⚠":""}</td><td class="l">${esc(when(d.at))}</td></tr>`).join("")}</tbody></table></div>`;
       if(st.role==="owner"){
         h+=`<h3 style="margin-top:14px">Let coaches in</h3>`;
-        h+=st.requests.length?st.requests.map(r=>`<div class="row" style="margin-bottom:6px"><span style="flex:1;min-width:180px"><b>${esc(r.name||"(no name)")}</b> · ${esc(r.email||"")}</span><button class="btn small primary" data-ok-uid="${esc(r.uid)}">Let in</button><button class="btn small" data-no-uid="${esc(r.uid)}">No</button></div>`).join(""):`<p class="muted" style="margin:0;font-size:14px">Nobody waiting. A coach opens Mound Book from its web address, pastes the join code on the Data tab, and creates an account. Only let in people you know.</p>`;
+        h+=st.requests.length?st.requests.map(r=>`<div class="row" style="margin-bottom:6px"><span style="flex:1;min-width:180px"><b>${esc(r.name||"(no name)")}</b> · ${esc(r.email||"")}</span><button class="btn small primary" data-ok-uid="${esc(r.uid)}">Let in</button><button class="btn small" data-no-uid="${esc(r.uid)}">No</button></div>`).join(""):`<p class="muted" style="margin:0;font-size:14px">Nobody waiting. ${conf()===SYNC_BUILD?"A coach opens Mound Book at its web address and creates an account on the Data tab.":"A coach opens Mound Book from its web address, pastes the join code on the Data tab, and creates an account."} Only let in people you know.</p>`;
         h+=`<div class="row" style="margin-top:8px"><button class="btn small" data-sy="copyjoin">Copy join code</button><button class="btn small" data-sy="copyrules">Copy security rules</button></div>`;
         const others=st.members.filter(m=>m.uid!==st.uid);
         if(others.length) h+=`<details data-keep="members" style="margin-top:10px" ${isOpen("members",false)?"open":""}><summary class="label" style="cursor:pointer">Coaches with access (${others.length})</summary>${others.map(m=>`<div class="row" style="margin-top:6px"><span style="flex:1">${esc(m.name||m.email||m.uid)} · ${esc(m.role)}</span><button class="btn small" data-rm-uid="${esc(m.uid)}">Remove</button></div>`).join("")}</details>`;
@@ -5182,24 +5623,27 @@ Sync = (()=>{
     on("on", ()=>{ box().off=false; save(); saveThenReload(); });
     on("joinok", ()=>{ const o=readJoin($("#sy-join",el).value); if(!o){ toast("That join code didn't read. Copy all of it, starting with MB1:"); return; } setConfig(o); });
     const readSetup=()=>{ const f=parseFirebase($("#sy-cfg",el).value), owner=$("#sy-owner",el).value.trim().toLowerCase(); if(!f){ toast("Paste the whole firebaseConfig: it needs apiKey and projectId."); return null; } if(!/^\S+@\S+\.\S+$/.test(owner)){ toast("Enter your email."); return null; } return {firebase:f, owner, setup:true}; };
-    on("rules", ()=>{ const o=readSetup(); if(!o) return; sheet(`<h3>Firestore security rules</h3><p class="muted" style="margin:0;font-size:14px">Firebase console › Firestore Database › Rules: replace everything with this, then Publish.</p><textarea class="mono" rows="14" readonly>${esc(rulesText(o.owner))}</textarea><div class="row" style="justify-content:flex-end"><button class="btn" data-x>Close</button><button class="btn primary" data-copy>Copy rules</button></div>`, (m)=>{ $("[data-copy]",m).onclick=()=>copyText(rulesText(o.owner),"Rules"); }); });
+    on("rules", ()=>{ const o=readSetup(); if(!o) return; sheet(`<h3>Firestore security rules</h3><p class="muted" style="margin:0;font-size:14px">Firebase console › Firestore Database › Rules: replace everything with this, then Publish.</p><textarea class="mono" rows="14" readonly>${esc(rulesText(o.owner))}</textarea><div class="row" style="justify-content:flex-end"><button class="btn" data-x>Close</button><button class="btn primary" data-copy>Copy rules</button></div>`, (m)=>{ $("[data-copy]",m).onclick=()=>copyText(rulesText(o.owner),"Rules",{box:true}); }); });
     on("save", ()=>{ const o=readSetup(); if(o) setConfig(o); });
     on("retry", ()=>{ if(st.memErr && st.fb && st.uid){ st.memBack=0; st.claimTried=false; listenMembers(); toast("Trying again…"); } else location.reload(); });
     on("off", ()=>{ if(confirm(`Turn off live sync on this device? This signs ${st.email||"you"} out here too. Games stay on this device. You can join again later with the join code.`)) turnOff(); });
     on("signout", async()=>{ try{ await st.fb.signOut(st.auth); }catch(e){} });
-    on("reset", async()=>{ const e=$("#sy-email",el).value.trim(); if(!e){ toast("Type your email first."); return; } try{ await st.fb.sendPasswordResetEmail(st.auth, e); toast("Check your email for a reset link."); }catch(err){ toast(authMsg(err)); } });
+    on("reset", async()=>{ const e=$("#sy-email",el).value.trim(); if(!e){ toast("Type your email first."); return; } try{ await st.fb.sendPasswordResetEmail(st.auth, e); toast("Check your email for a reset link."); }catch(err){ toast(authMsg(err, e)); } });
     on("copyjoin", ()=>copyText(joinCode(), "Join code"));
     on("copyrules", ()=>copyText(rulesText(conf().owner), "Rules"));
     const f=$("#sy-auth",el);
     if(f){ let mode="in"; $$("[data-mode]",f).forEach(b=>b.addEventListener("click",()=>{ mode=b.dataset.mode; }));
       f.onsubmit=async e=>{ e.preventDefault(); if(st.busy) return; st.busy=true; const em=$("#sy-email",f).value, pw=$("#sy-pw",f).value, nm=$("#sy-name",f).value.trim();
-        try{ if(mode==="up") await signUp(em,pw,nm); else await signIn(em,pw); }catch(err){ toast(authMsg(err), {ms:5000}); } st.busy=false; }; }
+        try{ if(mode==="up") await signUp(em,pw,nm); else await signIn(em,pw); }catch(err){ toast(authMsg(err, em), {ms:5000}); } st.busy=false; }; }
     $$("[data-ok-uid]",el).forEach(b=>b.onclick=async()=>{ try{ await approve(b.dataset.okUid,"coach"); toast("Let in."); }catch(e){ handleErr(e); toast(st.err||"Couldn't do that"); } });
     $$("[data-no-uid]",el).forEach(b=>b.onclick=async()=>{ try{ await deny(b.dataset.noUid); }catch(e){ handleErr(e); } });
     $$("[data-rm-uid]",el).forEach(b=>b.onclick=async()=>{ if(!confirm("Remove this coach's access?")) return; try{ await removeMember(b.dataset.rmUid); }catch(e){ handleErr(e); toast(st.err); } });
   }
-  function authMsg(e){
-    const c=String((e&&e.code)||"");
+  // em: the email typed. Firebase's own setup is Coach's to fix: on the device he set it up on, or, with the setup built into
+  // this site, when he is the one signing in. Anyone else asks Coach; only a join code can be a wrong one.
+  function authMsg(e, em){
+    const c=String((e&&e.code)||""), cf=conf(), built=!!cf && cf===SYNC_BUILD, setup=!!(box().config && box().config.setup);
+    const owner=built && !!em && String(em).trim().toLowerCase()===String(cf.owner||"").trim().toLowerCase();
     if(c.includes("invalid-credential")||c.includes("wrong-password")||c.includes("user-not-found")) return "That email and password don't match.";
     if(c.includes("email-already-in-use")) return "That email already has an account. Sign in instead.";
     if(c.includes("weak-password")) return "Use at least 8 characters.";
@@ -5207,16 +5651,18 @@ Sync = (()=>{
     if(c.includes("network")) return "No signal. Try again with a connection.";
     if(c.includes("too-many-requests")) return "Too many tries. Wait a minute.";
     // A join code (or firebaseConfig) for a project that isn't there, or with a key that doesn't work.
-    if(/api-key|project-not-found|configuration-not-found|app-not-authorized|invalid-app|app-deleted|tenant/.test(c)) return box().config && box().config.setup ? "Firebase didn't take that firebaseConfig. Copy it again from the Firebase console, then use Turn off live sync here and set it up again." : "This join code doesn't work. Ask Coach for a new one.";
-    if(c.includes("operation-not-allowed")) return box().config && box().config.setup ? "Turn on Email/Password sign-in in the Firebase console (Authentication › Sign-in method)." : "Signing in isn't turned on for this team yet. Ask Coach.";
+    if(/api-key|project-not-found|configuration-not-found|app-not-authorized|invalid-app|app-deleted|tenant/.test(c)) return setup ? "Firebase didn't take that firebaseConfig. Copy it again from the Firebase console, then use Turn off live sync here and set it up again."
+      : owner ? "Firebase didn't take this site's web app key. In the Firebase console, check the web app's API key (Project settings › General) and that any key restrictions allow this site."
+      : built ? "Live sync isn't working on this site right now. Ask Coach." : "This join code doesn't work. Ask Coach for a new one.";
+    if(c.includes("operation-not-allowed")) return setup || owner ? "Turn on Email/Password sign-in in the Firebase console (Authentication › Sign-in method)." : "Signing in isn't turned on for this team yet. Ask Coach.";
     if(c.includes("user-disabled")) return "This login was turned off. Ask Coach.";
     if(c.includes("missing-password")) return "Type your password.";
     console.warn("sync: sign in", e);
     return "That didn't work. Check the signal and try again.";   // never Firebase's own words on screen
   }
 
-  return {get ready(){ return configured(); }, get phase(){ return st.phase; }, get role(){ return st.role; }, init, queue, statusText, live, canEdit, writerOf, devName,
-    takeOver, gameDeleted, relayed, restored, panelHTML, bindPanel, paint, bookLocked, watchLine, inBook, _st:st, _pack:pack, _unpack:unpack, _quotaWait:quotaWait, _nearMiss:nearMiss};
+  return {get ready(){ return configured(); }, get joined(){ return configured() && !!box().uid; }, get phase(){ return st.phase; }, get role(){ return st.role; }, init, queue, statusText, live, canEdit, writerOf, devName,
+    takeOver, gameDeleted, relayed, restored, onTeam, panelHTML, bindPanel, paint, bookLocked, watchLine, inBook, _st:st, _pack:pack, _unpack:unpack, _quotaWait:quotaWait, _nearMiss:nearMiss};
 })();
 
 /* ---------- shell: tabs, charter/coach mode, theme, keyboard, screen wake ---------- */
@@ -5289,8 +5735,8 @@ function onKey(e){
     if(/^[0-9]$/.test(k)){ e.preventDefault(); toast("Cancelled"); return; } }
   if(["o","g","q","j"].includes(k)){ e.preventDefault(); ui.prefix={k, t:performance.now()}; toast(({o:"Throw over to which base? 1, 2 or 3",g:"Steals which base? 2, 3 or 4 (home)",q:"Caught stealing at? 2, 3 or 4 (home)",j:"Picked off which base? 1, 2 or 3"})[k]); return; }
   const shown=arsenalFor(g,L.pitcher).filter(c=>c!=="UN");
-  if(/^[1-9]$/.test(k)){ const c=shown[+k-1]; if(c){ e.preventDefault(); ui.type=ui.type===c?null:c; renderChart(); } return; }
-  if(k==="0"){ e.preventDefault(); ui.type=ui.type==="UN"?null:"UN"; renderChart(); return; }
+  if(/^[1-9]$/.test(k)){ const c=shown[+k-1]; if(c){ e.preventDefault(); tapType(c); renderChart(); } return; }
+  if(k==="0"){ e.preventDefault(); tapType("UN"); renderChart(); return; }
   const res={b:"B",c:"CS",s:"SS",f:"F",h:"HBP",n:"BF"}[k];
   if(res){ e.preventDefault(); commitPitch(g,{result:res}); return; }
   if(k==="d"){ e.preventDefault(); commitPitch(g,{result:"B", dirt:true}); return; }
