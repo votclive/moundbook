@@ -381,7 +381,7 @@ const SAVE = {ok: true, err: ""};
 let S;
 function blank(){
   return {v:1, dev:rid(), teams:{boys:{name:"Bobcats", roster:[]}, girls:{name:"Lady Cats", roster:[]}}, teamsRev:0,
-    teamsBase:null, teamsPrev:null, strand:{}, games:{}, booth:{}, say:{}, sayUpd:0, opps:{}, script:null, settings:{bonus:5, to60:3, to30:2, quarters:4, qlen:8, otlen:4, chart:true, extra:true, pub:true, pubSec:30}, seeded:false, sync:false, unsent:{}, role:null};
+    teamsBase:null, teamsPrev:null, strand:{}, games:{}, booth:{}, say:{}, sayUpd:0, opps:{}, script:null, settings:{bonus:5, to60:3, to30:2, quarters:4, qlen:8, otlen:4, chart:true, extra:true, pub:true, pubSec:30}, seeded:false, sync:false, unsent:{}, pubRedo:{}, role:null};
 }
 // The book is one small key for rosters and settings plus one key per game, so a tap rewrites only its own game. A book
 // saved by an older version keeps every game inside the main key; it moves over on the first save that has room.
@@ -1694,7 +1694,17 @@ async function copyText(t, ta){
    Small on purpose: every fan's phone downloads it on every update. One JSON string, because Firestore can't hold lists
    inside lists. Box lines: [num, name, pos, year, height, pts, fgm, fga, tpm, tpa, ftm, fta, oreb, dreb, ast, stl, blk, to, pf, played, on floor]. */
 const PUBK = ["pts","fgm","fga","tpm","tpa","ftm","fta","oreb","dreb","ast","stl","blk","to","pf"];
-function noPub(g, tm, p){ return !!(p.nopub || (tm === "us" && ((S.teams[g.team] || {}).roster || []).some(r => r.pid === p.pid && r.nopub))); }
+// A family's choice (number only) belongs to the player, not the game: Rosters decides for every game, so a final scored on
+// a device that's gone follows it too. A player taken off Rosters keeps his choice in the team's hidden list (it syncs with
+// the rosters). An opponent's or a practice player's flag is their own.
+function noPub(g, tm, p){ if(tm !== "us") return !!p.nopub; const t = S.teams[g.team] || {}, r = (t.roster || []).find(x => x.pid === p.pid);
+  return r ? !!r.nopub : !!(t.hidden || {})[p.pid] || !!p.nopub; }
+function noPubMap(t){ const m = {...((t && t.hidden) || {})}; ((t && t.roster) || []).forEach(p => { m[p.pid] = !!p.nopub; }); for(const k in m) m[k] = !!m[k]; return m; }
+// Rosters swapped in whole (Undo, Restore) never put a name back: a family's number-only choice carries over, on the roster
+// or, for a player who isn't on it, in the team's hidden list. Only unticking it does.
+function keepNoPub(from, to){ for(const k of Object.keys(to || {})){ const t = to[k]; if(!t) continue;
+    for(const [pid, v] of Object.entries(noPubMap((from || {})[k]))){ if(!v) continue; const r = (t.roster || []).find(x => x.pid === pid); if(r) r.nopub = true; else t.hidden = {...(t.hidden || {}), [pid]:1}; } }
+  return to; }
 function pubSnap(g0){
   const R = replay(g0), o = oppInfo(g0.opp), b = booth(g0.id);
   const mask = tm => roster(g0, tm).map(p => noPub(g0, tm, p) ? {...p, name:""} : p), g = {...g0, us:mask("us"), them:mask("them")};
@@ -1837,7 +1847,7 @@ document.addEventListener("click", async ev => {
     case "pm-table": if(g && s){ closeSheet(); toTable(g, s.tm, s.pid); render(); } break;
     case "pm-tech": if(g && s){ closeSheet(); stat(s.tm, s.pid, "tf"); } break;
     case "pm-say": if(s){ closeSheet(); sayEdit(s.pid); } break;
-    case "pm-edit": if(g && s){ const p = player(g, s.tm, s.pid), us = s.tm === "us" && !g.practice, was = {num:p.num, name:p.name, pos:p.pos, grade:p.grade, ht:p.ht, nopub:!!(p.nopub || noPub(g, s.tm, p))};
+    case "pm-edit": if(g && s){ const p = player(g, s.tm, s.pid), us = s.tm === "us" && !g.practice, was = {num:p.num, name:p.name, pos:p.pos, grade:p.grade, ht:p.ht, nopub:noPub(g, s.tm, p)};
       // A player with a tonight-only change opens with the season box unticked, so a second edit doesn't carry the swap over.
       const own = us && g.usOver && g.usOver[s.pid] && Object.keys(g.usOver[s.pid]).length;
       sheetPlayer({title:"Edit #" + p.num, ...was, optionalName:s.tm === "them", both:us, bothOff:!!own, onSave:np => {
@@ -1845,12 +1855,16 @@ document.addEventListener("click", async ev => {
         const changed = Object.keys(np).filter(k => String(np[k] ?? "") !== String(was[k] ?? ""));
         // Tonight only (a jersey swap at the book check): the game gets its own copy of the roster and remembers which fields
         // are tonight's own, so before the tip everything else still follows Rosters (lateAdds).
+        // A family's opt-out (number only) is never tonight only: it goes to the season roster whatever the box says.
         if(us && !both){ if(!g.us.length) g.us = JSON.parse(JSON.stringify((S.teams[g.team] || {}).roster || [])); g.usOwn = true;
-          const ov = {...((g.usOver || {})[s.pid] || {})}; changed.forEach(k => { ov[k] = np[k]; }); g.usOver = {...(g.usOver || {}), [s.pid]:ov}; }
+          const ov = {...((g.usOver || {})[s.pid] || {})}; changed.forEach(k => { if(k !== "nopub") ov[k] = np[k]; }); delete ov.nopub; g.usOver = {...(g.usOver || {}), [s.pid]:ov}; }
         else if(us && g.usOver && g.usOver[s.pid]) changed.forEach(k => { delete g.usOver[s.pid][k]; });
         const q = player(g, s.tm, s.pid); Object.assign(q, np);
         // The season roster takes only what was changed here, not the rest of tonight's copy.
-        if(us && both && changed.length){ const rp = S.teams[g.team].roster.find(x => x.pid === q.pid); if(rp){ changed.forEach(k => { rp[k] = np[k]; }); S.teamsRev++; Sync.dirtyTeams(); } } touch(g); }}); } break;
+        const toSeason = us ? (both ? changed : changed.filter(k => k === "nopub")) : [];
+        if(toSeason.length){ const T = S.teams[g.team], rp = T.roster.find(x => x.pid === q.pid); if(rp){ toSeason.forEach(k => { rp[k] = np[k]; }); S.teamsRev++; Sync.dirtyTeams(); }
+          else if(toSeason.includes("nopub")){ const h = {...(T.hidden || {})}; if(np.nopub) h[q.pid] = 1; else delete h[q.pid]; T.hidden = h; S.teamsRev++; Sync.dirtyTeams(); } }
+        touch(g); if(us && changed.includes("nopub")) flipNoPub(q.pid, !!np.nopub, g); }}); } break;
     case "addp": { if(!g) break; const tm = a.dataset.tm;
       sheetPlayer({title:"Add a player · " + tmName(g, tm), optionalName: tm === "them", onSave:p => {
         if(!canEdit(g)) return; claim(g); const np = {pid:rid(), ...p};
@@ -1915,16 +1929,14 @@ document.addEventListener("click", async ev => {
       sheetPlayer({title:"Edit #" + p.num, num:p.num, name:p.name, pos:p.pos, grade:p.grade, ht:p.ht, nopub:p.nopub, onSave:np => {
           const flip = !!p.nopub !== np.nopub; Object.assign(p, np); S.teamsRev++; save(); Sync.dirtyTeams(); lateAdds(team);
           // Games already played carry their own copy of the roster: send their public copies again with the change.
-          if(flip){ let redo = 0, other = 0;
-            for(const g of Object.values(S.games)){ const q = !g.practice && !g.deleted && (g.us || []).find(x => x.pid === p.pid); if(!q) continue;
-              q.nopub = np.nopub; if(g.status === "pre") continue; if(canEdit(g)){ touch(g); redo++; } else if(Sync.pubResend(g.id)) redo++; else other++; }
-            if(redo || other) toast(`${np.nopub ? "Name taken off" : "Name put back on"} the public page for ${redo} game${redo === 1 ? "" : "s"}.${other ? ` ${other} more ${other === 1 ? "is" : "are"} being scored on another device or waiting for signal: they update by themselves.` : ""}`); }
+          if(flip) flipNoPub(p.pid, !!np.nopub);
           render(); },
         onDelete:() => { const sl = seasonLines(team)[p.pid];
           if(sl && sl.g && !confirm(`${p.name || "#" + p.num} has stats from ${sl.g} game${sl.g > 1 ? "s" : ""} this season. Removing takes them off Rosters and the season totals (each game's box score keeps them). Remove anyway?`)) return;
+          if(p.nopub) S.teams[team].hidden = {...(S.teams[team].hidden || {}), [p.pid]:1};   // his games' public copies keep the number only
           S.teams[team].roster = S.teams[team].roster.filter(x => x.pid !== p.pid); S.teamsRev++; save(); Sync.dirtyTeams(); lateAdds(team); render(); }}); break; }
     case "pdel": if(s && s.opts && s.opts.onDelete){ s.opts.onDelete(); closeSheet(); } break;
-    case "teamsundo": if(S.teamsPrev && confirm("Put back the rosters this device had? Every device gets them.")){ S.teams = S.teamsPrev.teams; S.teamsPrev = null; S.teamsRev = Math.max(S.teamsRev || 0, S.teamsBase || 0) + 1; save(); Sync.dirtyTeams(); render(); toast("Rosters put back."); } break;
+    case "teamsundo": if(S.teamsPrev && confirm("Put back the rosters this device had? Every device gets them.")){ S.teams = keepNoPub(S.teams, S.teamsPrev.teams); S.teamsPrev = null; S.teamsRev = Math.max(S.teamsRev || 0, S.teamsBase || 0) + 1; save(); Sync.dirtyTeams(); render(); toast("Rosters put back."); } break;
     case "teamskeep": S.teamsPrev = null; save(); render(); break;
     case "backup": download(`brier-stats-backup-${pubToday()}.json`, JSON.stringify({brierstats:1, at:Date.now(), teams:S.teams, games:S.games, booth:S.booth, say:S.say, settings:S.settings, opps:S.opps, script:S.script}, null, 1), "application/json"); break;
     case "restore": $("#restore-file").click(); break;
@@ -1970,7 +1982,8 @@ document.addEventListener("submit", ev => {
     // and ends one that was still going.
     const moved = !!d.get("date") && d.get("date") !== g.date, wasPpd = g.off === "ppd";
     Object.assign(g, {date:d.get("date") || g.date, time:d.get("time") || "", opp:String(d.get("opp")).trim() || g.opp, ha:d.get("ha"), event:String(d.get("event") || "").trim(), district:!!d.get("district"), off:moved && wasPpd && d.get("off") === "ppd" ? "" : d.get("off") || "", forfeit:d.get("forfeit") || ""});
-    if(!g.off || g.forfeit) delete g.off; if(!g.forfeit) delete g.forfeit; delete g.offWas;
+    // offWas (a called-off game an accidental tap started) goes only when the sheet offered Postponed and Cancelled.
+    if(!g.off || g.forfeit) delete g.off; if(!g.forfeit) delete g.forfeit; if(!g.ev.some(e => !e.v && !PREGAME(e))) delete g.offWas;
     if(g.forfeit && g.status === "live") g.status = "final";
     closeSheet(); touch(g); Sync.seedSeason(true); toast("Saved."); return; }
   if(f.id === "gform"){ const d = new FormData(f);
@@ -2018,6 +2031,14 @@ function newGameSheet(){
 }
 // Only Coach deletes a game once sync is on (the cloud refuses anyone else). With no signal, the last role this device had.
 function canDelete(){ if(Sync.live()) return Sync.role() === "owner"; return !S.sync || S.role == null || S.role === "owner"; }
+// A name taken off (or put back on) the public page: games already played carry their own copy of the roster, so change it
+// there and send their public copies again. skip: the game being edited, which goes up by itself.
+function flipNoPub(pid, v, skip){ let n = 0;
+  for(const g of Object.values(S.games)){ const q = !g.practice && !g.deleted && (g.us || []).find(x => x.pid === pid); if(!q) continue;
+    q.nopub = v; if(g.status !== "pre" && g !== skip) n++; }
+  // Every played game with this player owes a new public copy, sent from the cloud's copy of each game (Sync.owePids).
+  if(!Sync.owePids([pid]) || S.settings.pub === false || !n) return;
+  toast(`${v ? "Name taken off" : "Name put back on"} the public page for ${n}${skip ? " more" : ""} game${n === 1 ? "" : "s"}${Sync.ready() ? "" : " once this device has signal"}.`); }
 // Fix a game's details, record a postponement, cancellation or forfeit, or delete a game that has no plays.
 function editGameSheet(g){
   const played = g.ev.some(e => !e.v && !PREGAME(e)), canDel = !played && canDelete();
@@ -2115,7 +2136,7 @@ function restore(text){
   if(o.say){ const ch = Object.keys(o.say).filter(pid => o.say[pid] && !S.say[pid]); ch.forEach(pid => { S.say[pid] = o.say[pid]; }); if(ch.length && Sync.live()){ S.sayUpd = Date.now(); Sync.dirtySay(ch); } }
   if(o.script && (o.script.upd || 0) > ((S.script && S.script.upd) || 0)){ S.script = o.script; Sync.dirtyScript(); }
   if(o.booth) for(const [id, b] of Object.entries(o.booth)) if(!S.booth[id] || (b.upd || 0) > (S.booth[id].upd || 0)) S.booth[id] = b;
-  if(o.teams && confirm("Also replace the rosters, opponents' colors and settings with the ones in the backup?")){ S.teams = o.teams; if(o.settings) Object.assign(S.settings, o.settings); if(o.opps) S.opps = o.opps; S.teamsRev++; Sync.dirtyTeams(); }
+  if(o.teams && confirm("Also replace the rosters, opponents' colors and settings with the ones in the backup?")){ S.teams = keepNoPub(S.teams, o.teams); if(o.settings) Object.assign(S.settings, o.settings); if(o.opps) S.opps = o.opps; S.teamsRev++; Sync.dirtyTeams(); }
   // A game the other device was still scoring stays its game until this one takes it over.
   const theirs = Object.values(S.games).filter(g => !g.practice && !g.deleted && g.status === "live" && g.writer && g.writer !== S.dev).length;
   save(); render(); toast("Restored " + n + " games." + (theirs ? ` ${theirs} unfinished game${theirs > 1 ? "s were" : " was"} being scored on the other device: open it and tap Take over to keep scoring here.` : ""), theirs ? 6000 : 2500);
@@ -2246,7 +2267,7 @@ const Sync = (() => {
     pub:{last:{}, timer:{}, seen:{}, rowk:{}, busy:{}, again:{}, retry:{}, other:{}}, seeded:false, stale:false};
   const live = () => st.phase === "live";
   const paint = () => softRender();
-  function clear(){ st.unsub.forEach(u => { try{ u(); }catch(e){} }); st.unsub = []; st.teamsSeen = false; }
+  function clear(){ st.unsub.forEach(u => { try{ u(); }catch(e){} }); st.unsub = []; st.teamsSeen = false; st.gamesSeen = false; }
   async function start(){
     if(st.fb || st.phase === "loading") return;
     if(location.protocol === "file:"){ st.phase = "error"; st.err = "Live sync needs the app's web address, not a file."; paint(); return; }
@@ -2316,7 +2337,7 @@ const Sync = (() => {
         // A copy that names its scorer beats one here that names nobody (Coach's edit sheet saved with no signal), so an
         // unclaimed local copy can never wipe a game another device is scoring.
         if(!l || (r.rev || 0) > (l.rev || 0) || (r.writer !== l.writer && ((r.rev || 0) >= (l.rev || 0) || !l.writer))){
-          if(l && !l.writer && r.writer && S.unsent[id] && (l.rev || 0) > (r.rev || 0)) toast("Your change to " + (r.opp || "a game") + " didn't go up: another device is scoring it now.", 5000);
+          if(l && !l.writer && r.writer && S.unsent[id]) toast("Your change to " + (r.opp || "a game") + " didn't go up: another device is scoring it now.", 5000);
           if(l && l.writer === S.dev && r.writer !== S.dev) toast("Another device took over scoring " + (r.opp || "this game") + ".", 4000);
           S.games[id] = r; st.dirty.delete(id); delete S.unsent[id]; changed = true;
         }
@@ -2324,6 +2345,7 @@ const Sync = (() => {
       // A scorer who signs in while another device is scoring tonight's game lands on the Announcer page, not on a desk
       // whose only live button is Take over.
       if(!st.gamesSeen){ st.gamesSeen = true; const g = cur(); if(g && g.status === "live" && !mine(g) && ui.tab === "desk" && !ANN_ONLY){ ui.tab = "ann"; saveUi(); changed = true; } }
+      if(Object.keys(S.pubRedo || {}).length && ready()) sendOwed();
       if(changed){ save(); softRender(); }
     }, dead));
     st.unsub.push(fb.onSnapshot(fb.collection(db, "hoopsBooth"), snap => {
@@ -2347,7 +2369,7 @@ const Sync = (() => {
       const hasPlayers = t => !!t && Object.values(t).some(x => x && x.roster && x.roster.length);
       const take = !canScore() || (base == null ? hasPlayers(r.teams) || !hasPlayers(S.teams) : rv > base);
       if(take){
-        const was = {}; Object.values(S.teams || {}).forEach(t => ((t && t.roster) || []).forEach(p => { was[p.pid] = !!p.nopub; }));
+        const was = {}, wasR = {}; Object.values(S.teams || {}).forEach(t => { Object.assign(was, noPubMap(t)); ((t && t.roster) || []).forEach(p => { wasR[p.pid] = 1; }); });
         const count = t => Object.values(t || {}).reduce((n, x) => n + ((x && x.roster) || []).length, 0), lost = count(S.teams) - count(r.teams);
         // Keep what this device had, so a wrong roster that came in can be undone without re-pasting (re-pasting makes
         // new player ids, and season stats and name notes follow the ids).
@@ -2357,15 +2379,14 @@ const Sync = (() => {
         S.teams = r.teams; S.teamsRev = rv; S.teamsBase = rv; st.teamsDirty = false; ["boys", "girls"].forEach(lateAdds); if(r.settings) Object.assign(S.settings, cloudSettings(r.settings)); if(r.opps) S.opps = r.opps;
         // A name taken off (or put back on) the public page on another device: the games this device scored carry their
         // own copy of the roster, so change it there and send their public copies again.
-        if(canScore()){ const flip = new Map(); Object.values(S.teams || {}).forEach(t => ((t && t.roster) || []).forEach(p => { if(p.pid in was && was[p.pid] !== !!p.nopub) flip.set(p.pid, !!p.nopub); }));
-          if(flip.size) for(const g of Object.values(S.games)){ if(g.practice || g.deleted) continue; let hit = false;
-            (g.us || []).forEach(q => { if(flip.has(q.pid) && !!q.nopub !== flip.get(q.pid)){ q.nopub = flip.get(q.pid); hit = true; } });
-            if(!hit || g.status === "pre") continue;
-            if(!mine(g)){ pubResend(g.id); continue; }   // a final whose scorer may be gone (the change's own device sends it too)
-            // A name changes only the copy, not the results row (a stale row is healed by seedSeason, which runs after this),
-            // and the copy goes out right away.
-            if(!(g.id in st.pub.seen)){ const R = replay(g); st.pub.seen[g.id] = g.status + ":" + R.q; if(g.status === "final") st.pub.rowk[g.id] = "final:" + R.sc.us + "-" + R.sc.them; }
-            touch(g); pubQueue(g.id, true); } }
+        if(canScore()){ const flip = new Map(), now = {}; Object.values(S.teams || {}).forEach(t => Object.assign(now, noPubMap(t)));
+          for(const pid of new Set([...Object.keys(was), ...Object.keys(now)])){
+            // A player this device never had (its first rosters) isn't a change, and one who left Rosters with no hidden entry
+            // (an older Remove) isn't a put-back.
+            if(!(pid in was) && base == null) continue; if(!(pid in now) && pid in wasR) continue;
+            if(!!was[pid] !== !!now[pid]) flip.set(pid, !!now[pid]); }
+          if(flip.size){ for(const g of Object.values(S.games)) if(!g.practice && !g.deleted && g.status === "pre") (g.us || []).forEach(q => { if(flip.has(q.pid)) q.nopub = flip.get(q.pid); });
+            owePids([...flip.keys()]); } }
         save(); softRender();
       }else if((S.teamsRev || 0) !== rv){ if((S.teamsRev || 0) <= rv) S.teamsRev = rv + 1; st.teamsDirty = true; kick(300); }
     }, dead));
@@ -2393,8 +2414,26 @@ const Sync = (() => {
   // A final another device scored whose public copy must change now (a name taken off or put back). That device may never
   // open the app again (a Safari tab left for the Home Screen app, a replaced iPad), so this one sends the copy only; the
   // game stays theirs, and w still names their device.
-  function pubResend(id){ const g = S.games[id]; if(!g || g.status !== "final" || mine(g)) return false; st.pub.other[id] = true;
-    if(!pubOk(g)){ delete st.pub.other[id]; return false; } pubQueue(id); return true; }
+  // Until this device has the cloud's games it may hold an older copy (a phone opened days later), so the change is
+  // owed instead and goes out from the cloud's copy (sendOwed).
+  function pubResend(id){ const g = S.games[id]; if(!g || g.status !== "final" || mine(g) || !ready()) return false;
+    st.pub.other[id] = true; if(!pubOk(g)){ delete st.pub.other[id]; return false; } pubQueue(id); return true; }
+  // This device has the cloud's games and is hearing it now.
+  function ready(){ return live() && st.gamesSeen && !st.stale; }
+  // A name taken off (or put back on) the public page. Until this device has the cloud's games its copies may be older,
+  // pre or missing (a phone opened days later, no signal, signed out), so the change is owed by player, kept on disk, and
+  // sendOwed sends every played game with that player from the cloud's copy. A book that never synced has no public page.
+  function owePids(pids){ if(!S.sync && S.teamsBase == null) return false; S.pubRedo = S.pubRedo || {}; const o = S.pubRedo["*"] = S.pubRedo["*"] || {};
+    pids.forEach(p => { o[p] = 1; }); save(); if(ready()) sendOwed(); return true; }
+  function sendOwed(){ const any = (S.pubRedo || {})["*"] || {}; S.pubRedo = {}; save(); if(!canScore()) return;
+    for(const g of Object.values(S.games)){ if(g.practice || g.deleted || g.status === "pre" || !(g.us || []).some(q => q.pid in any)) continue;
+      // The roster's choice now, applied to the cloud's copy (which may have replaced the one the change was made on).
+      const ro = (S.teams[g.team] || {}).roster || []; (g.us || []).forEach(q => { const p = ro.find(x => x.pid === q.pid); if(p && q.pid in any) q.nopub = !!p.nopub; });
+      if(!mine(g)){ pubResend(g.id); continue; }   // a final whose scorer may be gone (its own device sends it too); a live one is its scorer's
+      copyOnly(g.id); touch(g); pubQueue(g.id, true); } }
+  // A name changes only the copy, not the results row: a fresh upd on a live row would pull fans on the plain link over to
+  // that game (pubPick). A stale row is healed by seedSeason.
+  function copyOnly(id){ const g = S.games[id]; if(!g || id in st.pub.seen) return; const R = replay(g); st.pub.seen[id] = g.status + ":" + R.q; if(g.status === "final") st.pub.rowk[id] = "final:" + R.sc.us + "-" + R.sc.them; }
   function pubQueue(id, soon){
     const g = S.games[id]; if(!pubOk(g)) return;
     // A period break, the final, or a fix that moves a final score goes out right away; anything else waits its turn.
@@ -2439,7 +2478,7 @@ const Sync = (() => {
         if(mineNow && (g.status === "final" || !h)) has[g.id] = [g.status + ":" + replay(g).q, r.status + ":" + r.us + "-" + r.them];
         if(!h){ add[g.id] = r; continue; }
         if(g.status === "pre"){ if(diff(h, r, ["status", ...KEYS])) add[g.id] = r; }
-        else if(mineNow && (diff(h, r, ["status", ...KEYS]) || (g.status === "live" && diff(h, r, ["per"])) || (g.status === "final" && diff(h, r, ["us","them"])))){ add[g.id] = r; has[g.id] = [g.status + ":" + replay(g).q, r.status + ":" + r.us + "-" + r.them]; }
+        else if(mineNow && (diff(h, r, ["status", ...KEYS]) || (g.status === "live" && diff(h, r, ["per"])) || (g.status === "final" && diff(h, r, ["us","them"])))){ if(h.status === "live" && r.status === "live") r.upd = h.upd || r.upd; add[g.id] = r; has[g.id] = [g.status + ":" + replay(g).q, r.status + ":" + r.us + "-" + r.them]; }
       }
       const off = S.settings.pub === false;
       if(Object.keys(add).length || !cur.exists() || !!(cur.exists() && cur.data().off) !== off) await fb.setDoc(fb.doc(db, "hoopsPublic", "_season"), {games:add, off, upd:Date.now()}, {merge:true});
@@ -2467,7 +2506,11 @@ const Sync = (() => {
         try{ await fb.setDoc(fb.doc(db, "hoopsGames", id), clean(g)); }
         catch(e){ if(!String((e && e.code) || "").includes("permission")) throw e;
           // A delete made while this device's role wasn't known yet: only Coach deletes, so the game comes back.
-          if(g.deleted && st.role !== "owner"){ g.deleted = false;
+          if(g.deleted && st.role !== "owner"){
+            // The cloud's copy is the truth (another device may be scoring it); only a game the cloud never had comes back from here.
+            const c = await fb.getDoc(fb.doc(db, "hoopsGames", id)), cd = c.exists() ? c.data() : null;
+            if(cd && cd.id){ S.games[id] = cd; sent(id); save(); seedSeason(true); if(!cd.deleted) toast("Only Coach can delete a game: " + (g.opp || "it") + " is back on the schedule.", 5000); render(); continue; }
+            g.deleted = false;
             // The delete's own claim goes with it (claim and touch ran in the same tap); an earlier real claim stays.
             if(g.writer === S.dev && (g.upd || 0) - (g.writerAt || 0) < 1000){ g.writer = null; delete g.writerAt; }
             g.rev = (g.rev || 0) + 1; g.upd = Date.now(); save(); seedSeason(true); toast("Only Coach can delete a game: " + (g.opp || "it") + " is back on the schedule.", 5000); render(); continue; }
@@ -2546,7 +2589,7 @@ const Sync = (() => {
     }catch(e){ toast(authMsg(e), 5000); }
     st.busy = false; render();
   }
-  return {start, live, dirty, pubResend, dirtyBooth, dirtyTeams, dirtySay, dirtyScript, seedSeason, panel, click, submit,
+  return {start, live, ready, dirty, owePids, dirtyBooth, dirtyTeams, dirtySay, dirtyScript, seedSeason, panel, click, submit,
     phase:() => st.phase, role:() => st.role, uid:() => st.uid,
     stale:() => st.stale, label:() => (st.role === "owner" ? "Coach" : st.role === "scorer" ? "Scorer" : "Viewer") + (st.stale ? " · not updating" : " · live")};
 })();
