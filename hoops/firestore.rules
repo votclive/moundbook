@@ -1,0 +1,109 @@
+rules_version = '2';
+// Mound Book live sync. Only people Coach lets in can read or write anything.
+// The owner email below is filled in by Mound Book when it shows you these rules.
+service cloud.firestore {
+  match /databases/{db}/documents {
+    function signedIn() { return request.auth != null; }
+    function member() { return signedIn() && exists(/databases/$(db)/documents/members/$(request.auth.uid)); }
+    function role() { return get(/databases/$(db)/documents/members/$(request.auth.uid)).data.role; }
+    function owner() { return member() && role() == 'owner'; }
+    function ownerEmail() { return request.auth.token.email != null && request.auth.token.email.lower() == 'kevcriswell@gmail.com'; }
+
+    // Claiming the program: only the owner email, only once, and only together with the owner's member record.
+    match /config/owner {
+      allow read: if signedIn();
+      allow create: if signedIn() && ownerEmail()
+        && request.resource.data.uid == request.auth.uid
+        && getAfter(/databases/$(db)/documents/members/$(request.auth.uid)).data.role == 'owner';
+      allow update, delete: if false;
+    }
+    // Pitch-count rules and pitch types: everyone reads, Coach sets them.
+    match /config/{name} {
+      allow read: if member();
+      allow write: if owner() && name != 'owner';
+    }
+    match /members/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || member());
+      allow create: if owner()
+        || (signedIn() && uid == request.auth.uid && ownerEmail()
+            && request.resource.data.role == 'owner'
+            && !exists(/databases/$(db)/documents/config/owner)
+            && existsAfter(/databases/$(db)/documents/config/owner));
+      allow update, delete: if owner();
+    }
+    // "Let me in" requests from a new phone. Coach approves them inside Mound Book.
+    match /requests/{uid} {
+      allow read: if signedIn() && (uid == request.auth.uid || owner());
+      allow create, update: if signedIn() && uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['email', 'name', 'at']);
+      allow delete: if owner() || (signedIn() && uid == request.auth.uid);
+    }
+    // Which devices are running which version, so Coach can see the iPad is up to date.
+    match /devices/{dev} {
+      allow read: if member();
+      allow create, update: if member() && request.resource.data.uid == request.auth.uid;
+      allow delete: if owner();
+    }
+    // One document per game. Our hitters' names never come here, only lineup slot and bats.
+    // A copy can't go backwards: rev never decreases. A game moves to another device only when Coach moves it
+    // or a signed-in coach taps Take over (that copy names them in takeover).
+    match /games/{gid} {
+      allow read: if member();
+      // Only Coach deletes a game for everyone, or brings a deleted one back.
+      allow create: if member() && request.resource.data.id == gid
+        && (request.resource.data.deleted == false || owner());
+      allow update: if member()
+        && request.resource.data.rev >= resource.data.rev
+        && (request.resource.data.deleted == false || owner())
+        && (resource.data.deleted == false || owner())
+        && (request.resource.data.writerDev == resource.data.writerDev || owner() || request.resource.data.takeover == request.auth.uid);
+      allow delete: if owner();
+    }
+    // Opposing pitchers. A merged-away kid stays as a tombstone naming the record he joined (mergedInto).
+    match /pitchers/{pid} {
+      allow read: if member();
+      allow create, update: if member() && request.resource.data.id == pid;
+      allow delete: if owner();
+    }
+
+    // ---------- Brier Stats (basketball) ----------
+    // Its own people list: being let into Brier Stats does not let anyone into Mound Book, and the other way round.
+    // Coach (the Mound Book owner) is in both. Scorers write games; viewers only watch.
+    function hoopsIn() { return signedIn() && (owner() || exists(/databases/$(db)/documents/hoopsMembers/$(request.auth.uid))); }
+    function hoopsScorer() { return signedIn() && (owner() || (exists(/databases/$(db)/documents/hoopsMembers/$(request.auth.uid))
+        && get(/databases/$(db)/documents/hoopsMembers/$(request.auth.uid)).data.role == 'scorer')); }
+    match /hoopsMembers/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || hoopsIn());
+      allow write: if owner();
+    }
+    match /hoopsRequests/{uid} {
+      allow read: if signedIn() && (uid == request.auth.uid || owner());
+      allow create, update: if signedIn() && uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['email', 'name', 'at']);
+      allow delete: if owner() || (signedIn() && uid == request.auth.uid);
+    }
+    // Rosters and settings.
+    match /hoopsBook/{name} {
+      allow read: if hoopsIn();
+      allow write: if hoopsScorer();
+    }
+    // One document per game, the whole play-by-play inside. A copy can't go backwards (rev never decreases), and a game
+    // moves to another device only when Coach moves it or a scorer taps Take over (that copy names them in takeover).
+    match /hoopsGames/{gid} {
+      allow read: if hoopsIn();
+      allow create: if hoopsScorer() && request.resource.data.id == gid
+        && (request.resource.data.deleted == false || owner());
+      allow update: if hoopsScorer()
+        && request.resource.data.rev >= resource.data.rev
+        && (request.resource.data.deleted == false || owner())
+        && (resource.data.deleted == false || owner())
+        && (resource.data.writer == null || request.resource.data.writer == resource.data.writer
+            || owner() || request.resource.data.takeover == request.auth.uid);
+      allow delete: if owner();
+    }
+    // The table (subs waiting to check in), booth notes and name notes: not stats, so the announcer can add to them too.
+    match /hoopsBooth/{doc} {
+      allow read, write: if hoopsIn();
+    }
+  }
+}
