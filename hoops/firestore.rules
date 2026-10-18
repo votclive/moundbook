@@ -102,8 +102,19 @@ service cloud.firestore {
       allow delete: if owner();
     }
     // The table (subs waiting to check in), booth notes and name notes: not stats, so the announcer can add to them too.
+    // The PA's game-night script and prep (coaches, officials, sponsor, starters) live here as well.
     match /hoopsBooth/{doc} {
       allow read, write: if hoopsIn();
+    }
+    // The public page: a small copy of each game (score, box score, recent plays) and the season list. Anyone can read it
+    // with no sign-in; only scorers write it. Nothing private goes here: no notes, no table, no name notes.
+    match /hoopsPublic/{doc} {
+      allow read: if true;
+      // A game's copy comes only from the device scoring it, so copies queued on a device that lost the game are refused.
+      allow create, update: if hoopsScorer() && (doc == '_season'
+        || !exists(/databases/$(db)/documents/hoopsGames/$(doc))
+        || request.resource.data.w == get(/databases/$(db)/documents/hoopsGames/$(doc)).data.writer);
+      allow delete: if hoopsScorer();
     }
   }
 }
