@@ -642,7 +642,7 @@ button.lnk{border:0;background:none;padding:0;font:inherit;color:inherit;text-al
    One device scores a game; everyone else signed in follows it live on the Announcer page. Each device's own saved copy is the
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
-const BS_VERSION = "0.4.0";
+const BS_VERSION = "0.4.1";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -1826,7 +1826,8 @@ function viewAnn(){
   const head = `<div class="bugcap"><span>${esc(usName(g))}${rec ? " (" + esc(rec) + ")" : ""} ${gameTitle(g)} · ${esc(gameSub(g))}</span>${met ? `<span>${esc(met)}</span>` : ""}</div>
       <div class="annbug">${bug(g, R, {meta, quiet:!!signalFlag(g), per:fin ? "FINAL" : g.status === "live" ? nowLabel(g, R) : "PREGAME"})}${foulBar(g, R)}</div>
       <div class="linesc">${lineScore(g, R)}</div>`;
-  if(ui.annMode === "box") return h + `<div class="ann stack">${head}${teamGlance(g, R)}<div class="ann-cols"><div class="card">${boxTable(g, R, sd.left)}</div><div class="card">${boxTable(g, R, sd.right)}</div></div></div>`;
+  // Points and fouls only (Kevin): no shooting, rebound or turnover glance here; Jim's page has those.
+  if(ui.annMode === "box") return h + `<div class="ann stack">${head}<div class="ann-cols"><div class="card">${boxTable(g, R, sd.left, false, true)}</div><div class="card">${boxTable(g, R, sd.right, false, true)}</div></div></div>`;
   const hl = headline(g, R, {pa:true});
   const side = tm => {
     const c = R.court[tm], list = sortRoster(paRoster(g, tm)), shown = tableShown(g, tm, R), table = shown.map(x => x.pid), subs = subsOf(g, R, tm, 3);
@@ -2703,23 +2704,25 @@ function grabSegs(){ const s = ui.sheet; if(!s || !s.segs) return; $$("[data-seg
 const BOXCOLS = [["PTS","pts"],["FG","fg"],["3PT","tp"],["FT","ft"],["OR","oreb"],["DR","dreb"],["REB","reb"],["AST","ast"],["STL","stl"],["BLK","blk"],["TO","to"],["PF","pf"],["+/-","pm"]];
 // The fan page's order: what parents ask first (points, rebounds, assists, fouls), with OR and DR right after REB so a
 // phone can leave them out (.fanbox, 4th and 5th columns).
+const PACOLS = [["PTS","pts"],["FOULS","pf"]];
 const FANCOLS = [["PTS","pts"],["REB","reb"],["OR","oreb"],["DR","dreb"],["AST","ast"],["PF","pf"],["FG","fg"],["3PT","tp"],["FT","ft"],["STL","stl"],["BLK","blk"],["TO","to"],["+/-","pm"]];
 function cellOf(ln, k){
   switch(k){ case "fg": return ln.po ? ln.fgm + "-—" : ln.fgm + "-" + ln.fga; case "tp": return ln.po ? ln.tpm + "-—" : ln.tpm + "-" + ln.tpa; case "ft": return ln.po ? ln.ftm + "-—" : ln.ftm + "-" + ln.fta; case "reb": return ln.oreb + ln.dreb; case "pm": return ln.pm > 0 ? "+" + ln.pm : ln.pm; default: return ln[k]; }
 }
 function sumLines(lines){ const t = LINE(); for(const ln of lines) for(const k of Object.keys(t)) t[k] += ln[k] || 0; return t; }
-// fan: the fan page's columns, and a mark on who's on the floor while the game is live.
-function boxTable(g, R, tm, fan){
+// fan: the fan page's columns, and a mark on who's on the floor while the game is live. pa: the PA page, points and fouls
+// only, with no team row or shooting line (they'd be empty).
+function boxTable(g, R, tm, fan, pa){
   const usePm = !R.noPm && R.plays.some(p => !p.void && p.e.t === "IN");
-  const cols = (fan ? FANCOLS : BOXCOLS).filter(c => c[1] !== "pm" || usePm);
+  const cols = (pa ? PACOLS : fan ? FANCOLS : BOXCOLS).filter(c => c[1] !== "pm" || usePm);
   const ps = sortRoster(roster(g, tm)).filter(p => R.box[tm][p.pid]);
   const tot = sumLines(ps.map(p => R.box[tm][p.pid]).concat([R.team[tm]]));
   return `<div style="${tvars(g, tm)}"><div class="tc-head">${badge(g, tm)}<h3 class="fit" data-min="14">${esc(tmName(g, tm))}</h3><span class="disp" style="font-size:28px;font-weight:900">${R.sc[tm]}</span></div></div><div class="scroll-x"><table><tr><th class="l">Player</th>${cols.map(c => `<th>${c[0]}</th>`).join("")}</tr>
     ${ps.map(p => { const ln = R.box[tm][p.pid]; return `<tr><td class="l">${fan && g.status === "live" && R.court[tm].has(p.pid) ? '<i class="onfl" title="On the floor"></i>' : ""}<span class="pn">${esc(p.num)} ${esc(p.name)}${ln.tf >= 2 ? ' <span class="tag solid">EJ</span>' : ln.pf >= 5 ? ' <span class="tag solid">FO</span>' : ""}</span></td>${cols.map(c => `<td>${cellOf(ln, c[1])}</td>`).join("")}</tr>`; }).join("")}
-    ${R.team[tm].oreb + R.team[tm].dreb + R.team[tm].to + R.team[tm].tf ? `<tr><td class="l">Team</td>${cols.map(c => `<td>${["oreb","dreb","reb","to"].includes(c[1]) ? cellOf(R.team[tm], c[1]) : ""}</td>`).join("")}</tr>` : ""}
+    ${!pa && R.team[tm].oreb + R.team[tm].dreb + R.team[tm].to + R.team[tm].tf ? `<tr><td class="l">Team</td>${cols.map(c => `<td>${["oreb","dreb","reb","to"].includes(c[1]) ? cellOf(R.team[tm], c[1]) : ""}</td>`).join("")}</tr>` : ""}
     <tr class="tot"><td class="l">Totals</td>${cols.map(c => `<td>${c[1] === "pm" ? "" : cellOf(tot, c[1])}</td>`).join("")}</tr>
-    <tr><td class="l">Shooting</td>${cols.map(c => `<td>${tot.po && ["fg","tp","ft"].includes(c[1]) ? "—" : c[1] === "fg" ? pct(tot.fgm, tot.fga) : c[1] === "tp" ? pct(tot.tpm, tot.tpa) : c[1] === "ft" ? pct(tot.ftm, tot.fta) : ""}</td>`).join("")}</tr></table></div>
-    ${tot.po ? `<p class="small" style="margin:4px 0 0">— Scored points-only for part of the game: makes are counted, misses weren't, so there's no shooting percentage.</p>` : ""}`;
+    ${pa ? "" : `<tr><td class="l">Shooting</td>${cols.map(c => `<td>${tot.po && ["fg","tp","ft"].includes(c[1]) ? "—" : c[1] === "fg" ? pct(tot.fgm, tot.fga) : c[1] === "tp" ? pct(tot.tpm, tot.tpa) : c[1] === "ft" ? pct(tot.ftm, tot.fta) : ""}</td>`).join("")}</tr>`}</table></div>
+    ${tot.po && !pa ? `<p class="small" style="margin:4px 0 0">— Scored points-only for part of the game: makes are counted, misses weren't, so there's no shooting percentage.</p>` : ""}`;
 }
 function review(g, R){
   const out = [];
