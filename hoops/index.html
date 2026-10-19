@@ -642,7 +642,7 @@ button.lnk{border:0;background:none;padding:0;font:inherit;color:inherit;text-al
    One device scores a game; everyone else signed in follows it live on the Announcer page. Each device's own saved copy is the
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
-const BS_VERSION = "0.4.1";
+const BS_VERSION = "0.4.2";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -670,7 +670,8 @@ const SCHEDULE = [
 
 /* ---------- saved data ----------
    S.games[id]: {id, date, time, team:"boys"|"girls", opp, ha:"Home"|"Away" (ours), district, event, quarters, qlen,
-     us:[player] (our roster as of tip-off), them:[player], ev:[event], status:"pre"|"live"|"final", rev, upd, writer, takeover, deleted, practice}
+     us:[player] (our roster as of tip-off), them:[player], ev:[event], status:"pre"|"live"|"final", rev, upd, writer, takeover, deleted, practice,
+     rz (when Coach last reset it: see resetGame), rzOf (on an Undo of a reset: the resets whose copies hold this game too)}
    player: {pid, num, name, pos, grade ("Fr"|"So"|"Jr"|"Sr"), ht ("6-2")}
    event: {id, at, tm:"us"|"them", pid (null = team), t, ...}
      FG {p:2|3, m:bool, x?, y?}  FT {m}  REB {o:bool}  AST  STL  BLK  TO  PF  TF (technical; no pid = bench/coach)
@@ -2859,7 +2860,7 @@ function viewGames(){
     return `<div class="grow${ui.gid === g.id ? " cur" : ""}"><div class="d">${esc(fmtDate(g.date))}<div class="small" style="font-family:var(--f-body);text-transform:none;font-weight:500">${esc(fmtTime(g.time))}</div></div>
       <div class="tm">${g.team === "girls" ? "Girls" : "Boys"}</div>
       <div><b>${night ? esc(usName(g)) + " " : ""}${g.ha === "Away" ? "at" : "vs"} ${esc(g.opp)}</b> ${g.district ? '<span class="tag">District</span>' : ""} ${g.status === "live" ? (gameOver(g) ? '<span class="tag solid">Not final</span>' : '<span class="tag green">Live</span>') : ""}${g.off ? ` <span class="tag solid">${OFF_WORDS[g.off] || ""}</span>` : g.ppdFrom ? ` <span class="tag">Makeup from ${esc(new Date(g.ppdFrom + "T12:00:00").toLocaleDateString(undefined, {month:"short", day:"numeric"}))}</span>` : ""}${(sbSent(g) || {}).changed ? ' <span class="tag">Resend to Scorebook</span>' : ""}<div class="small">${esc(g.event || "")}</div></div>
-      <div class="row" style="justify-content:flex-end"><span class="res ${res === "W" ? "w" : ""}">${res ? esc(resultWords(g)) : R ? R.sc.us + "-" + R.sc.them : ""}</span>${canEdit(g) ? `<button class="btn sm" data-act="editgame" data-gid="${g.id}">Edit</button>` : ""}<button class="btn sm primary" data-act="open" data-gid="${g.id}">Open</button></div></div>`;
+      <div class="row" style="justify-content:flex-end"><span class="res ${res === "W" ? "w" : ""}">${res ? esc(resultWords(g)) : R ? R.sc.us + "-" + R.sc.them : ""}</span>${canEdit(g) || rzOk(g) ? `<button class="btn sm" data-act="editgame" data-gid="${g.id}">Edit</button>` : ""}<button class="btn sm primary" data-act="open" data-gid="${g.id}">Open</button></div></div>`;
   }, rows = list.map(g => row(g));
   // Game night: tonight's games, both teams, sit on top, so between games the book opens the right one without scrolling the season.
   const today = pubToday(), tn = Object.values(S.games).filter(g => !g.deleted && !g.practice && g.date === today).sort((a, b) => (a.time || "").localeCompare(b.time || "") || a.team.localeCompare(b.team));
@@ -3176,6 +3177,8 @@ function csvOf(g){
 /* ---------- events ---------- */
 document.addEventListener("click", async ev => {
   const t = ev.target;
+  // The second click of a double-click just after a Reset step (on the card that just came up, or the page under it) does nothing.
+  if(ev.detail > 1 && Date.now() < rzHush){ getSelection().removeAllRanges(); return; }
   if(t.matches(".sheet-wrap") || t.closest("button[data-close]")){ closeSheet(); return; }
   const tab = t.closest("[data-tab]");
   if(tab && tab.closest("#tabs")){ ui.tab = tab.dataset.tab; saveUi(); render(); window.scrollTo(0, 0); return; }
@@ -3421,7 +3424,15 @@ document.addEventListener("click", async ev => {
       if(e.t === "REB") e.o = !e.o;
       e.ed = Date.now(); closeSheet(); touch(g); break; }
     case "newgame": newGameSheet(); break;
-    case "editgame": { const x = S.games[a.dataset.gid]; if(x && canEdit(x)) editGameSheet(x); break; }
+    case "editgame": { const x = S.games[a.dataset.gid]; if(x && (canEdit(x) || rzOk(x))) editGameSheet(x); break; }
+    case "rzgame": { const x = s && S.games[s.gid], f = $("#egform"); if(!rzOk(x)) break;
+      // Reset doesn't save what was typed in the sheet above it: say so rather than lose it.
+      if(f && !f.hidden && [...f.elements].some(e => e.name && (e.type === "checkbox" ? e.checked !== e.defaultChecked : e.tagName === "SELECT" ? e.selectedIndex !== Math.max(0, [...e.options].findIndex(o => o.defaultSelected)) : e.value !== e.defaultValue))){ toast("Save or cancel your changes first: Reset doesn't save them.", 4000); break; }
+      if(!rzNet()){ toast(rzNoNet("Reset"), 5000); break; } rzSheet(x, 1); break; }
+    case "rzgo": { const x = s && s.rzStep && S.games[s.gid]; if(!x || Date.now() < s.armAt) break; if(!rzOk(x)){ closeSheet(); break; }
+      if(!rzNet()){ closeSheet(); toast(rzNoNet("Reset"), 5000); break; }
+      // Plays that came in after the last card opened: it asks again, with the new count.
+      if(s.rzStep === 1 || x.ev.length !== s.n) rzSheet(x, 2, s.rzStep === 2); else { closeSheet(); resetStep(x); } break; }
     case "delgame": { const x = s && S.games[s.gid]; if(!x || x.ev.some(e => !e.v && !PREGAME(e)) || !canDelete()) break;
       if(!confirm(`Delete ${usName(x)} ${gameTitle(x).replace(/<[^>]+>/g, "")} on ${fmtDate(x.date)}? It comes off the schedule, the fan page and the PA's script.`)) break;
       x.deleted = true; claim(x); closeSheet(); if(ui.gid === x.id) ui.gid = null; touch(x); Sync.seedSeason(true); toast("Game deleted."); break; }
@@ -3672,6 +3683,88 @@ function newGameSheet(){
 }
 // Only the program owner (Kevin) deletes a game once sync is on (the cloud refuses anyone else). With no signal, the last
 // role this device had.
+// Coach's Reset (in the game's Edit sheet): the game goes back to before tip-off on every device and the fan page. Every play
+// goes, and with them the score, box score, fouls, timeouts, the arrow and periods, Final or a forfeit, and the claim of the
+// device scoring it, so any scorer can start it fresh; so do the subs at the table and the lines read for it (the night's
+// opening and closing lines stay: they belong to the night). The schedule, both rosters, the PA's prep and notes and Jim's
+// notes stay. Not for the practice game (it has Clear practice game) or a deleted one.
+// Only Coach. A book that has synced goes by the cloud's word on who this is (a Scorer or Viewer who signed out keeps the
+// book but has no role); one that never synced belongs to this device alone.
+const rzOk = g => !!g && !g.practice && !g.deleted && g.ev.length > 0 && (S.sync || S.teamsBase != null ? Sync.live() && Sync.role() === "owner" : canDelete());
+// And only while this device hears the cloud: with no signal it may not have every play yet, and a reset (or its Undo) would
+// erase plays it never saw, on every device.
+const rzNet = () => !(S.sync || S.teamsBase != null) || Sync.ready(), rzNoNet = w => w + " needs signal: it changes the game on every device, so this one must be up to date first.";
+// rz is when the game was last reset. A copy from before a reset (an iPad that was offline, a tab opened days later, plays
+// that never went up) never merges with one from after it: Sync's listener takes the newer reset's copy whole. rev jumps far
+// past anything a copy from before could reach, so the cloud refuses that copy's late or queued writes (rev never decreases)
+// and Restore never puts an older backup over it. Undo of a reset is a reset too, back to the plays; it names the resets
+// whose copies hold the same game (rzOf), so plays such a copy has that the Undo lacks fold back in (Sync's rzJoin).
+const RZ_REV = 1e6, RZ_F = ["status", "forfeit", "off", "offWas", "writer", "writerAt", "takeover"];
+function rzNew(g){ g.rz = Math.max(Date.now(), (g.rz || 0) + 1); g.rev = (g.rev || 0) + RZ_REV; }
+function resetGame(g){
+  const was = JSON.parse(JSON.stringify(g)), f0 = GFIELDS.map(k => JSON.stringify(g[k] ?? null));
+  rzNew(g); delete g.rzOf; g.ev = []; g.status = "pre"; if(g.offWas) g.off = g.offWas; delete g.offWas; delete g.forfeit; g.writer = null; delete g.writerAt; g.takeover = null;
+  edField(g, GFIELDS.filter((k, i) => JSON.stringify(g[k] ?? null) !== f0[i])); delete S.strand[g.id]; if(ui.gid === g.id) ui.fu = [];
+  const ch = setBooth(g, b => { b.table = {us:[], them:[]}; b.said = []; b.done = (b.done || []).filter(k => /^(top|end):/.test(k)); }, ["table", "said", "done"]), b = booth(g.id);
+  // Every kid and every line of the game gets a fresh "off", not only the ones on here: one sent to the table or marked read
+  // on a device not heard from yet is stamped before this, so it can't come back on over it.
+  const kids = [...roster(g, "us"), ...roster(g, "them"), ...(b.vis || [])].map(p => p.pid), keys = {table:kids, said:kids, done:scriptSegs().filter(x => (x.at || "game") === "game").map(x => x.id)};
+  for(const [f, ks] of Object.entries(keys)){ const m = kOf(b, f), put = {};
+    new Set(ks).forEach(k => { if(!ch[f][k]) put[k] = {...(m[k] || (f === "table" ? {tm:"us", to:""} : {to:""})), on:0, at:kNow(m[k])}; });
+    Object.assign(m, put); b[f] = kList(f, m); boothOwe(g.id, f, Object.keys(put)); }
+  Sync.reset(g.id); touch(g); return {was, ch, rz:g.rz};
+}
+// Undo: every play back as it was (same ids, removed ones still removed), the game's state and its scorer, and the table and
+// the lines read as the reset found them. The state comes back with the stamps it had, so a change made to it with no signal
+// before the reset (Final tapped on the iPad) still counts when that copy folds in.
+function rzBack(g, x){ const w = x.was;
+  rzNew(g); g.rzOf = [w.rz || 0, ...(w.rzOf || [])].slice(0, 9); g.ev = JSON.parse(JSON.stringify(w.ev)); g.fed = {...(g.fed || {})};
+  RZ_F.forEach(k => { if(w[k] === undefined) delete g[k]; else g[k] = w[k]; if(GFIELDS.includes(k)){ if((w.fed || {})[k]) g.fed[k] = w.fed[k]; else delete g.fed[k]; } });
+  setBooth(g, b => { Object.entries(x.ch).forEach(([f, m]) => Object.entries(m).forEach(([k, e]) => kSet(b, f, k, e[0]))); }, Object.keys(x.ch));
+  Sync.reset(g.id); touch(g); x.rz = g.rz;
+}
+// After the third tap: undoable for 10 minutes (the toast's Undo, and Undo and ⌘Z on the PA and Jim pages) as long as nobody
+// has scored in the game since. From further back in the history (a run of ⌘Z) or after the first minute it asks first.
+// Redo resets it again only while its plays are still the ones Undo put back.
+const RZ_UNDO = 10 * 60000, rzPl = n => n === 1 ? "1 play" : n + " plays";
+function resetStep(g){
+  if(!rzNet()){ toast(rzNoNet("Reset"), 5000); return; }
+  const gid = g.id, n = g.ev.length, nm = usName(g) + (g.ha === "Away" ? " at " : " vs ") + g.opp, x = resetGame(g); x.at = Date.now();
+  // A step that can't go through comes off the history, unless it only waits for signal (keep): then it stays where it was.
+  const no = (m, keep, redo) => setTimeout(() => { toast(m, 5000); const L = redo ? UNDO.past : UNDO.next, i = L.lastIndexOf(step); if(i >= 0){ L.splice(i, 1); if(keep) (redo ? UNDO.next : UNDO.past).push(step); render(); } }, 0);
+  undoable(`Reset ${nm} (${rzPl(n)})`, () => { const y = S.games[gid];
+      if(!y || y.deleted) return no("Can't put the plays back: the game was deleted.");
+      if(Date.now() - x.at > RZ_UNDO) return no(`Too late to undo the reset of ${nm}: it was over 10 minutes ago.`);
+      if(!rzNet()) return no(rzNoNet("Undo"), true);
+      if(y.rz !== x.rz) return no("Can't put the plays back: the game changed on another device.");
+      if(y.ev.length) return no("Can't put the plays back: this game has new plays since the reset.");
+      if((UNDO.next.length || Date.now() - x.at > 60000) && !confirm(`Undo the reset of ${nm}? Its ${rzPl(n)} come${n === 1 ? "s" : ""} back on every device and the fan page.`)) return no("The reset stands.");
+      // The toast says what came back, with no Redo on it: a second tap where Undo was never resets the game again.
+      rzBack(y, x); rzHush = Date.now() + 700; setTimeout(() => toast(`Put back the ${rzPl(n)} of ${nm}.`, 5000), 0); },
+    () => { const y = S.games[gid]; if(!rzNet()) return no(rzNoNet("Redo"), true, true);
+      if(y && !y.deleted && y.rz === x.rz && y.ev.map(e => e.id).join() === x.was.ev.map(e => e.id).join()){ Object.assign(x, resetGame(y)); x.at = Date.now(); }
+      else no("The game changed since. Reset it again from its Edit sheet.", false, true); });
+  const step = UNDO.past[UNDO.past.length - 1];
+  rzHush = Date.now() + 700; undoToast(`${nm} reset: ${rzPl(n)} erased.`);
+}
+// Reset asks three times. Each answer comes up somewhere else on the card than the tap before it, and only takes a tap after
+// a moment, so a double-click, a bouncing finger or three quick taps never get through. Cancel, Esc or a tap outside the
+// card backs out with nothing changed. The first card says what the game is now (a final, or live on another device).
+let rzHush = 0;
+function rzSheet(g, step, more){
+  const n = g.ev.length, t = rzPl(n), s = {gid:g.id, rzStep:step, n, armAt:Date.now() + 700}, R = replay(g);
+  const now = g.status === "final" ? "Final · " + (resultWords(g) || R.sc.us + "-" + R.sc.them) : g.status === "live" ? `${mine(g) ? "Live" : "Live now on another device"} · ${R.sc.us}-${R.sc.them}, ${perLabel(g, R.q)}` : "Not started";
+  const go = l => `<button class="btn dark" data-act="rzgo"${Date.now() < s.armAt ? " disabled" : ""}>${l}</button>`;
+  s.html = () => step === 1 ? `<h3>Reset ${esc(usName(g))} ${gameTitle(g)}, ${esc(fmtDate(g.date))}?</h3><p class="small" style="margin:0">${esc(now)}</p>
+    <div class="row" style="margin:6px 0 14px">${go(n === 1 ? "Yes, erase the 1 play" : "Yes, erase all " + t)}</div>
+    <p style="margin:0 0 8px">Every play goes, and with them the score, the box score, fouls, timeouts, the arrow, the periods and Final. The game goes back to before tip-off on every device and the fan page, and any scorer can start it fresh. Subs waiting at the table and the lines the PA marked read for it are cleared too.</p>
+    <p class="small" style="margin:0 0 12px">Stays: the game on the schedule, both rosters, the PA's prep and notes, and Jim's notes.</p>
+    <div class="row" style="justify-content:flex-end"><button class="btn" data-close>Cancel</button></div>`
+  : `<h3>${more ? "More plays came in. " : ""}Erase ${t} for good?</h3><p style="margin:0 0 14px">Last check. Season records, game logs and the fan page stop counting this game until it's scored again. For 10 minutes, Undo (on the toast, or on the Announcer page) puts the plays back if nobody has scored in it since.</p>
+    <div class="row between"><button class="btn" data-close>Cancel</button>${go(n === 1 ? "Erase it for good" : "Erase them for good")}</div>`;
+  rzHush = Date.now() + 700; openSheet(s);
+  setTimeout(() => { const b = ui.sheet === s && $('#sheet [data-act="rzgo"]'); if(b) b.disabled = false; }, 700);
+}
 function canDelete(){ if(Sync.live()) return Sync.role() === "owner"; return !S.sync || S.role == null || S.role === "owner"; }
 // A name taken off (or put back on) the public page: games already played carry their own copy of the roster, so change it
 // there and send their public copies again. skip: the game being edited, which goes up by itself.
@@ -3683,8 +3776,9 @@ function flipNoPub(pid, v, skip){ let n = 0;
   toast(`${v ? "Name taken off" : "Name put back on"} the public page for ${n}${skip ? " more" : ""} game${n === 1 ? "" : "s"}${Sync.ready() ? "" : " once this device has signal"}.`); }
 // Fix a game's details, record a postponement, cancellation or forfeit, or delete a game that has no plays.
 function editGameSheet(g){
-  const played = g.ev.some(e => !e.v && !PREGAME(e)), canDel = !played && canDelete();
-  openSheet({gid:g.id, html:() => `<h3>Edit: ${esc(usName(g))} ${gameTitle(g)}</h3><form id="egform" class="stack">
+  const played = g.ev.some(e => !e.v && !PREGAME(e)), canDel = !played && canDelete(), ed = canEdit(g), rz = rzOk(g), n = g.ev.length;
+  // Coach can reset a game another device is scoring: then the sheet holds only Reset.
+  openSheet({gid:g.id, html:() => `<h3>Edit: ${esc(usName(g))} ${gameTitle(g)}</h3>${ed ? "" : `<p style="margin:0 0 4px">Another device is scoring this game, so its details are changed there.</p>`}<form id="egform" class="stack"${ed ? "" : " hidden"}>
     <div class="row"><label class="fld" style="flex:1"><span>Date</span><input type="date" name="date" value="${esc(g.date)}" required></label><label class="fld" style="flex:1"><span>Tip-off</span><input type="time" name="time" value="${esc(g.time || "")}"></label></div>
     <div class="row"><label class="fld" style="flex:1"><span>Opponent</span><input type="text" name="opp" value="${esc(g.opp)}" required></label>
     <label class="fld" style="width:140px"><span>Where</span><select name="ha"><option ${g.ha === "Home" ? "selected" : ""}>Home</option><option ${g.ha === "Away" ? "selected" : ""}>Away</option><option ${g.ha === "Neutral" ? "selected" : ""}>Neutral</option></select></label></div>
@@ -3694,7 +3788,8 @@ function editGameSheet(g){
     <label class="fld"><span>Forfeit ruling</span><select name="forfeit"><option value="">None</option><option value="W" ${g.forfeit === "W" ? "selected" : ""}>Forfeit: Greenbrier wins</option><option value="L" ${g.forfeit === "L" ? "selected" : ""}>Forfeit: Greenbrier loses</option></select></label>
     <p class="small" style="margin:0">Moved, or a postponed game has its makeup date? Change the date here: it goes back on the schedule, and the fan page and the PA's script follow. A forfeit sets the win or loss for the record and ends a game still in progress; any stats from the plays still count.</p>
     <div class="row"><button class="btn primary" type="submit">Save</button><button class="btn" type="button" data-close>Cancel</button>${canDel ? `<button class="btn dark" type="button" data-act="delgame">Delete this game</button>` : ""}</div>
-    ${canDel ? "" : `<p class="small" style="margin:0">${played ? `A game with plays can't be deleted. Opened the wrong game and scored in it? Remove its plays under Plays, then ${canDelete() ? "delete it here" : "ask the program owner (Kevin) to delete it"}.` : "Only the program owner (Kevin) can delete games."}</p>`}</form>`});
+    ${canDel ? "" : `<p class="small" style="margin:0">${played ? `A game with plays can't be deleted. Opened the wrong game and scored in it? Remove its plays under Plays, then ${canDelete() ? "delete it here" : "ask the program owner (Kevin) to delete it"}.` : "Only the program owner (Kevin) can delete games."}</p>`}</form>
+    ${rz ? `<div class="row" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--grey)"><span class="small" style="flex:1 1 220px">${rzNet() ? `Start it over: Reset erases its ${rzPl(n)} on every device and the fan page and puts it back before tip-off. The schedule, both rosters and the PA's prep stay.` : esc(rzNoNet("Reset"))}</span><button class="btn dark" type="button" data-act="rzgame">Reset game</button></div>` : ""}${ed ? "" : `<div class="row" style="margin-top:12px"><button class="btn" type="button" data-close>Close</button></div>`}`});
 }
 function normHt(h){ const m = String(h || "").trim().match(/^(\d)\s*(?:['’′-]|ft\.?)\s*(\d{1,2})\s*(?:["”″]|''|in\.?)?$/i); return m ? m[1] + "-" + m[2] : String(h || "").trim(); }
 const GRADES = {fr:"Fr", freshman:"Fr", "9":"Fr", "9th":"Fr", so:"So", sophomore:"So", "10":"So", "10th":"So", jr:"Jr", junior:"Jr", "11":"Jr", "11th":"Jr", sr:"Sr", senior:"Sr", "12":"Sr", "12th":"Sr"};
@@ -3876,6 +3971,9 @@ const PubRead = (() => {
       // same season heard again after a lock: the game on screen gets its listener back (stop() took it), or it freezes.
       const j = JSON.stringify(d.exists() ? d.data() : {}); if(PS.phase === "live" && (j === PS.seasonJ || (off && !d.exists()))){ watch(); return; } PS.seasonJ = j;
       const r = d.exists() ? d.data() : {}; PS.season = r.games || {}; PS.off = !!r.off; PS.phase = "live"; PS.err = "";
+      // A game back before tip-off (Coach reset it): the copy this phone holds goes, and its listener with it (a new one
+      // starts when the game does, and gets the new copy).
+      for(const [id, x] of Object.entries(PS.season)) if(x && x.status === "pre"){ delete PS.snap[id]; if(PS.due) delete PS.due[id]; if(PS.watching === id){ PS.unG(); PS.unG = null; PS.watching = null; } }
       for(const x of Object.values(PS.season)) if(x && x.status === "live" && x.us !== x.them && /^END (REG|OT\d*)$/.test(x.per || "")){ x.status = "final"; x.per = "Final"; }
       if(!PS.picked || !PS.season[PS.gid]){ const want = pubPick(), cur = PS.season[PS.gid], nw = PS.season[want];
         // A game going live while a fan reads down the page (the girls box score at the doubleheader switch) gets a bar
@@ -3895,7 +3993,7 @@ const PubRead = (() => {
     PS.watching = id;
     PS.unG = PS.fb.onSnapshot(PS.fb.doc(PS.db, "hoopsPublic", id), d => { if(!d.exists()) return; let sn; try{ sn = JSON.parse(d.data().j); }catch(e){ return; }
       if(sn.status === "live" && sn.brk && sn.q > (sn.quarters || 4) && sn.sc.us !== sn.sc.them) sn.status = "final";
-      const apply = () => { PS.snap[id] = sn; render(); };
+      const apply = () => { if((PS.season[id] || {}).status === "pre") return; PS.snap[id] = sn; render(); };
       const D = PS.delay * 1000; if(!D){ apply(); return; }
       // With the stream delay a copy shows when its newest play is as old as the delay: the time the copy waited at the
       // table before it went out comes off (both times are the scorer's clock, so a phone whose clock is off doesn't
@@ -4001,7 +4099,7 @@ const RULES = "rules_version = '2';\n// Mound Book live sync. Only people Coach 
 const Sync = (() => {
   const st = {phase:"off", err:"", uid:null, email:"", name:"", role:null, fb:null, auth:null, db:null, unsub:[], reqs:[], mems:[],
     dirty:new Set(), teamsDirty:false, teamsSent:null, teamsSentJ:"", gamesSeen:false, teamsSeen:false, tries:0, scriptDirty:false, pushing:false, timer:null, mode:"in", busy:false,
-    pub:{last:{}, timer:{}, seen:{}, rowk:{}, busy:{}, again:{}, retry:{}, other:{}}, seeded:false, stale:false};
+    pub:{last:{}, timer:{}, seen:{}, rowk:{}, busy:{}, again:{}, retry:{}, other:{}}, seeded:false, stale:false, pubDel:new Set(), rzWas:{}};
   const live = () => st.phase === "live";
   const paint = () => { softRender(); askCard(); };
   function clear(){ st.unsub.forEach(u => { try{ u(); }catch(e){} }); st.unsub = []; st.teamsSeen = false; st.gamesSeen = false; st.oweSent = false; }
@@ -4065,6 +4163,18 @@ const Sync = (() => {
         if(ch.type === "removed"){ if(l && !st.dirty.has(id)){ delete S.games[id]; delete S.unsent[id]; changed = true; } return; }
         if(!r || !r.id) return;
         if(ch.type === "modified") HEARD[id] = Date.now();
+        // A reset (rz: when Coach last reset the game) splits its copies in two, and one from before never merges with one
+        // from after. A copy here from before takes the cloud's whole: its plays go, owed or kept from a takeover too. When
+        // the cloud's copy is an Undo back to this copy's plays (rzOf), they are one game, and nothing here is lost. One in
+        // the cloud from before (it got there late) is never taken: Coach's device sends its own back over it, and any other
+        // waits for that. Only Coach resets, so a reset made here on any other device (owed: the cloud never took it) gives
+        // way to the cloud's copy.
+        if(l && (r.rz || 0) !== (l.rz || 0)){
+          if((r.rz || 0) > (l.rz || 0)){ const of = r.rzOf || [], was = st.rzWas[id], w = of.includes(l.rz || 0) ? l : was && of.includes(was.rz || 0) ? was : null; if(w) rzJoin(id, l, w, r); else rzTake(id, l, r); }
+          else if(canScore() && st.role === "owner"){ l.rev = Math.max(l.rev || 0, r.rev || 0) + 1; dirty(id); }
+          else if(S.unsent[id]){ const back = (r.ev || []).length > (l.ev || []).length; S.games[id] = r; st.dirty.delete(id); delete S.unsent[id]; unpub(id); if(back) toast("Only the program owner (Kevin) can reset a game: its plays are back.", 5000); }
+          changed = true; return;
+        }
         // Two devices both think they score this game (one took over while the other had no signal). The later takeover
         // wins. If that's the other device, plays only this one has wait in S.strand until someone takes the game back;
         // if it's this one, the other device's plays are folded in before this copy goes up.
@@ -4193,6 +4303,39 @@ const Sync = (() => {
     // A game nobody tapped Final on counts once it's over, so a fix to it is owed the same way.
     if(openGame(g) && !(S.pubOwe || {})[id]){ (S.pubOwe = S.pubOwe || {})[id] = 1; save(); }
     st.dirty.add(id); kick(600); pubQueue(id); }
+  // What this device hears when a reset (or its Undo) made on another device reaches it: the device scoring the game counts
+  // what it lost; any other just hears why the score went away, or came back.
+  function rzSay(id, l, g){ const had = new Set((l.ev || []).map(e => e.id)), has = new Set((g.ev || []).map(e => e.id)), lost = (l.ev || []).filter(e => !has.has(e.id)).length, back = (g.ev || []).filter(e => !had.has(e.id)).length;
+    const nm = `${usName(g)} ${g.ha === "Away" ? "at" : "vs"} ${g.opp}`, are = k => k === 1 ? "is" : "are";
+    return back ? `Coach put back the ${rzPl(back)} of ${nm}.${lost ? ` ${rzPl(lost)} from after the reset ${are(lost)} gone.` : ""}`
+      : !lost ? "" : l.writer === S.dev || S.unsent[id] ? `Coach reset ${nm}: ${rzPl(lost)} scored here ${are(lost)} gone.` : `Coach reset ${nm}: its plays are erased.`; }
+  // This device's copy is from before a reset made on another device (or its Undo): the cloud's copy replaces it whole, and
+  // what it was about to send to the fan page for it is dropped. Named as the game's scorer again (an Undo), it sends its fan
+  // page copy. The device that was scoring it may have had a season row with the old score waiting for signal (it went just
+  // before this): that row is put right again, and while the game is back before tip-off its fan page copy goes. Other
+  // devices leave both alone, so a scorer starting the game fresh is never undone by them.
+  function rzTake(id, l, r){ const here = l.writer === S.dev || !!S.unsent[id], say = rzSay(id, l, r);
+    if((l.ev || []).length) st.rzWas[id] = l;   // an Undo of this reset brings back plays only this copy had (rzJoin)
+    S.games[id] = r; st.dirty.delete(id); delete S.unsent[id]; delete S.strand[id]; if(ui.gid === id) ui.fu = []; unpub(id);
+    // A card open on the game as it was (its Edit sheet or Reset, Fix this play) goes.
+    const s = ui.sheet; if(s && (s.gid === id || (s.eid && hasEv(l, s.eid) && !hasEv(r, s.eid)))) closeSheet();
+    if(say) toast(say, 5000);
+    if(!canScore()) return; if(r.writer === S.dev && r.status !== "pre") pubQueue(id, true);
+    // Sent after anything this device had waiting, so they land after it.
+    if(!here || r.status !== "pre") return; const {fb, db} = st;
+    fb.deleteDoc(fb.doc(db, "hoopsPublic", id)).catch(() => {}); fb.setDoc(fb.doc(db, "hoopsPublic", "_season"), {games:{[id]:seasonRow(r)}, upd:Date.now()}, {merge:true}).catch(() => {}); }
+  const hasEv = (g, eid) => (g.ev || []).some(e => e.id === eid);
+  // The cloud's copy is Coach's Undo of a reset, back to the plays of a copy this device has (w: this one, or the one the
+  // reset replaced here): the same game. Plays only w has (scored with no signal, or as the reset was made) go back in, with
+  // any newer change w has to the game (mergeGame), and go up from the device the Undo names as scoring it. Coach's device
+  // sends its own only for a game nobody scores or one that's over (two copies of those at one rev fold together).
+  function rzJoin(id, l, w, r){ const m = mergeGame(r, w, true), up = m.n > 0 && canScore() && (r.writer === S.dev || (st.role === "owner" && (!r.writer || openGame(m.g)))), g = up ? m.g : r, say = w === l ? "" : rzSay(id, l, g);
+    S.games[id] = g; delete st.rzWas[id]; st.dirty.delete(id); delete S.unsent[id]; if(say) toast(say, 5000);
+    if(up){ g.rev = (r.rev || 0) + 1; g.upd = Date.now(); dirty(id); } else if(canScore() && r.writer === S.dev && r.status !== "pre") pubQueue(id, true); }
+  function unpub(id){ const P = st.pub; clearTimeout(P.timer[id]); P.timer[id] = null; ["seen", "rowk", "other", "again", "retry"].forEach(k => { delete P[k][id]; }); if(S.pubOwe) delete S.pubOwe[id]; }
+  // Coach reset a game here (or undid one): nothing of the copy before goes to the fan page, and once the cloud has the new
+  // copy, a game back before tip-off loses its fan page copy and its season row's score (push).
+  function reset(id){ unpub(id); st.pubDel.add(id); }
   function sent(id){ st.dirty.delete(id); if(S.unsent[id]){ delete S.unsent[id]; save(); } }
   // What's owed is kept in S.boothOwe (setBooth); this only sends it soon.
   function dirtyBooth(id){ if(id !== "practice" && (S.boothOwe || {})[id]) kick(600); }
@@ -4242,11 +4385,12 @@ const Sync = (() => {
     // One public write in flight per game. With no signal a write never finishes, and without this every tap would
     // stack up another copy (each one a read on every fan's phone once the signal is back). The newest copy follows.
     if(P.busy[id]){ P.again[id] = true; return; }
-    const snap = pubSnap(g), key = g.status + ":" + snap.q, rev = g.rev, {fb, db} = st;
+    const snap = pubSnap(g), key = g.status + ":" + snap.q, rev = g.rev, rz = g.rz, {fb, db} = st;
     P.busy[id] = true; P.last[id] = Date.now();
     try{
       // w: the rules take a game's public copy only from the device the game names as its scorer.
       await fb.setDoc(fb.doc(db, "hoopsPublic", id), {j:JSON.stringify(snap), upd:snap.upd, w:g.writer || S.dev});
+      if((S.games[id] || {}).rz !== rz) return;   // reset while this was on its way: no season row with the old score
       // The results row changes at each period break and the final, and again when a fix after the final moves the score.
       const row = seasonRow(g), rk = row.status + ":" + row.us + "-" + row.them;
       const owed = !!(S.pubOwe || {})[id];
@@ -4310,6 +4454,10 @@ const Sync = (() => {
         const rev = g.rev;
         try{ await fb.setDoc(fb.doc(db, "hoopsGames", id), clean(g)); }
         catch(e){ if(!String((e && e.code) || "").includes("permission")) throw e;
+          // Reset on another device: this copy was from before it, and the listener takes the cloud's. Asked here when the
+          // listener hasn't heard it yet, so the copy isn't taken for one another device is scoring.
+          const rzc = ((S.games[id] || {}).rz || 0) === (g.rz || 0) ? await fb.getDoc(fb.doc(db, "hoopsGames", id)).catch(() => null) : null;
+          if(((S.games[id] || {}).rz || 0) !== (g.rz || 0) || (rzc && rzc.exists() && (rzc.data().rz || 0) !== (g.rz || 0))) continue;
           // A delete made while this device's role wasn't known yet: only Coach deletes, so the game comes back.
           if(g.deleted && st.role !== "owner"){
             // The cloud's copy is the truth (another device may be scoring it); only a game the cloud never had comes back from here.
@@ -4324,7 +4472,10 @@ const Sync = (() => {
           if(openGame(g)){ if(S.games[id] && S.games[id].rev === rev) sent(id); continue; }
           sent(id); clearTimeout(st.pub.timer[id]); st.pub.timer[id] = null;
           toast("The cloud didn't take this device's copy of " + (g.opp || "the game") + ": another device is scoring it. Your plays stay on this device.", 5000); continue; }
-        if(S.games[id] && S.games[id].rev === rev) sent(id);
+        const now = S.games[id] && S.games[id].rev === rev; if(now) sent(id);
+        // The cloud has the reset now, so the rules refuse any fan page copy from before still on its way (it names a scorer
+        // the game no longer has): the game's copy there goes, and its season row goes back to before tip-off.
+        if(now && st.pubDel.delete(id) && g.status === "pre"){ await fb.deleteDoc(fb.doc(db, "hoopsPublic", id)); await fb.setDoc(fb.doc(db, "hoopsPublic", "_season"), {games:{[id]:seasonRow(g)}, upd:Date.now()}, {merge:true}); }
         if(st.pub.retry[id]){ st.pub.retry[id] = false; pubQueue(id); }
       }
       // Each game's booth: only the fields, ids and boxes owed (S.boothOwe), merged into the cloud's copy. Paid once the
@@ -4427,7 +4578,7 @@ const Sync = (() => {
     }catch(e){ toast(authMsg(e), 5000); }
     st.busy = false; render();
   }
-  return {start, live, ready, dirty, owePids, dirtyBooth, dirtyTeams, dirtySay, dirtyBc, dirtyScript, seedSeason, panel, click, submit,
+  return {start, live, ready, dirty, reset, owePids, dirtyBooth, dirtyTeams, dirtySay, dirtyBc, dirtyScript, seedSeason, panel, click, submit,
     phase:() => st.phase, role:() => st.role, uid:() => st.uid,
     stale:() => st.stale, label:() => (st.role === "owner" ? "Coach" : st.role === "scorer" ? "Scorer" : "Viewer") + (st.stale ? " · not updating" : st.role === "owner" && st.reqs.length ? " · " + st.reqs.length + " waiting" : pubOwed() ? " · updating fan page" : " · live")};
 })();
