@@ -1484,8 +1484,8 @@ function viewDesk(){
     <div class="cact no-print">
       <button class="btn" data-act="poss" ${edit ? "" : "disabled"}>Arrow ${R.poss ? (R.poss === sd.left ? "◀ " : "▶ ") + `<span class="an">${esc(tmName(g, R.poss))}</span>` : "· set"}</button>
       <button class="btn" data-act="note" ${edit ? "" : "disabled"}>+ Warning / note</button>
-      ${ended && g.status !== "final" ? `<button class="btn primary" data-act="final" ${edit ? "" : "disabled"}>Make it final: ${R.sc.us}-${R.sc.them}</button>` : R.brk && g.status !== "final" ? `<button class="btn" data-act="bkchk">${nowLabel(g, R) === "HALFTIME" ? "Halftime check" : "Book check"}</button>` : `<button class="btn" data-act="send">Send to Scorebook</button>`}
-      <button class="btn" data-act="go" data-tab="box">Review game</button>
+      ${ended && g.status !== "final" ? `<button class="btn primary" data-act="final" ${edit ? "" : "disabled"}>Make it final: ${R.sc.us}-${R.sc.them}</button>` : `<button class="btn" data-act="send">Send to Scorebook</button>`}
+      ${R.brk && !ended && g.status !== "final" ? `<button class="btn" data-act="bkchk">${nowLabel(g, R) === "HALFTIME" ? "Halftime check" : "Book check"}</button>` : `<button class="btn" data-act="go" data-tab="box">Review game</button>`}
     </div>
     <div class="mini">${playList(g, R, flagged ? 2 : 5, false, null, edit)}</div></div>${teamCol(g, R, sd.right, sd.right === ha.home ? "Home" : "Away", ui.narrow !== hk(sd.right))}</div>`;
   return h;
