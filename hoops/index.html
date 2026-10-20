@@ -428,6 +428,24 @@ body.annfull .top .tabs{visibility:hidden}
 .visbook{display:grid;min-width:0;line-height:1.2}
 .visbook .tag{margin-left:4px}
 .visadd{padding-bottom:6px;border-bottom:1px solid var(--grey)}
+/* Saved rosters: the list on Rosters, and the editor (whole names, no sideways scroll on a laptop or an iPad). */
+.libteams{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:0 16px}
+/* A wider sheet than other cards, and the phonetic column wider than the name: spellings run longer than the names. */
+.sheet.wide:has(#libform){max-width:1120px}
+.librow{display:grid;grid-template-columns:56px minmax(0,1fr) minmax(0,1.25fr) 58px 64px 64px 46px;gap:6px;align-items:center;margin-bottom:5px}
+.librow input[type=text],.librow select{min-height:40px;padding:4px 8px}
+.librow .ldel{min-height:40px}
+.librow.libhead{font-family:var(--f-display);font-weight:700;font-size:12px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:2px}
+.librow.dup .lnum{border:2px solid var(--black)}
+.libadd{padding-bottom:8px;border-bottom:1px solid var(--grey);margin-bottom:8px}
+.libpaste summary{font-weight:600;cursor:pointer;margin-top:8px}
+.libnote{margin:6px 2px 0}
+@media (max-width:700px){
+  .librow{grid-template-columns:56px repeat(3,minmax(0,1fr)) 46px}
+  .librow.libhead{display:none}
+  .librow .lname{grid-column:2/5;grid-row:1} .librow .ldel{grid-column:5;grid-row:1} .librow .lsay{grid-column:2/5;grid-row:2}
+  .librow .lpos{grid-column:2;grid-row:3} .librow .lgrade{grid-column:3;grid-row:3} .librow .lht{grid-column:4;grid-row:3}
+}
 
 /* ---------- Broadcast page (?broadcast) ---------- */
 body.bcfull .brand b small{font-size:.6em;letter-spacing:.12em;margin-left:6px}
@@ -642,7 +660,7 @@ button.lnk{border:0;background:none;padding:0;font:inherit;color:inherit;text-al
    One device scores a game; everyone else signed in follows it live on the Announcer page. Each device's own saved copy is the
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
-const BS_VERSION = "0.4.2";
+const BS_VERSION = "0.5.0";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -671,11 +689,21 @@ const SCHEDULE = [
 /* ---------- saved data ----------
    S.games[id]: {id, date, time, team:"boys"|"girls", opp, ha:"Home"|"Away" (ours), district, event, quarters, qlen,
      us:[player] (our roster as of tip-off), them:[player], ev:[event], status:"pre"|"live"|"final", rev, upd, writer, takeover, deleted, practice,
-     rz (when Coach last reset it: see resetGame), rzOf (on an Undo of a reset: the resets whose copies hold this game too)}
+     rz (when Coach last reset it: see resetGame), rzOf (on an Undo of a reset: the resets whose copies hold this game too),
+     rzVis (1: tonight's visitors' list had players when Coach reset it, so the game keeps that list: rzHold; 0: it had
+     nobody), rzVisAt (the rz of the reset rzVis was said for: a device still on 0.4.2 resets without saying, so a game
+     whose last reset didn't say keeps its list, as every reset did before), rzOut (the visitors a reset before the game's
+     day took out of the book and the saved roster: rzTyped; Restore puts them back with the plays)}
    player: {pid, num, name, pos, grade ("Fr"|"So"|"Jr"|"Sr"), ht ("6-2")}
    event: {id, at, tm:"us"|"them", pid (null = team), t, ...}
      FG {p:2|3, m:bool, x?, y?}  FT {m}  REB {o:bool}  AST  STL  BLK  TO  PF  TF (technical; no pid = bench/coach)
-     TMO {len:60|30}  IN  OUT  PER (ends the period)  POSS {to}  NOTE {txt}  v:true = voided (kept, struck through)
+     TMO {len:60|30}  IN {lu: a starter tapped before the tip}  OUT  PER (ends the period)  POSS {to}  NOTE {txt}
+     v:true = voided (kept, struck through). A tap before the tip that the kid wearing a number lent the kid who took it
+     (paFold) has lw:"pid#num" (his id and that number), so it goes back to him if he comes back on it; lv:1 = crossed
+     out (v) only because the kid who took it had taps of his own. One with lw and no pid is parked on that number: its kid
+     left the book before the tip with only taps taken back, and the next kid the PA's list puts on that number takes it
+     (or he does, back on it). A tap stamped ed was changed after it was made (the later stamp wins where two copies of
+     the game meet: mergeEv).
    S.booth[gid]: {table:{us:[pid], them:[pid]}, said:[pid], notes, info:{usCoach, oppCoach, officials, sponsor, honors},
      start:{us:[pid], them:[pid]}, done:[script line id], upd}: players waiting at the scorer's table, which of them the
      announcer has called, the booth's notes, and what the PA script needs (the starters the PA introduces, who coaches and
@@ -686,18 +714,24 @@ const SCHEDULE = [
      players keep their pid all season. booth(gid).vis: the PA's own list of the visitors (paRoster, paFold).
      The lists in booth(gid) (vis, table, said, done) are also kept by id (visBy, tableBy, saidBy, doneBy: see setBooth).
      S.boothOwe, S.sayOwe, S.scriptOwe: booth changes, spellings and the script still owed to the cloud (kept on the device).
-   S.bc: {n:{key:text}, upd}: Jim's broadcast notes that last the season (keys in bcKey/bcTeamKey); S.bcDirty: keys owed to the cloud. */
+   S.bc: {n:{key:text}, upd}: Jim's broadcast notes that last the season (keys in bcKey/bcTeamKey); S.bcDirty: keys owed to the cloud.
+   S.lib.e[pid]: {t:"boys"|"girls", o:opponent lowercased, num, name, pos, grade, ht, del, f:{field:stamp}, at}: the saved
+     rosters, one entry per kid per opponent (see libRoster), shared in hoopsBooth/_opp. Each field has its own stamp (f; at
+     is the latest), so two devices fixing one kid both keep their fixes. His phonetic is S.say[pid], where every page reads
+     it. S.libOwe[pid]: {field:stamp} still owed to the cloud. S.libSeeded: "local" or "live" once the old games are read in. */
 const KEY = "brierstats.v1";
 const SAVE = {ok: true, err: ""};
 let S;
 function blank(){
   return {v:1, dev:rid(), teams:{boys:{name:"Bobcats", roster:[]}, girls:{name:"Lady Cats", roster:[]}}, teamsRev:0,
-    teamsBase:null, teamsPrev:null, strand:{}, games:{}, booth:{}, say:{}, sayUpd:0, bc:{n:{}, upd:0}, bcDirty:{}, opps:{}, script:null, settings:{bonus:5, to60:3, to30:2, quarters:4, qlen:8, otlen:4, chart:true, extra:true, pub:true, pubSec:30}, seeded:false, sync:false, unsent:{}, pubRedo:{}, role:null};
+    teamsBase:null, teamsPrev:null, strand:{}, games:{}, booth:{}, say:{}, sayUpd:0, bc:{n:{}, upd:0}, bcDirty:{}, lib:{e:{}}, libOwe:{}, libSeeded:false, opps:{}, script:null, settings:{bonus:5, to60:3, to30:2, quarters:4, qlen:8, otlen:4, chart:true, extra:true, pub:true, pubSec:30}, seeded:false, sync:false, unsent:{}, pubRedo:{}, role:null};
 }
 // The book is one small key for rosters and settings plus one key per game, so a tap rewrites only its own game. A book
 // saved by an older version keeps every game inside the main key; it moves over on the first save that has room.
 const GKEY = KEY + ".g.", onDisk = new Map(), finalSig = new WeakMap();   // game id -> the JSON last written (or read) for it
-let mainHasGames = false, MONO = false;
+// The saved rosters (S.lib) have a key of their own too, written only after they change (libVer), never at every tap.
+const LKEY = KEY + ".lib";
+let mainHasGames = false, MONO = false, libVer = 0, libSaved = -1;
 function load(){
   try{ const t = localStorage.getItem(KEY); S = t ? JSON.parse(t) : blank(); }catch(e){ S = blank(); SAVE.ok = false; SAVE.err = "This browser won't save (private browsing?)."; }
   if(!S.games) S.games = {};
@@ -711,6 +745,7 @@ function load(){
       onDisk.set(id, t);
     }
   }catch(e){}
+  if(!S.lib) try{ const t = localStorage.getItem(LKEY); if(t){ S.lib = JSON.parse(t); libSaved = libVer; } }catch(e){}
   if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});   // ask the browser not to clear it
   const b = blank();
   if(S.teamsBase === undefined && S.sync) S.teamsBase = S.teamsRev || 0;
@@ -735,7 +770,9 @@ function save(){
         if(sig) finalSig.set(g, sig);
       }
       for(const id of [...onDisk.keys()]) if(!S.games[id]){ localStorage.removeItem(GKEY + id); onDisk.delete(id); }
-      const {games, ...rest} = S; localStorage.setItem(KEY, JSON.stringify(rest)); mainHasGames = false;
+      const {games, lib, ...rest} = S; localStorage.setItem(KEY, JSON.stringify(rest)); mainHasGames = false;
+      // The saved rosters after the main key: a device too full to take them still keeps the booth and what's owed.
+      if(libSaved !== libVer){ localStorage.setItem(LKEY, JSON.stringify(S.lib || {e:{}})); libSaved = libVer; }
     }
     SAVE.ok = true; SAVE.err = "";
   }catch(e){
@@ -1009,7 +1046,8 @@ function statLine(ln, noPf){
 }
 
 function playText(g, e){
-  const who = esc(pLabel(g, e.tm, e.pid)), team = esc(tmName(g, e.tm));
+  // A tap parked on a number (its kid left the book before the tip: paFold) reads as that number.
+  const who = esc(!e.pid && e.lw ? "#" + e.lw.slice(e.lw.lastIndexOf("#") + 1) : pLabel(g, e.tm, e.pid)), team = esc(tmName(g, e.tm));
   switch(e.t){
     case "FG": return e.m ? "<b>" + who + " makes " + e.p + "</b>" : who + " misses " + e.p;
     case "FT": return e.m ? "<b>" + who + " makes free throw</b>" : who + " misses free throw";
@@ -1410,6 +1448,8 @@ function draw(){
   pill.querySelector("span").textContent = ph === "live" ? Sync.label() : ph === "loading" ? "Connecting…" : ph === "signedout" ? "Not signed in" : ph === "waiting" ? "Waiting for Coach" : ph === "nosignal" ? "No signal" : ph === "error" ? "Sync problem" : "This device";
   const banners = [];
   if(!SAVE.ok) banners.push(`<div class="flag bad" role="alert">NOT SAVING: ${esc(SAVE.err)}</div>`);
+  // A game on screen with no roster yet starts from the saved roster for that opponent, and the Scorer screen's book shows it.
+  libSeed(); { const lg = ["desk", "ann", "bc"].includes(ui.tab) && cur(); if(lg){ libTie(lg); if(ui.tab === "desk" && (S.booth[lg.id] || {}).lib && deskFold(lg)) paFoldAll(); } }
   if(ui.tab === "bc"){ drawBroadcast(banners.join("")); renderFu(); return; }
   const body = ({desk:viewDesk, ann:viewAnn, box:viewBox, plays:viewPlays, shots:viewShots, games:viewGames, teams:viewTeams, setup:viewSetup}[ui.tab] || viewDesk)();
   if(!setView(banners.join("") + body)) pendingRender = true;
@@ -1496,8 +1536,8 @@ function teamCol(g, R, tm, side, hideNarrow){
   let h = `<section class="teamcol${hideNarrow ? " hide-narrow" : ""}" style="${tvars(g, tm)}"><div class="tc-head">${badge(g, tm)}<h3 class="fit" data-min="14">${tm === "them" && canScore() ? `<button class="tc-name" data-act="oppedit" data-opp="${esc(g.opp)}" title="Team colors and name">${esc(g.opp)}</button>` : esc(tmName(g, tm))}</h3><span class="side">${side}</span>
     <button class="btn sm no-print" data-act="lineup" data-tm="${tm}" aria-pressed="${lineupMode}" ${edit ? "" : "disabled"}>${lineupMode ? "Done" : court.size ? "Lineup" : "Starters"}</button>
     <button class="btn sm no-print" data-act="addp" data-tm="${tm}" ${edit ? "" : "disabled"} aria-label="Add player">+</button></div>`;
-  if(!list.length){ const prev = tm === "them" && edit ? lastThem(g) : null;
-    return h + `<div class="card stack">${prev ? `<button class="btn primary" data-act="copythem" data-from="${prev.id}">Use ${esc(g.opp)}'s roster from ${esc(fmtDate(prev.date))} (${prev.them.length})</button>` : ""}<span>No players yet. Tap <b>+</b>${tm === "us" ? ", or paste the roster under Rosters." : " and type their numbers. Several at once works: 2 3 4 12 14. Names are optional."}</span>${tm === "them" && edit ? `<button class="btn" data-act="pastethem">Paste their roster</button>` : ""}</div></section>`; }
+  if(!list.length){ const prev = tm === "them" && edit ? lastThem(g) : null, lk = tm === "them" && edit && libOk(g) ? libRoster(g.team, g.opp).length : 0;
+    return h + `<div class="card stack">${lk ? `<button class="btn primary" data-act="libuse" data-book="1" data-gid="${g.id}">Use the saved ${esc(g.opp)} roster (${lk})</button>` : ""}${prev ? `<button class="btn${lk ? "" : " primary"}" data-act="copythem" data-from="${prev.id}">Use ${esc(g.opp)}'s roster from ${esc(fmtDate(prev.date))} (${prev.them.length})</button>` : ""}<span>No players yet. Tap <b>+</b>${tm === "us" ? ", or paste the roster under Rosters." : " and type their numbers. Several at once works: 2 3 4 12 14. Names are optional."}</span>${tm === "them" && edit ? `<button class="btn" data-act="pastethem">Paste their roster</button>` : ""}</div></section>`; }
   if(lineupMode){
     const pa = ((booth(g.id).start || {})[tm] || []).filter(pid => player(g, tm, pid) && !court.has(pid));
     return h + `<div class="flag small">Tap players to put them on the floor or take them off. ${court.size} of 5 on.${pa.length && court.size < 5 ? ` <button class="btn sm primary" data-act="lineuppa" data-tm="${tm}">Use the PA's starters: ${pa.map(pid => "#" + esc(player(g, tm, pid).num)).join(" ")}</button>` : ""}</div><div class="bench">${list.map(p => `<button class="chip${court.has(p.pid) ? " at" : ""}" data-act="lineuptap" data-tm="${tm}" data-pid="${p.pid}"><b>${esc(p.num)}</b><span class="nm">${esc(pShort(p))}</span></button>`).join("")}</div></section>`;
@@ -1509,6 +1549,8 @@ function teamCol(g, R, tm, side, hideNarrow){
   const floor = court.size ? list.filter(p => court.has(p.pid)) : list.filter(match);
   const bench = court.size ? list.filter(p => !court.has(p.pid)) : [];
   for(const p of floor) h += pcard(g, R, tm, p, edit, !!court.size);
+  // Where they came from goes under the cards, so both columns' cards start level. "Goes back" only when it does (libFlowOk).
+  if(edit && !court.size && tm === "them" && (S.booth[g.id] || {}).lib && list.some(p => p.byPA && libIs(g, p.pid))) h += `<p class="small libnote no-print">These came from the saved ${esc(g.opp)} roster${libFlowOk(g) ? ": a fix goes back into it" : ""}.</p>`;
   if(bench.length) h += `<div class="bench no-print"><span class="kicker">Bench · tap for the table</span>${bench.map(p => { const ln = R.box[tm][p.pid] || LINE(), at = table.includes(p.pid);
     return `<button class="chip${at ? " at" : ""}${ln.pf >= 5 || ln.tf >= 2 ? " dark" : ""}${fcls(ln)}" data-act="bench" data-tm="${tm}" data-pid="${p.pid}"><b>${esc(p.num)}</b><span class="nm">${esc(pShort(p))}${ln.pts ? " · " + ln.pts : ""}${ln.pf ? " · " + ln.pf + "F" : ""}</span></button>`; }).join("")}</div>`;
   // Subs waiting at the table sit under the bench: a sub reporting never moves the five cards above under the book's finger.
@@ -1897,7 +1939,7 @@ function gamePicker(){
   return `<select data-sel="gid" style="width:auto;max-width:380px">${all.map(x => `<option value="${x.id}" ${x.id === ui.gid ? "selected" : ""}>${x.status === "live" ? "LIVE · " : x.status === "final" ? "Final · " : ""}${x.practice ? "Practice game" : esc(usName(x)) + " " + (x.ha === "Away" ? "at" : "vs") + " " + esc(x.opp) + " · " + esc(fmtDate(x.date))}</option>`).join("")}</select>`;
 }
 function bcRow(g, R, tm, p, on, sl, lm){
-  const ln = R.box[tm][p.pid] || LINE(), note = bcNote(bcKey(g, tm, p)), say = ui.bcSay ? bcSayOf(g, tm, p) : {v:""}, s = sl[p.pid], ft = foulTrouble(g, R, ln), was = lm && lm.box[String(p.num).trim()];
+  const ln = R.box[tm][p.pid] || LINE(), note = bcNote(bcKey(g, tm, p)), say = ui.bcSay ? bcSayOf(g, tm, p) : {v:""}, s = sl[p.pid], ft = foulTrouble(g, R, ln), was = lm && lmOf(lm, p);
   const desc = [p.pos, p.grade, p.ht].filter(Boolean).join(" · ");
   const stats = [[ln.oreb + ln.dreb, "reb"], [ln.ast, "ast"], [ln.stl, "stl"], [ln.blk, "blk"], [ln.to, "to"]].filter(x => x[0]).map(x => x.join(" ")).join(" · ");
   const shots = ln.fga || ln.fta || ln.fgm || ln.ftm ? [`FG ${shoot(ln, "fgm", "fga")}`, ln.tpa || ln.tpm ? `3P ${shoot(ln, "tpm", "tpa")}` : "", ln.fta || ln.ftm ? `FT ${shoot(ln, "ftm", "fta")}` : ""].filter(Boolean).join(" · ") : "";
@@ -1906,13 +1948,17 @@ function bcRow(g, R, tm, p, on, sl, lm){
     <span class="bcnum">${ln.gp || ln.pts || ln.pf || ln.tf ? `<span class="bcpts">${ln.pts}</span>${ft === "out" ? `<i class="pfp f5" title="${ln.tf >= 2 ? "Ejected" : "Fouled out"}">${ln.tf >= 2 ? "EJ" : "OUT"}</i>` : `<i class="pfp${fcls(ln)}" title="${ln.pf} personal foul${ln.pf === 1 ? "" : "s"}">${ln.pf}F${ln.tf ? " · T" : ""}</i>`}` : ""}</span></button>`;
 }
 // One team's spotting board: the five on the floor first, then the bench, each by number.
+// A kid's line from the last meeting: the kid with his name then (he may have changed numbers since), else the kid on his
+// number then when the names say it's him (a spelling fixed, or no name on one side). A new kid on a number gets none.
+function lmOf(lm, p){ const k = nameKey(p.name || ""), by = k && lm.kids.find(([q]) => nameKey(q.name || "") === k); if(by) return by[1];
+  const at = lm.kids.find(([q]) => String(q.num).trim() === String(p.num).trim()); return at && sameKid(at[0].name, p.name) ? at[1] : null; }
 function bcBoard(g, R, tm){
   const ha = homeAway(g), court = R.court[tm], cur = sortRoster(paRoster(g, tm)), sl = tm === "us" && !g.practice ? seasonLines(g.team) : {};
   const prev = tm === "them" && !cur.length ? lastThem(g) : null, rows = cur.length ? cur : prev ? sortRoster(prev.them) : [];
   const tnote = bcNote(bcTeamKey(g, tm)), subs = subsOf(g, R, tm, 2), rec = tm === "us" && !g.practice ? recordOf(g) : "", coach = g.practice ? "" : infoOf(g)[tm === "us" ? "usCoach" : "oppCoach"];
-  // The last time we played them: each of their numbers' line from that game.
+  // The last time we played them: each of their kids' line from that game, by name and number (lmOf).
   const pm = tm === "them" && !g.practice ? Object.values(S.games).filter(x => x.id !== g.id && !x.deleted && !x.practice && x.team === g.team && okey(x.opp) === okey(g.opp) && x.date < g.date && x.ev.some(e => !e.v && !PREGAME(e))).sort((a, b) => b.date.localeCompare(a.date))[0] : null;
-  let lm = null; if(pm){ const PR = replay(pm); lm = {date:pm.date, box:{}}; for(const q of pm.them || []){ const l = PR.box.them[q.pid]; if(l && l.gp) lm.box[String(q.num).trim()] = l; } }
+  let lm = null; if(pm){ const PR = replay(pm); lm = {date:pm.date, kids:[]}; for(const q of pm.them || []){ const l = PR.box.them[q.pid]; if(l && l.gp) lm.kids.push([q, l]); } }
   let h = `<section class="card bcteam" style="${tvars(g, tm)}"><div class="tc-head">${badge(g, tm)}<h3>${esc(tmName(g, tm))}${tm === "them" && oppNick(g) ? ` <small>${esc(oppNick(g))}</small>` : ""}${rec ? ` <small>(${esc(rec)})</small>` : ""}</h3><span class="side">${tm === ha.home ? "Home" : "Away"}</span></div>
     ${coach ? `<div class="bcdesc">Coach ${esc(coach)}</div>` : ""}
     <button class="bcteamnote${tnote ? "" : " empty"}" data-act="bct" data-tm="${tm}">${tnote ? esc(tnote) : "+ Team note (stays all season)"}</button>
@@ -2100,7 +2146,8 @@ function visTo(m, pid){ for(let i = 0; i < 5 && m && m[pid] && m[pid].del && m[p
 function paRoster(g, tm){
   const r = roster(g, tm), vis = tm === "them" ? paVis(g) : []; if(!vis.length) return r;
   const at = n => vis.find(v => paNum(v.num) === paNum(n));
-  const out = r.map(p => { const v = !p.name && at(p.num); if(!v || !v.name) return p; const q = {...p, name:v.name}; ["pos", "grade", "ht"].forEach(k => { if(!q[k] && v[k]) q[k] = v[k]; }); return q; });
+  // Not from a list kid the book has under his own id on another number (the scorer moved him): that one is somebody else.
+  const out = r.map(p => { const v = !p.name && at(p.num); if(!v || !v.name || r.some(x => x !== p && x.pid === v.pid)) return p; const q = {...p, name:v.name}; ["pos", "grade", "ht"].forEach(k => { if(!q[k] && v[k]) q[k] = v[k]; }); return q; });
   const was = g.paIn || {};
   if(g.status !== "final") vis.forEach(v => { const n = paNum(v.num); if(n && !(n in was) && !r.some(p => p.pid === v.pid || paNum(p.num) === n)) out.push({pid:v.pid, num:n, name:v.name || "", pos:v.pos || "", grade:v.grade || "", ht:v.ht || "", pa:1}); });
   return out;
@@ -2115,20 +2162,33 @@ function paPlayer(g, tm, pid){
 }
 // Where a phonetic spelling is kept: a visitor on the PA's list has it under the list's id first (it stays with the kid
 // when the book has him under another id), then under the book's.
-function sayKeys(g, tm, p){ if(!p) return []; const v = tm === "them" && paVis(g).find(x => paNum(x.num) === paNum(p.num)), ks = v && v.pid !== p.pid ? [v.pid, p.pid] : [p.pid];
-  // An id the list had for him before it took the book's (a spelling typed on a device that hadn't heard yet) counts too.
-  const m = tm === "them" && (S.booth[g.id] || {}).visBy; if(m) Object.keys(m).forEach(k => { if(!ks.includes(k) && ks.includes(visTo(m, k))) ks.push(k); });
+// Two kids on one number: the book's kid there (p) isn't the list's kid there (v) when the list has the book's kid on
+// another number (the PA moved him off it and the book hasn't caught up), when the book has the list's kid on another
+// number (the scorer moved him, and the list hasn't caught up), or when the list put him in the book under his
+// own id and the names say he's somebody else (the PA took him off and listed a new kid on his number, or the saved roster
+// did; one with plays stays in the book, and Prep says hers isn't in it). Each keeps his own spelling, tonight and saved:
+// the one rule for whose spelling a Prep row's box is (visField, visList) and for the one shown next to the book's kid.
+const twoKids = (g, p, v) => !!(v && p && p.pid !== v.pid && (paVis(g).some(x => x.pid === p.pid) || (g.them || []).some(x => x.pid === v.pid) || (p.byPA && !sameKid(p.name, v.name))));
+function sayKeys(g, tm, p){ if(!p) return []; const v = tm === "them" && paVis(g).find(x => paNum(x.num) === paNum(p.num)), ks = v && v.pid !== p.pid && !twoKids(g, p, v) ? [v.pid, p.pid] : [p.pid];
+  // An id the list had for him before it took the book's (a spelling typed on a device that hadn't heard yet) counts too,
+  // unless the names say that entry was somebody else (the scorer named the number for another kid).
+  const m = tm === "them" && (S.booth[g.id] || {}).visBy; if(m) Object.keys(m).forEach(k => { if(!ks.includes(k) && ks.includes(visTo(m, k)) && sameKid(m[k].name, p.name)) ks.push(k); });
   return ks; }
 function sayOf(g, tm, p){ const ks = sayKeys(g, tm, p), m = tm === "them" && (S.booth[g.id] || {}).visBy;
   // A spelling under an id paFold has moved him off was typed on a device that hadn't heard of the move (a change made
   // since goes under his new id and clears the old one), so it's the newest.
-  for(const k of m ? ks.filter(k => visTo(m, k) !== k).concat(ks) : ks) if(S.say[k]) return S.say[k]; return ""; }
+  for(const k of m ? ks.filter(k => visTo(m, k) !== k).concat(ks) : ks) if(S.say[k]) return S.say[k];
+  // None for tonight yet: the saved roster's, for the same kid (libKidOf).
+  const e = tm === "them" && libKidOf(g, p); return (e && S.say[e.pid]) || ""; }
 // The PA page shows them while its Phonetics switch is on (kept on this device, on unless it was turned off here).
 ui.say = (() => { try{ return localStorage.getItem(KEY + ".phon") !== "0"; }catch(e){ return true; } })();
 function sayShow(g, tm, p){ return ui.say ? sayOf(g, tm, p) : ""; }
 function saySwitch(){ return `<label class="row small" style="gap:6px" title="Show or hide the phonetic spellings on this page (this device only)"><input type="checkbox" data-saytog ${ui.say ? "checked" : ""} style="width:20px;height:20px"> Phonetics</label>`; }
 // One spelling per kid: the new one goes under the first key, and an old one under the other key is cleared.
-function sayPlan(g, tm, p, v, was = {}, now = {}){ sayKeys(g, tm, p).forEach((k, i) => { const x = i ? "" : v; if((S.say[k] || "") !== x){ if(!(k in was)) was[k] = S.say[k] || ""; now[k] = x; } }); return {was, now}; }
+function sayPlan(g, tm, p, v, was = {}, now = {}){ sayKeys(g, tm, p).forEach((k, i) => { const x = i ? "" : v; if((S.say[k] || "") !== x){ if(!(k in was)) was[k] = S.say[k] || ""; now[k] = x; } });
+  // The saved roster's spelling for him follows (from the latest game against them), and is never the one cleared.
+  const e = tm === "them" && libFlowOk(g) && libKidOf(g, p); if(e && (e.pid in now ? now[e.pid] : S.say[e.pid] || "") !== v){ if(!(e.pid in was)) was[e.pid] = S.say[e.pid] || ""; now[e.pid] = v; }
+  return {was, now}; }
 function sayPut(m){ const ks = Object.keys(m); if(!ks.length) return; ks.forEach(k => { S.say[k] = m[k]; }); S.sayUpd = Date.now(); Sync.dirtySay(ks); save(); }
 function saySteps(plan, label){ if(!Object.keys(plan.now).length) return false; sayPut(plan.now); undoable(label, () => sayPut(plan.was), () => sayPut(plan.now)); return true; }
 
@@ -2150,7 +2210,7 @@ function paUndo(redo){
   const back = () => { if(!same) return; const n = a.isConnected ? a : $$(a.tagName, $("#view")).find(e => focusKey(e) === fk); if(n){ n.focus({preventScroll:true}); try{ n.setSelectionRange(n.value.length, n.value.length); }catch(e){} } };
   if(same) a.blur();
   const x = (redo ? UNDO.next : UNDO.past).pop(); if(!x){ back(); toast(redo ? "Nothing to redo." : "Nothing to undo."); return; }
-  (redo ? x.redo : x.undo)(); (redo ? UNDO.past : UNDO.next).push(x); paFoldAll(); render(); back(); toast((redo ? "Redone: " : "Undone: ") + x.label + ".", 6000);
+  (redo ? x.redo : x.undo)(); (redo ? UNDO.past : UNDO.next).push(x); paFoldAll(); render(); if(ui.sheet && ui.sheet.lib) libRefresh(); back(); toast((redo ? "Redone: " : "Undone: ") + x.label + ".", 6000);
   // The way back, on the toast: Redo after an undo, Undo after a redo.
   $("#toast").insertAdjacentHTML("beforeend", ` <button class="btn sm" data-act="${redo ? "paundo" : "paredo"}">${redo ? "Undo" : "Redo"}</button>`);
 }
@@ -2170,7 +2230,7 @@ function boothStep(g, label, f, fn){
   const gid = g.id;
   if(KEYED[f]){ const ch = setBooth(g, fn, [f])[f] || {}; if(!Object.keys(ch).length) return false;
     const put = i => { const gg = S.games[gid]; if(gg) setBooth(gg, b => { Object.entries(ch).forEach(([k, e]) => kSet(b, f, k, e[i])); }, [f]); };
-    undoable(label, () => put(0), () => put(1)); return true; }
+    undoable(label, () => put(0), () => put(1)); return ch; }
   const was = paCopy(booth(gid)[f] ?? BOOTH_DEF[f] ?? null); setBooth(g, fn, [f]);
   const now = paCopy(booth(gid)[f] ?? null); if(JSON.stringify(was) === JSON.stringify(now)) return false;
   undoable(label, () => boothPut(gid, f, was), () => boothPut(gid, f, now)); return true;
@@ -2209,34 +2269,116 @@ function noteStep(g, f, t, label){ const was = noteWas.has(t) ? noteWas.get(t) :
 // g.paIn remembers what came from the PA (number: name): a player the scorer took out never comes back, a name the PA fixes
 // follows only while the book still has the PA's old one, and a number the PA fixes before the tip moves too. A player it
 // changes is stamped (ed), so the newer copy of him wins where two copies of the game meet.
+// The Scorer screen open on a game nobody has started scoring, whose list began as the saved roster (b.lib): the book
+// shows it before the first tap, so the scorer checks names instead of typing them. Nothing claims the game.
+const deskFold = g => !g.writer && g.status === "pre" && !g.practice && ui.tab === "desk" && !ANN_ONLY && !BC_ONLY && cur() === g && canEdit(g);
 function paFold(g){
-  const out = {add:[], off:[], un:[]}, b = g && S.booth[g.id];
-  if(!g || !b || g.deleted || g.writer !== S.dev || !Array.isArray(g.them)) return out;
+  const out = {add:[], off:[], un:[], lib:[], loff:[], lost:[]}, b = g && S.booth[g.id];
+  if(!g || !b || g.deleted || (g.writer !== S.dev && !(b.lib && deskFold(g))) || !Array.isArray(g.them)) return out;
+  // A kid on the list as the saved roster put him there (nobody changed him for tonight): said as the saved roster's.
+  const fromLib = v => !!b.lib && ((((b.visBy || {})[v.pid] || {}).at) || 0) < LOW;
   const vis = paVis(g); if(!vis.length && !Object.keys(g.paIn || {}).length) return out;
-  const got = {...(g.paIn || {})}, now = Date.now(), rekey = {};
-  for(const v of vis){ const n = paNum(v.num), nm = String(v.name || "").trim(); if(!n) continue;
-    const own = g.them.find(x => x.pid === v.pid);
-    if(own && paNum(own.num) !== n){ const old = paNum(own.num);
-      if(g.status === "pre" && old in got && !g.them.some(x => x !== own && paNum(x.num) === n)){ own.num = n; own.ed = now; got[n] = got[old]; delete got[old]; out.add.push(`#${n}${own.name ? " " + own.name : ""} (was #${old})`); }
-      continue; }
+  const got = {...(g.paIn || {})}, now = Date.now(), rekey = {}, back = [];
+  // Taps before the tip that a kid leaving the book lends the kid taking his number: each remembers whose it was, on what
+  // number (lw), so it's his again if he comes back on it before the tip (an Undo, lendBack). The kid taking it keeps his
+  // own: if he has any, the lent ones are crossed out (lv), so he's never two of the five on the floor. A tap that changes
+  // hands either way is stamped (ed), so where two copies of the game meet, the one that moved it wins (mergeEv).
+  const lend = (from, to, n) => { const mine = g.ev.some(e => e.pid === to.pid && !e.v && (e.t === "IN" || e.t === "OUT"));
+    g.ev.forEach(e => { if(e.pid !== from.pid) return; e.pid = to.pid; e.lw = from.pid + "#" + n; e.ed = now; if(mine && !e.v && (e.t === "IN" || e.t === "OUT")){ e.v = true; e.lv = 1; } }); };
+  const lendBack = (v, n) => { if(g.status === "pre") g.ev.forEach(e => { if(e.lw !== v.pid + "#" + n) return; e.pid = v.pid; delete e.lw; e.ed = now; if(e.lv){ delete e.v; delete e.lv; } }); };
+  // Taps parked on a number (their kid left the book before the tip with only taps taken back: the take-off below) go to
+  // the kid the list puts on it, still marked as the other kid's (lw), as lend does when both changes land at once.
+  const unpark = (v, n) => { if(g.status === "pre") g.ev.forEach(e => { if(e.pid || !e.lw || e.lw.slice(e.lw.lastIndexOf("#") + 1) !== n) return; e.pid = v.pid; e.ed = now; }); };
+  // A kid out of the book because the list dropped him: the PA took him off, he came off the saved roster, or he's still
+  // saved and another kid has his number there now (the saved roster shows one kid a number), each said as it happened.
+  const left = (p, n) => { const w = `#${n}${p.name ? " " + p.name : ""}`, e = S.lib.e[p.pid];
+    if(!fromLib(p)) out.off.push(w); else if(e && !e.del && libIs(g, p.pid)) out.lost.push([n, w]); else out.loff.push(w); };
+  // Kids the list renumbered among themselves before the tip (two trading numbers, three round a ring, or a chain) move in
+  // the book all at once: one at a time, each would wait for good on a number another still wears. A number somebody else
+  // keeps (the scorer's, or one who isn't moving) holds up the kid moving onto it, and so on down the line: the moves below
+  // take those one at a time.
+  if(g.status === "pre"){ const mv = new Map();
+    for(const v of vis){ const n = paNum(v.num), own = n && g.them.find(x => x.pid === v.pid), old = own && paNum(own.num);
+      if(own && old !== n && old in got && ![...mv.values()].includes(n)) mv.set(own, n); }
+    for(let held = true; held;){ held = false;
+      for(const [own, n] of mv) if(g.them.some(x => x !== own && paNum(x.num) === n && !mv.has(x))){ mv.delete(own); held = true; } }
+    if([...mv.values()].some(n => g.them.some(x => paNum(x.num) === n && mv.has(x)))){   // one waits on another (else the moves below do it)
+      const step = [...mv].map(([own, n]) => [own, paNum(own.num), n, got[paNum(own.num)]]);
+      step.forEach(([, old]) => { delete got[old]; });
+      step.forEach(([own, old, n, nm]) => { own.num = n; own.ed = now; got[n] = nm; (fromLib(own) ? out.lib : out.add).push(`#${n}${own.name ? " " + own.name : ""} (was #${old})`); }); } }
+  // Kids the book already has go first, so one moving off a number frees it for the list's new kid in the same pass.
+  const inBook = v => g.them.some(x => x.pid === v.pid);
+  for(const v of vis.filter(inBook).concat(vis.filter(v => !inBook(v)))){ const n = paNum(v.num), nm = String(v.name || "").trim(); if(!n) continue;
+    let own = g.them.find(x => x.pid === v.pid);
+    // One the list put in, on her number under her id with her name, whose number the book doesn't count as hers (the
+    // scorer moved him off it and back, or onto the number her list has for him: paLeft): hers again, as if the list had
+    // put him there, so her name box stays on Prep and her spelling fix reaches the book.
+    if(own && own.byPA && g.status !== "final" && paNum(own.num) === n && own.name === nm && !(n in got)){ got[n] = nm; back.push(n); }
+    if(own && paNum(own.num) !== n){ const old = paNum(own.num), sit = g.them.find(x => x !== own && paNum(x.num) === n),
+        go = old in got && !g.them.some(x => x !== own && x !== sit && paNum(x.num) === n);   // with sit gone, he does move onto n
+      // The scorer typed his new number before the list moved him onto it (no name there, or his by sameKid: a teammate who
+      // shares only a first or a last name with him is somebody else, and the book keeps both): that's him. Before the
+      // tip, with no real play on the list's copy of him (still the list's name), that copy leaves the book, its taps lent
+      // to the scorer's, and the list takes the scorer's id and its name, as with any number the scorer typed first (below).
+      if(g.status === "pre" && sit && !sit.byPA && own.byPA && own.name === got[old] && (!sit.name || sameKid(sit.name, nm)) && !vis.some(x => x.pid === sit.pid) && !g.ev.some(e => e.pid === own.pid && !e.v && !PREGAME(e))){
+        lend(own, sit, old); g.them.splice(g.them.indexOf(own), 1); delete got[old]; if(sit.name) (fromLib(v) ? out.lib : out.add).push(`#${n} ${sit.name} (was #${old})`); own = null; }
+      // A number the scorer typed that took the PA's name (the list has his id), moving onto another the scorer typed with no
+      // name: the name moves, the scorer's numbers stay. Before the tip, with no real play on either, the two trade numbers
+      // in the book and each tap stays on the number it was made on, so the five the scorer tapped are still the five on the
+      // floor, nothing is rekeyed, and an Undo trades them back.
+      else if(g.status === "pre" && sit && !sit.byPA && !own.byPA && !sit.name && own.name === got[old] && !vis.some(x => x.pid === sit.pid) && !g.ev.some(e => (e.pid === own.pid || e.pid === sit.pid) && !e.v && !PREGAME(e))){
+        g.ev.forEach(e => { if(e.pid !== own.pid && e.pid !== sit.pid) return; e.pid = e.pid === own.pid ? sit.pid : own.pid; e.ed = now; });
+        sit.num = old; own.num = n; sit.ed = own.ed = now; got[n] = got[old]; delete got[old]; (fromLib(v) ? out.lib : out.add).push(`#${n}${own.name ? " " + own.name : ""} (was #${old})`); continue; }
+      else {
+      // One the list put in on that number and has taken off since (still the list's name, no play yet: one taken back isn't
+      // a play) makes way for him. A starter tapped on that number before the tip is the kid taking it now (as with a new
+      // kid on it, below), when he does: lent (lend), so an Undo that puts the other kid back on it gives it back to him.
+      if(g.status === "pre" && sit && sit.byPA && sit.name === got[n] && !vis.some(x => x.pid === sit.pid) && !g.ev.some(e => e.pid === sit.pid && !(go && (e.v || PREGAME(e))))){
+        lend(sit, own, n); g.them.splice(g.them.indexOf(sit), 1); delete got[n]; left(sit, n); }
+      // Said as the saved roster's move when the saved roster made it (nobody changed him for tonight).
+      if(g.status === "pre" && old in got && !g.them.some(x => x !== own && paNum(x.num) === n)){ own.num = n; own.ed = now; got[n] = got[old]; delete got[old]; (fromLib(v) ? out.lib : out.add).push(`#${n}${own.name ? " " + own.name : ""} (was #${old})`); }
+      continue; } }
     const p = own || g.them.find(x => paNum(x.num) === n);
+    // A kid the list put in the book, off the list now that another of its kids has his number (the saved roster's new #3,
+    // or the old one back), with no real play yet (one taken back isn't one): the other kid takes his place under his own
+    // id. A starter tapped on that number before the tip is the list's kid now: lent, after the taps he lent the kid going
+    // are his again. Not a move: two kids, so no rekey (and no spelling copied between them).
+    if(p && !own && p.byPA && !vis.some(x => x.pid === p.pid) && !g.ev.some(e => e.pid === p.pid && !e.v && !PREGAME(e))){
+      lendBack(v, n); lend(p, v, n);
+      g.them[g.them.indexOf(p)] = {pid:v.pid, num:n, name:nm, pos:v.pos || "", grade:v.grade || "", ht:v.ht || "", byPA:1, ed:now}; got[n] = nm; (fromLib(v) ? out.lib : out.add).push(`#${n}${nm ? " " + nm : ""}`); continue; }
+    // Another kid on the list still wears this number in the book (he's moving off it, and his move waits): the new kid
+    // waits for the number, so neither one's name, position, year or height lands on the other's id.
+    if(p && p !== own && vis.some(x => x.pid === p.pid)) continue;
+    // One the list put in is the list's kid under the list's id, so another id on his number with another kid's name is
+    // another kid: one with real plays, off the list (Undo of a reset brings him back after the PA put a new kid on his
+    // number). The book keeps him as he is (his plays are his): no rekey, and neither the new kid's name nor his spelling
+    // lands on him; Prep says the new kid isn't in the book. The same kid's name (sameKid: a spelling fixed, or blank) is
+    // him, typed in again by the PA (taken off, then added with the name fixed, where her device hadn't heard the book,
+    // or during a reset's 10 minutes): the list takes his id and the book the fixed name, as below.
+    if(p && p.byPA && p.pid !== v.pid && !sameKid(p.name, nm)) continue;
     // The scorer typed this number before the PA's list reached the book: the list takes the book's id from now on, so a
     // number either of them fixes later moves one kid, and his spelling, starter pick and place at the table go with him.
     if(p && p.pid !== v.pid && !vis.some(x => x.pid === p.pid)) rekey[v.pid] = p.pid;
     if(p){ const fill = !p.name && nm && got[n] !== nm, fix = p.name && n in got && p.name === got[n] && nm && nm !== got[n];
-      if(fill || fix){ p.name = nm; ["pos", "grade", "ht"].forEach(k => { if(!p[k] && v[k]) p[k] = v[k]; }); p.ed = now; got[n] = nm; out.add.push(`#${n} ${nm}`); } }
-    else if(!(n in got) && g.status !== "final"){ g.them.push({pid:v.pid, num:n, name:nm, pos:v.pos || "", grade:v.grade || "", ht:v.ht || "", byPA:1, ed:now}); got[n] = nm; out.add.push(`#${n}${nm ? " " + nm : ""}`); }
+      if(fill || fix){ p.name = nm; ["pos", "grade", "ht"].forEach(k => { if(!p[k] && v[k]) p[k] = v[k]; }); p.ed = now; got[n] = nm; (fromLib(v) ? out.lib : out.add).push(`#${n} ${nm}`); } }
+    // A saved-roster kid never pads a book the scorer typed for tonight: there the list only names the scorer's numbers.
+    // One back on his number before the tip (an Undo) has the taps he lent the kid who took it again.
+    else if(!(n in got) && g.status !== "final" && !(fromLib(v) && g.them.some(x => !x.byPA))){ g.them.push({pid:v.pid, num:n, name:nm, pos:v.pos || "", grade:v.grade || "", ht:v.ht || "", byPA:1, ed:now}); got[n] = nm; (fromLib(v) ? out.lib : out.add).push(`#${n}${nm ? " " + nm : ""}`); lendBack(v, n); unpark(v, n); }
   }
   // A kid the PA took off the list (✕, or Undo of the add) comes back out of the book before the final if the book has him
-  // only from the list: still the PA's name and no play for him. One the list put in leaves; a number the scorer typed
-  // stays, without the PA's name. Only once this device has the list (a booth made here just for the table has none).
+  // only from the list: still the PA's name and no play for him (before the tip one taken back isn't one: it stays on his
+  // number, crossed out, and is his again if he comes back). One the list put in leaves; a number the scorer typed stays, without
+  // the PA's name. Only once this device has the list (a booth made here just for the table has none).
   if(g.status !== "final" && (b.visBy || Array.isArray(b.vis))) for(const n of Object.keys(got)){
     const i = g.them.findIndex(x => paNum(x.num) === n), p = g.them[i];
-    if(!p || p.name !== got[n] || vis.some(v => paNum(v.num) === n || v.pid === p.pid) || g.ev.some(e => e.pid === p.pid)) continue;
-    if(p.byPA){ g.them.splice(i, 1); out.off.push(`#${n}${p.name ? " " + p.name : ""}`); } else { out.un.push([n, p.name]); p.name = ""; p.ed = now; }
+    if(!p || p.name !== got[n] || vis.some(v => paNum(v.num) === n || v.pid === p.pid) || g.ev.some(e => e.pid === p.pid && !(g.status === "pre" && e.v))) continue;
+    // Before the tip his taps taken back (all the plays he has) stay on the number, not on a kid the book no longer has:
+    // parked (lw: his id and that number, no pid), they go to the next kid the list puts on it, as when that change lands
+    // with this one, and they're his again if he comes back on it (lendBack).
+    if(p.byPA){ g.them.splice(i, 1); left(p, n); if(g.status === "pre") g.ev.forEach(e => { if(e.pid !== p.pid) return; e.pid = ""; e.lw = p.pid + "#" + n; e.ed = now; }); } else { out.un.push([n, p.name]); p.name = ""; p.ed = now; }
     delete got[n];
   }
-  if(out.add.length || out.off.length || out.un.length){ // touch() without its redraw: this runs from the cloud listener and a timer, which redraw softly.
+  if(back.length || Object.values(out).some(l => l.length)){ // touch() without its redraw: this runs from the cloud listener and a timer, which redraw softly.
     g.paIn = got; g.rev = (g.rev || 0) + 1; g.upd = Date.now(); save(); Sync.dirty(g.id); }
   if(Object.keys(rekey).length) visRekey(g, rekey);
   // The PA's starter picks name kids by the list's ids: one the book has under its own id is picked by that one now, so the
@@ -2258,19 +2400,29 @@ function visRekey(g, to){
     if(Object.keys(put).length){ Object.assign(m, put); b[f] = kList(f, m); boothOwe(g.id, f, Object.keys(put)); } }
   const st = (b.start || {}).them; if(st && st.some(p => to[p])){ b.start = {...b.start, them:[...new Set(st.map(p => to[p] || p))]}; boothOwe(g.id, "start", ["them"]); }
   b.upd = Date.now(); save(); Sync.dirtyBooth(g.id);
-  // His spelling is copied over; the old id's stays until the next change (sayOf reads a late one there first).
-  const m = {}; ids.forEach(a => { if(S.say[a] && S.say[a] !== S.say[to[a]]) m[to[a]] = S.say[a]; }); sayPut(m);
+  // His spelling is copied over when the book's name there is his (sameKid: a spelling fixed, or a blank); the old id's
+  // stays until the next change (sayOf reads a late one there first). The scorer's name for somebody else on that number
+  // (the program was out of date) never takes it, tonight or saved.
+  const vm = kOf(b, "vis"), m = {}; ids.forEach(a => { const q = (g.them || []).find(x => x.pid === to[a]); if(S.say[a] && S.say[a] !== S.say[to[a]] && (!q || sameKid(q.name, (vm[a] || {}).name))) m[to[a]] = S.say[a]; }); sayPut(m);
 }
+// The scorer moved the kid on number n to another one: the PA's word for n (paIn) goes with him, unless somebody else
+// wears n now. Kept, it would say the scorer took n out (her next kid on it never comes into the book, and Prep says the
+// scorer took it out), and before the tip that a kid on n is on her number, so the fold would move the next kid the scorer
+// puts on n back to the number her list has for him. One he moves back to her number is hers again (paFold).
+function paLeft(g, n){ n = paNum(n); if(g.paIn && n in g.paIn && !(g.them || []).some(p => paNum(p.num) === n)){ g.paIn = {...g.paIn}; delete g.paIn[n]; } }
 function paFoldAll(){
-  const add = [], off = [], un = [];
-  for(const id of Object.keys(S.booth || {})){ const g = S.games[id]; if(g && g.writer === S.dev && (paVis(g).length || Object.keys(g.paIn || {}).length)){ const r = paFold(g); add.push(...r.add); off.push(...r.off); un.push(...r.un); } }
+  const add = [], off = [], un = [], lib = [], loff = [], lost = [];
+  for(const id of Object.keys(S.booth || {})){ const g = S.games[id]; if(g && (g.writer === S.dev || (S.booth[id].lib && deskFold(g))) && (paVis(g).length || Object.keys(g.paIn || {}).length)){ const r = paFold(g); add.push(...r.add); off.push(...r.off); un.push(...r.un); lib.push(...r.lib); loff.push(...r.loff); lost.push(...r.lost); } }
   // Said once, on the scorer's screens (the PA page has them in its own list). A number the scorer typed stays in the
-  // book, so it's told apart from the players who left it.
+  // book, so it's told apart from the players who left it. One still on the saved roster isn't said to have come off it:
+  // another kid has his number there now.
   const few = l => l.length > 6 ? l.slice(0, 6).join(", ") + " and " + (l.length - 6) + " more" : l.join(", ");
-  if((add.length || off.length || un.length) && ui.tab !== "ann" && ui.tab !== "bc") toast([add.length ? "The PA added names: " + few(add) + "." : "",
+  if((add.length || off.length || un.length || lib.length || loff.length || lost.length) && ui.tab !== "ann" && ui.tab !== "bc") toast([lib.length ? "From the saved roster: " + few(lib) + "." : "", add.length ? "The PA added names: " + few(add) + "." : "",
+    loff.length ? `${few(loff)} came off the saved roster, so ${loff.length > 1 ? "they're" : "that player is"} out of the book too.` : "",
+    lost.length ? `${lost.length > 1 ? "Other players have" : "Another player has"} ${few(lost.map(([n]) => "#" + n))} on the saved roster now, so ${few(lost.map(([, w]) => w))} ${lost.length > 1 ? "are" : "is"} out of the book too (still saved there).` : "",
     off.length ? `The PA took ${few(off)} off the list, so ${off.length > 1 ? "they're" : "that player is"} out of the book too.` : "",
     un.length ? `The PA took ${few(un.map(([n, nm]) => `#${n} ${nm}`))} off the list${off.length ? " too" : ""}. The book keeps ${few(un.map(([n]) => "#" + n))}, with no name${un.length > 1 ? "s" : ""}.` : ""].filter(Boolean).join(" "), 4500);
-  return add.length + off.length + un.length > 0;
+  return add.length + off.length + un.length + lib.length + loff.length + lost.length > 0;
 }
 // A device becomes a game's writer with its first tap on the desk: this picks the PA's names up within two seconds of it,
 // without the desk having to ask.
@@ -2278,24 +2430,36 @@ setInterval(() => { if(!PUB && S && paFoldAll()) softRender(); }, 2000);
 
 // The last game against them (same boys or girls) with players in the book or on the PA's list.
 function visPrior(g){ return Object.values(S.games).filter(x => x.id !== g.id && !x.deleted && !x.practice && x.team === g.team && okey(x.opp) === okey(g.opp) && x.date < g.date && paRoster(x, "them").length).sort((a, b) => b.date.localeCompare(a.date))[0] || null; }
-// Every change to the PA's list: undoable, then into the book if this device scores the game.
-function visStep(g, label, fn){ const ok = boothStep(g, label, "vis", b => { b.vis = paCopy(b.vis || []); fn(b.vis); }); if(ok) paFoldAll(); return ok; }
+// Every change to the PA's list: undoable, then into the book if this device scores the game. Fixes and new players go
+// into the saved roster too (libFlow), in the same step, so one Undo takes back both. Not a copy of an old roster (flow
+// false), and never a kid taken off tonight's list.
+function visStep(g, label, fn, flow = true){ const ch = boothStep(g, label, "vis", b => { b.vis = paCopy(b.vis || []); fn(b.vis); }); if(!ch) return false;
+  if(flow && libSteps(libFlow(g, Object.entries(ch).map(([k, [x, y]]) => [x && {pid:k, ...x}, y && {pid:k, ...y}])), label)) undoJoin(2, label);
+  paFoldAll(); return true; }
 // New players for the PA's list. A number already on it only fills a blank name (never two #12s). A number the book has
-// keeps the book's id, so the spelling and the starter pick are the same kid's.
-function visAdd(g, add, label){
-  const vis = paCopy(paVis(g)), dup = []; let n = 0, named = 0;
+// keeps the book's id, so the spelling and the starter pick are the same kid's: not when the list already has that id on
+// another number (the PA moved that kid off it and the book hasn't caught up), since one id is one kid on the list.
+function visAdd(g, add, label, flow = true){
+  const vis = paCopy(paVis(g)), dup = [], free = id => !!id && !vis.some(v => v.pid === id); let n = 0, named = 0;
+  // A kid the book has by name keeps his id wherever this add puts him (he changed numbers): a kid the same paste puts on
+  // his old number is somebody else and never takes it. A number the scorer typed is still whoever wears it tonight.
+  const mine = new Map(); add.forEach(p => { const k = nameKey(p.name || ""), x = k && (g.them || []).find(y => y.name && nameKey(y.name) === k && free(y.pid)); if(x && !mine.has(x.pid)) mine.set(x.pid, p); });
   for(const p of add){ const num = paNum(p.num); if(!/^\d{1,2}$/.test(num)) continue; const ex = vis.find(v => paNum(v.num) === num), nm = String(p.name || "").trim();
-    if(!ex){ vis.push({pid:(g.them.find(x => paNum(x.num) === num) || {}).pid || p.pid || rid(), num, name:nm, pos:p.pos || "", grade:p.grade || "", ht:p.ht || ""}); n++; }
+    const at = g.them.find(x => paNum(x.num) === num && free(x.pid) && (!mine.has(x.pid) || mine.get(x.pid) === p)), me = [...mine].find(([, q]) => q === p);
+    if(!ex){ vis.push({pid:[at && !at.byPA ? at.pid : "", me ? me[0] : "", (at || {}).pid, p.pid].find(free) || rid(), num, name:nm, pos:p.pos || "", grade:p.grade || "", ht:p.ht || ""}); n++; }
     else if(!ex.name && nm){ ex.name = nm; ["pos", "grade", "ht"].forEach(k => { if(!ex[k] && p[k]) ex[k] = p[k]; }); named++; }
     else dup.push("#" + num); }
-  if(n + named) visStep(g, label, l => { l.splice(0, l.length, ...vis); });
+  if(n + named) visStep(g, label, l => { l.splice(0, l.length, ...vis); }, flow);
   return {n, named, dup, words:[n ? `Added ${n}.` : "", named ? `Names for ${named} already listed.` : "", dup.length ? `Already on your list: ${dup.join(" ")}.` : ""].filter(Boolean).join(" ")};
 }
 // A box in the list, saved as the PA leaves it (like the rest of Prep).
 function visField(g, t){
   // A box drawn before the list took the book's id for this kid (paFold) still finds him.
   const v = t.value.trim(), num = t.dataset.num, vid = visTo((S.booth[g.id] || {}).visBy, t.dataset.vid || ""), e = vid && paVis(g).find(x => x.pid === vid);
-  if(t.dataset.vissay){ const p = paRoster(g, "them").find(x => paNum(x.num) === num) || {pid:vid || rid(), num}; saySteps(sayPlan(g, "them", p, v), `Phonetic for #${num}`); return; }
+  // A row's spelling is its list kid's, not the book's kid on that number when they're two kids (twoKids: the PA moved
+  // him off it, or the list put him in and the names say he's somebody else): his spelling, and his saved one, stay his.
+  if(t.dataset.vissay){ const q = paRoster(g, "them").find(x => paNum(x.num) === num), p = e && twoKids(g, q, e) ? {pid:e.pid, num, name:e.name} : q || {pid:vid || rid(), num};
+    saySteps(sayPlan(g, "them", p, v), `Phonetic for #${num}`); return; }
   if(t.dataset.vis === "num"){ if(!e) return; const n = paNum(v);
     if(!/^\d{1,2}$/.test(n)){ toast("A jersey number is one or two digits."); t.value = e.num; return; }
     if(n === paNum(e.num)) return;
@@ -2310,7 +2474,8 @@ function visSubmit(f){
   if(!/^\d{1,2}$/.test(num)){ toast(num ? "A jersey number is one or two digits." : "Type the number first."); return; }
   if(paVis(g).some(v => paNum(v.num) === num)){ toast(`#${num} is already on your list. Change it in its row.`); return; }
   const label = `Add #${num}${name ? " " + name : ""}`; visAdd(g, [{num, name}], label);
-  if(say){ const p = paRoster(g, "them").find(x => paNum(x.num) === num); if(p && saySteps(sayPlan(g, "them", p, say), label)) undoJoin(2, label); }
+  // The spelling goes with the kid just listed, not one the book still has on that number (the PA moved him off it).
+  if(say){ const v = paVis(g).find(x => paNum(x.num) === num), r = paRoster(g, "them"), p = v ? r.find(x => x.pid === v.pid) || {pid:v.pid, num, name:v.name} : r.find(x => paNum(x.num) === num); if(p && saySteps(sayPlan(g, "them", p, say), label)) undoJoin(2, label); }
   f.querySelectorAll("input").forEach(i => { i.value = ""; }); const nf = f.querySelector('[name="num"]'); if(nf) nf.focus();
   render();
 }
@@ -2319,26 +2484,283 @@ function visSubmit(f){
 function visList(g){
   const vis = paVis(g), book = g.them || [], at = (l, n) => l.find(x => paNum(x.num) === n);
   const nums = [...new Set(book.map(p => paNum(p.num)).concat(vis.map(v => paNum(v.num))))].filter(Boolean).sort((a, b) => (parseInt(a, 10) || 0) - (parseInt(b, 10) || 0) || a.localeCompare(b));
-  const prior = !nums.length ? visPrior(g) : null, named = book.filter(p => p.name).length;
-  const rows = nums.map(n => { const v = at(vis, n), p = at(book, n), nm = p && p.name, say = sayOf(g, "them", p || {pid:v.pid, num:n}), k = g.id + ":" + n;
+  // The saved roster's note goes in the header row, so the add row keeps its place while the PA types in it (setView).
+  const prior = !nums.length ? visPrior(g) : null, named = book.filter(p => p.name).length, lk = libOk(g) ? libRoster(g.team, g.opp).length : 0, fromLib = !!(S.booth[g.id] || {}).lib && vis.some(v => libIs(g, v.pid)), flows = libFlowOk(g);
+  // The spelling box shows the one it writes to (visField): the list kid's where the book's kid on the number is somebody
+  // else (twoKids), so the PA never sees another kid's spelling in her kid's row.
+  const rows = nums.map(n => { const v = at(vis, n), p = at(book, n), nm = p && p.name, say = sayOf(g, "them", v && (!p || twoKids(g, p, v)) ? {pid:v.pid, num:n, name:v.name} : p), k = g.id + ":" + n;
     // One of the PA's the scorer has under another number, or took out of the book: the book wins, and the row says so.
     const moved = v && !p && book.find(x => x.pid === v.pid), gone = v && !p && !moved && n in (g.paIn || {});
+    // Another kid the list put in the book has this number and has played (an Undo of a reset brought him back after the
+    // PA put a new kid on it): the book keeps him, and the list's kid stays out of it (paFold).
+    const two = v && p && p.pid !== v.pid && p.byPA && !vis.some(x => x.pid === p.pid) && !sameKid(p.name, v.name) && (g.ev || []).some(e => e.pid === p.pid && !e.v && !PREGAME(e));
     // A name the book took from the PA's list (and the scorer hasn't changed) stays the PA's to fix. Once it's off the list
     // it's never credited to the scorer: the scorer's iPad takes it back out of the book, unless he played or it's final.
-    const fromPA = nm && (g.paIn || {})[n] === nm, off = fromPA && !v, used = off && (g.status === "final" || (g.ev || []).some(e => e.pid === p.pid));
+    const fromPA = nm && (g.paIn || {})[n] === nm, off = fromPA && !v, used = off && (g.status === "final" || (g.ev || []).some(e => e.pid === p.pid && !(g.status === "pre" && e.v)));
+    // One the PA moved to a number the book can't give him (the scorer named it for somebody else, or the game has
+    // started; a number the scorer typed that took her name only trades onto one he left blank, so any name the scorer
+    // typed there holds him): the book keeps him on this one (paFold), and the row says so instead of promising he comes out.
+    const to = off && !used && vis.find(x => x.pid === p.pid), sat = to && book.some(x => x !== p && paNum(x.num) === paNum(to.num) && x.name && x.name !== (g.paIn || {})[paNum(to.num)] && !sameKid(x.name, to.name)), kept = to && !p.byPA && book.some(x => x !== p && paNum(x.num) === paNum(to.num) && x.name && x.name !== (g.paIn || {})[paNum(to.num)]), stuck = to && (sat || kept || g.status !== "pre");
     const held = (tag, why, who = v ? v.name : nm) => `<span class="visbook"><span><b>${esc(who || "#" + n)}</b> <span class="tag">${tag}</span></span><span class="small">${why}</span></span>`;
     return `<div class="visrow">${v ? `<input type="text" inputmode="numeric" name="visnum:${k}" data-vis="num" data-gid="${g.id}" data-vid="${v.pid}" data-num="${esc(n)}" value="${esc(n)}" aria-label="Number" title="Change the number">` : `<span class="visn" title="In the scorer's book">${esc(n)}</span>`}${nm && !fromPA
       ? `<span class="visbook"><span><b>${esc(nm)}</b> <span class="tag" title="The scorer named #${esc(n)} on the iPad. That name wins; the scorer fixes it there.">Scorer's book</span></span>${v && v.name && nameKey(v.name) !== nameKey(nm) ? `<span class="small">Yours, ${esc(v.name)}, isn't used.</span>` : ""}</span>`
       : moved ? held(`Book: #${esc(moved.num)}`, `The scorer has this player as #${esc(moved.num)}.`)
       : gone ? held("Not in the book", `The scorer took #${esc(n)} out, so the PA page leaves this one out.`)
+      : two ? held("Not in the book", `The book's #${esc(n)} is ${esc(p.name)}, who has plays in it.`)
+      : stuck ? held(`Book: #${esc(n)}`, `${sat || kept ? `The scorer's book has another player on #${esc(to.num)}` : "The game has started"}, so the book keeps this one on #${esc(n)}. The scorer fixes it on the iPad.`)
       : off ? held("Off your list", used ? `The book keeps #${esc(n)}: ${g.status === "final" ? "the game is final" : "the scorer has used this player"}.` : "It comes out of the scorer's book in a moment.")
       : `<input type="text" name="visname:${k}" data-vis="name" data-gid="${g.id}" data-vid="${v ? v.pid : ""}" data-pid="${p ? p.pid : ""}" data-num="${esc(n)}" value="${esc(v ? v.name || "" : "")}" placeholder="${p ? "In the book with no name" : "Full name"}" aria-label="Name for #${esc(n)}"${fromPA ? ` title="In the scorer's book from your list. A fix here goes into the book too, until the scorer changes it."` : ""}>`}<input type="text" name="vissay:${k}" data-vissay="1" data-gid="${g.id}" data-vid="${v ? v.pid : ""}" data-num="${esc(n)}" value="${esc(say)}" placeholder="Phonetic" aria-label="Phonetic spelling for #${esc(n)}">${v
       ? `<button class="btn sm" type="button" data-act="visdel" data-gid="${g.id}" data-vid="${v.pid}" title="Take #${esc(n)} off your list" aria-label="Take #${esc(n)} off your list">✕</button>` : `<span></span>`}</div>`; }).join("");
   return `<div class="vis" style="${tvars(g, "them")}"><div class="row between"><span class="kicker">Their players · ${esc(g.opp)} · ${vis.length} on your list${book.length ? ` · ${book.length} in the scorer's book${named ? ` (${named} named)` : ""}` : ""}</span>
-      <span class="row">${prior ? `<button class="btn sm" data-act="viscopy" data-gid="${g.id}" data-from="${prior.id}">Use their roster from ${esc(fmtDate(prior.date))} (${paRoster(prior, "them").length})</button>` : ""}<button class="btn sm" data-act="vispaste" data-gid="${g.id}">Paste their roster</button></span></div>
+      <span class="row">${!nums.length && lk ? `<button class="btn sm primary" data-act="libuse" data-gid="${g.id}">Use the saved roster (${lk})</button>` : ""}${prior ? `<button class="btn sm" data-act="viscopy" data-gid="${g.id}" data-from="${prior.id}">Use their roster from ${esc(fmtDate(prior.date))} (${paRoster(prior, "them").length})</button>` : ""}<button class="btn sm" data-act="vispaste" data-gid="${g.id}">Paste their roster</button>${libOk(g) ? `<button class="btn sm" data-act="libopen" data-team="${g.team}" data-opp="${esc(okey(g.opp))}" title="Names, numbers and phonetic spellings for every game against ${esc(g.opp)}">Edit saved roster${lk ? ` (${lk})` : ""}</button>` : ""}</span>
+      ${fromLib ? `<div class="flag small" style="margin:0;flex-basis:100%"><span>From the saved ${esc(g.opp)} roster.${flows ? " Fixes and new players here go back into it for next time; taking one off tonight's list doesn't." : ""}</span>${g.status === "pre" ? `<button class="btn sm" data-act="visclear" data-gid="${g.id}">Clear tonight's list</button>` : ""}</div>` : ""}</div>
     <form class="visrow visadd" data-visform="${g.id}"><input type="text" inputmode="numeric" name="num" placeholder="#" aria-label="New player's number"><input type="text" name="name" placeholder="Full name" aria-label="New player's name"><input type="text" name="say" placeholder="SHAY-vee-on" aria-label="New player's phonetic spelling"><button class="btn sm primary" type="submit" title="Add to your list (Enter)">Add</button></form>
     ${rows ? `<div class="vislist">${rows}</div>` : ""}
-    <p class="small" style="margin:6px 0 0">Your names go in the intros and on Jim's page now, and into the book and the fan page once the scorer has the game. Where the scorer already named a number, the scorer's name wins (it's fixed on the iPad). Phonetic spellings stay on the PA and broadcast pages.</p></div>`;
+    <p class="small" style="margin:6px 0 0">Your names go in the intros and on Jim's page now, and into the book and the fan page once the scorer has the game. Where the scorer already named a number, the scorer's name wins (it's fixed on the iPad). Phonetic spellings stay on the PA and broadcast pages.${flows ? " What you fix or add here also goes into the saved roster for the next game against them." : ""}</p></div>`;
+}
+
+/* ---------- saved rosters: each opponent's players, kept for next time ----------
+   One entry per kid per opponent, boys and girls apart (S.lib.e[pid]), with his phonetic under the same id in S.say. A game
+   on screen with no roster yet starts from it (libTie): the PA's list gets the kids stamped below any real change
+   (libStamp), so whatever is typed for tonight wins, and until somebody changes tonight's list it keeps up with the saved
+   one. Fixes and new kids come back from Prep, the Scorer screen and the player cards (libFlow, sayPlan); a kid left off
+   tonight's list stays, and only the editor takes one off. Each field of a kid has its own stamp (f), so a fix to one field
+   never undoes a fix to another made on another device or since, and a kid taken off stays off whatever else is fixed about
+   him. Shared in hoopsBooth/_opp (never public), merged field by field. */
+const LOW = 1e11;   // a stamp below this came from the saved roster, not from a change made for one game
+const LF = ["del", ...VISF];   // a saved kid's fields, each with its own stamp
+const libStamp = e => 1 + Math.floor((e.at || 0) / 100);
+// Every field stamped (one from a copy without stamps counts as the kid's at), and at the latest of them.
+function libNorm(e){ e.f = {...(e.f || {})}; LF.forEach(f => { if(!e.f[f]) e.f[f] = e.at || 0; }); e.at = Math.max(e.at || 0, ...LF.map(f => e.f[f])); return e; }
+let LIBX = null;   // the saved rosters by team and opponent, built again after any change
+function libChanged(){ LIBX = null; libVer++; }
+// Not a practice, not a deleted game, and an opponent with a real name.
+const libOk = g => !!g && !g.practice && !g.deleted && !!okey(g.opp) && !["opponent", "tba", "tbd"].includes(okey(g.opp));
+const libIs = (g, pid) => { const e = S.lib.e[pid]; return !!e && e.t === g.team && e.o === okey(g.opp); };
+// One opponent's saved roster: one kid per number (the later change wins), by number. all: every entry, taken-off ones too.
+function libRoster(t, opp, all){
+  if(!LIBX){ LIBX = {}; Object.entries(S.lib.e || {}).forEach(([pid, e]) => { if(e && e.t && e.o) (LIBX[e.t + "|" + e.o] = LIBX[e.t + "|" + e.o] || []).push({pid, ...e}); }); }
+  const l = LIBX[t + "|" + okey(opp)] || []; if(all) return l;
+  const by = new Map(); l.filter(e => !e.del).sort((a, b) => (a.at || 0) - (b.at || 0) || (a.pid < b.pid ? -1 : 1)).forEach(e => { by.set(paNum(e.num), e); });
+  return sortRoster([...by.values()]);
+}
+function libName(t, o){ const g = Object.values(S.games).filter(x => !x.deleted && x.team === t && okey(x.opp) === o).sort((a, b) => b.date.localeCompare(a.date))[0]; return g ? g.opp : oppNames().find(n => okey(n) === o) || o; }
+// One kid spelled two ways, or two kids? The same kid when a name is blank, or when the two share a first or a last name
+// (or have one a letter off: a typo) and, where both have a first and a last name, the first names start with the same
+// letter and so do the last names (either half of a double one): Kim Holt and Kimberly Holt, Sam Lee and Sam Leigh, Jo Boy
+// and Joe Boy, Sam Lee and Sam Lee Jr. (a Jr., Sr., II, III or IV doesn't count), Mary Smith-Jones and Mary Smith Jones.
+// Teammates who share only a first or only a last name (sisters Ava and Mia Jones, Jo Smith and Jo Jones, two Emmas) are
+// two kids. It's the one rule wherever a name says who a kid is (the book and the PA's list, Prep, the phonetics, the saved
+// roster, Jim's lines), so the book and the saved roster never disagree about who an id is. A respelling that changes an
+// initial (Caitlyn and Kaitlyn Moss) or a nickname with another initial (Bobby and Robert Lee) is somebody else to it: the
+// book keeps the name the scorer typed, and the saved roster keeps the old kid and adds the new one.
+function sameKid(a, b){ const w = s => { const l = String(s || "").toLowerCase().split(/[\s,]+/).map(x => x.replace(/[^a-z-]/g, "").replace(/^-+|-+$/g, "")).filter(Boolean), k = l.filter(x => !/^(jr|sr|ii|iii|iv)$/.test(x)); return k.length ? k : l; }, A = w(a), B = w(b);
+  if(!A.length || !B.length) return true;
+  const one = (x, y) => { x = x.replace(/-/g, ""); y = y.replace(/-/g, ""); if(x === y) return true; if(x.length < 4 || y.length < 4 || Math.abs(x.length - y.length) > 1) return false;
+    let i = 0; while(x[i] === y[i]) i++; const p = x.slice(i), q = y.slice(i);
+    return p.slice(1) === q.slice(1) || p.slice(1) === q || p === q.slice(1) || (p[0] === q[1] && p[1] === q[0] && p.slice(2) === q.slice(2)); };
+  const ini = x => x.split("-").filter(Boolean).map(y => y[0]), F = A[A.length - 1], L = B[B.length - 1];
+  return (one(A[0], B[0]) || one(F, L)) && (A.length < 2 || B.length < 2 || (A[0][0] === B[0][0] && ini(F).some(c => ini(L).includes(c)))); }
+// A seeded kid's id comes from his opponent and number, the same on every device, so two devices seeding at once write
+// the same kids instead of two of each.
+function libSeedId(k, n){ let a = 0x811c9dc5, b = 7; for(const c of k + "|" + n){ const x = c.charCodeAt(0); a = Math.imul(a ^ x, 16777619); b = Math.imul(b ^ x, 2654435761) + (b >>> 13); } return "s" + (a >>> 0).toString(36) + (b >>> 0).toString(36); }
+// Once, from the games already played: each opponent the saved rosters don't have yet (not even a kid taken off) gets the
+// last game's visitors with their phonetics. Stamped 1, so any real change wins. Signed in, it waits until it has heard
+// the cloud's games and saved rosters; a device that seeded before it synced seeds again once it's live (libMerge first
+// drops its own seed wherever the shared one has that opponent).
+function libSeed(){
+  const live = Sync.live(); if(PUB || S.libSeeded === "live" || (S.libSeeded && !live) || !Sync.settled() || (live && !Sync.ready())) return;
+  const has = new Set(Object.values(S.lib.e).map(e => e && e.t + "|" + e.o)), last = {}, put = {}, say = {};
+  for(const x of Object.values(S.games)){ const k = x.team + "|" + okey(x.opp); if(!libOk(x) || has.has(k) || !paRoster(x, "them").length) continue;
+    const b = last[k]; if(!b || x.date + (x.time || "") > b.date + (b.time || "")) last[k] = x; }
+  Object.entries(last).forEach(([k, x]) => sortRoster(paRoster(x, "them")).forEach(p => { const n = paNum(p.num), id = libSeedId(k, n); if(!/^\d{1,2}$/.test(n) || put[id]) return;
+    put[id] = {t:x.team, o:okey(x.opp), ...kVis(p), del:0, f:Object.fromEntries(LF.map(f => [f, 1])), at:1}; const v = sayOf(x, "them", p); if(v && !S.say[id]) say[id] = v; }));
+  S.libSeeded = live ? "live" : "local";
+  if(Object.keys(put).length){ Object.assign(S.lib.e, put); libChanged(); libOwe(Object.fromEntries(Object.keys(put).map(k => [k, LF]))); sayPut(say); } else save();
+}
+// This device knows tonight's book and list: it has heard the cloud's games and booths since it went live, or it has never
+// shared them (a copy kept from before, with no signal now, may be missing a book the scorer typed since).
+const libKnows = () => Sync.live() ? Sync.ready() && Sync.settled() : !S.sync;
+// A game before the tip with no list of its own: the PA's list starts as the saved roster (the Scorer screen's book
+// takes it from there, paFold), and keeps up with it while nobody has changed tonight's list. Every device works it out
+// the same way from the same saved roster, so two at once write the same thing, and an older copy never writes over a
+// newer one. Never over a list somebody made for tonight, on the PA's page or in the book.
+// A game Coach reset on or after its day keeps the list it was played with for good (a game being scored again: rzKeep),
+// and so does any reset game for the 10 minutes its Undo lasts (Undo puts the plays back on the book they were scored
+// against). One reset before its day (scored by mistake) goes back to following the saved roster once the window is over,
+// on its own day too: the day of the reset decides, the same on every device and at any hour. Only a list the reset found
+// is kept (rzVis): one with nobody on it then starts from the saved roster and follows it, kid by kid, like any game's.
+// A reset made on a device still on 0.4.2 doesn't say (no rzVis for that reset, rzVisAt): it keeps the list, as before.
+const ymd = t => { const d = new Date(t); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
+const rzList = g => !!g.rz && !(g.rzVis === 0 && g.rzVisAt === g.rz), rzKeep = g => rzList(g) && g.date <= ymd(g.rz), rzHold = g => rzKeep(g) || (rzList(g) && Date.now() - g.rz < 10 * 60000);
+function libTie(g){
+  if(PUB || !libOk(g) || g.status !== "pre" || !libKnows()) return false;
+  const b = S.booth[g.id], m = (b && b.visBy) || {}, them = g.them || [], started = Object.keys(m).length > 0 || !!(b && (b.vis || []).length);
+  if(started ? rzHold(g) || !(b.lib && Object.values(m).every(e => (e.at || 0) < LOW)) || them.some(p => !p.byPA) : them.length) return false;
+  // Of two saved kids on one number, only the one the saved roster shows (libRoster) is on tonight's list.
+  const want = libRoster(g.team, g.opp, true), win = new Set(libRoster(g.team, g.opp).map(e => e.pid)), put = []; if(!started && !win.size) return false;
+  const bb = booth(g.id), mm = kOf(bb, "vis");
+  // (One that lost his number with no change of his own still comes off: just past the stamp tonight's list has for him.)
+  want.forEach(e => { const off = e.del || !win.has(e.pid), x = mm[e.pid], y = {...kVis(e), del:off ? 1 : 0, to:"", at:x && !x.del !== !off ? Math.max(libStamp(e), (x.at || 0) + 1) : libStamp(e)}; if(x ? (x.at || 0) < y.at && !kSame("vis", x, y) : !off){ mm[e.pid] = y; put.push(e.pid); } });
+  if(!put.length) return false;
+  bb.vis = kList("vis", mm); boothOwe(g.id, "vis", put); if(!bb.lib){ bb.lib = 1; boothOwe(g.id, "lib"); }
+  bb.upd = Date.now(); save(); Sync.dirtyBooth(g.id); return true;
+}
+// Games still following an opponent's saved roster (before the tip, nothing changed for tonight) keep their players when
+// it's deleted: each list becomes the game's own first, stamped as a change made for that game.
+function libDetach(t, o){ Object.values(S.games).forEach(g => { const b = S.booth[g.id], m = b && b.visBy;
+  if(!m || !b.lib || !libOk(g) || g.team !== t || okey(g.opp) !== o || g.status !== "pre" || Object.values(m).some(e => (e.at || 0) >= LOW)) return;
+  const ks = Object.keys(m).filter(k => !m[k].del); if(!ks.length) return;
+  ks.forEach((k, i) => { m[k] = {...m[k], at:kNow(m[k]) + i}; }); b.vis = kList("vis", m); boothOwe(g.id, "vis", ks); b.upd = Date.now(); Sync.dirtyBooth(g.id); }); save(); }
+// A game with a list of its own for them (typed, pasted, copied or changed for it), not only the saved roster's.
+const libOwnList = x => { const b = S.booth[x.id] || {}; return (x.them || []).some(p => !p.byPA) || (b.visBy ? Object.values(b.visBy).some(e => (e.at || 0) >= LOW) : (b.vis || []).length > 0); };
+// Fixes flow back from any game but one dated before another game against them that has started or is over with a list
+// of its own: a fix to an old box score never undoes what a newer game put in. A game only prepped for later doesn't count.
+function libFlowOk(g){ if(!libOk(g)) return false; const o = okey(g.opp), at = g.date + (g.time || "");
+  return !Object.values(S.games).some(x => x !== g && libOk(x) && x.team === g.team && okey(x.opp) === o && x.status !== "pre" && x.date + (x.time || "") > at && libOwnList(x)); }
+// The saved kid wearing a number whose name says it's him (the latest change first): sameKid, or exactly his name (same:
+// a blank on either side counts) where a wrong match would show somebody else's phonetic.
+const libAt = (g, num, name, same) => { const n = paNum(num), k = nameKey(name); return n ? libRoster(g.team, g.opp, true).filter(e => !e.del && e.num === n && (same ? !k || !nameKey(e.name) || nameKey(e.name) === k : sameKid(e.name, name))).sort((a, b) => (b.at || 0) - (a.at || 0))[0] || null : null; };
+// Tonight's kid in the saved roster: under an id his spelling is kept under, unless the names say it's somebody else, else
+// the kid there with his number and his name. One taken off there is nobody's.
+function libKidOf(g, p){ if(!libOk(g) || !p) return null; const o = okey(g.opp);
+  // The book still has the PA's old name for him (the device scoring the game hasn't taken her fix yet): he's the kid her
+  // list names now, not the saved kid with the old name (libFlow kept that one under a new id).
+  const v = paVis(g).find(x => x.pid === p.pid); if(v && v.name && p.name !== v.name && (g.paIn || {})[paNum(p.num)] === p.name) p = {...p, name:v.name};
+  for(const k of sayKeys(g, "them", p)){ const e = S.lib.e[k]; if(e && e.t === g.team && e.o === o && sameKid(e.name, p.name)){ if(!e.del) return {pid:k, ...e}; break; } }
+  return libAt(g, p.num, p.name, true); }
+// What tonight's changes (pairs of a kid before and after) do to the saved roster, as a step for libSteps: only the fields
+// that changed tonight go on, onto the saved kid as he is now, so a fix made since in the editor stays; a blank never wipes
+// what's saved. The saved kid is the one under tonight's id, else one on his old or new number with his name, else his
+// full name, tonight's new or old, on another number (he changed numbers, tonight or in the editor), else he's new. Somebody else on a saved kid's number (sameKid:
+// a teammate who shares only a first or a last name is somebody else) is a new kid: the saved one keeps everything, his phonetic too, under a new id, and tonight's id (and
+// what it spelled) goes to the new kid. Not a kid taken off tonight's list, and not one taken off the saved roster (only
+// its editor puts him back). A game whose fixes don't come back (libFlowOk) changes nothing saved, but the kid who isn't
+// tonight's any more still moves off tonight's id, so he never lends a new kid his phonetic. A saved kid this plan has moved
+// to a new id (his own went to somebody else) is found under that one by the rest of the plan (split).
+function libFlow(g, pairs){ const p = {was:{}, now:{}, say:{was:{}, now:{}}}; if(!libOk(g)) return p;
+  const t = g.team, o = okey(g.opp), ok = libFlowOk(g), nu = new Set(), split = {}, N = (f, v) => f === "num" ? paNum(v) : String(v ?? "").trim();
+  const put = (k, w) => { if(Object.keys(w).length) p.now[k] = {...(p.now[k] || {}), ...w}; };
+  const say = (k, v) => { if((S.say[k] || "") === v && !(k in p.say.now)) return; if(!(k in p.say.was)) p.say.was[k] = S.say[k] || ""; p.say.now[k] = v; };
+  for(const [x, y] of pairs){ if(!y || y.del) continue; const n = paNum(y.num), nm = N("name", y.name); if(!/^\d{1,2}$/.test(n)) continue;
+    const ch = x && !x.del ? VISF.filter(f => N(f, x[f]) !== N(f, y[f])) : VISF; if(!ch.length) continue;
+    const fix = e => { const w = {}; ch.forEach(f => { const v = N(f, y[f]); if(v && v !== String(e[f] ?? "")) w[f] = v; }); return w; };
+    const own = S.lib.e[y.pid], mine = !!own && own.t === t && own.o === o, other = !!(x && x.name && nm && !sameKid(x.name, nm));
+    if(mine && nm && ch.includes("name") && !sameKid(own.name, nm)){
+      const z = rid(); nu.add(z); split[y.pid] = z; p.now[z] = {t, o, ...Object.fromEntries(LF.map(f => [f, own[f] ?? ""]))}; if(S.say[y.pid]) say(z, S.say[y.pid]); say(y.pid, "");
+      put(y.pid, ok ? {num:n, name:nm, ...Object.fromEntries(["pos", "grade", "ht"].map(f => [f, ch.includes(f) ? N(f, y[f]) : ""])), del:0} : {del:1}); continue; }
+    if(other) say(y.pid, "");   // tonight's kid renamed to somebody else: the old name's spelling isn't his
+    if(!ok) continue;
+    if(mine){ if(!own.del) put(y.pid, fix(own)); continue; }
+    const e = (x && !x.del && libAt(g, x.num, nm)) || libAt(g, n, nm) || libRoster(t, o, true).find(k => !k.del && [nm, other || !x || x.del ? "" : N("name", x.name)].some(v => v && nameKey(k.name) === nameKey(v))) || null;
+    if(e){ put(split[e.pid] || e.pid, fix(e)); continue; }
+    const k = other || S.lib.e[y.pid] || nu.has(y.pid) ? rid() : y.pid; nu.add(k); p.now[k] = {t, o, del:0, ...Object.fromEntries(VISF.map(f => [f, N(f, y[f])]))}; }
+  Object.keys(p.now).forEach(k => { const e = S.lib.e[k]; p.was[k] = nu.has(k) || !e ? {del:1} : Object.fromEntries(Object.keys(p.now[k]).filter(f => LF.includes(f)).map(f => [f, e[f] ?? ""])); });
+  return p; }
+// An edit in the editor as a step: the fields given, against what the kid has now (one not saved yet comes in whole).
+function libPlan(now){ const p = {was:{}, now}; Object.keys(now).forEach(k => { const e = S.lib.e[k]; p.was[k] = e ? Object.fromEntries(Object.keys(now[k]).filter(f => LF.includes(f)).map(f => [f, e[f] ?? ""])) : {del:1}; }); return p; }
+// Sets fields on saved kids, each stamped newer than what's there (in the order given, so of two kids on one number the
+// later one wins), and owes just those fields to the cloud. A kid not saved yet comes in whole, with t and o.
+function libApply(m){ const owe = {}; let seq = 0;
+  Object.entries(m).forEach(([k, w]) => { const x = S.lib.e[k]; if(!x && !(w.t && w.o)) return;
+    const e = libNorm(x ? {...x} : {t:w.t, o:w.o, num:"", name:"", pos:"", grade:"", ht:"", del:0, at:0}), fs = LF.filter(f => !x || (f in w && String(e[f] ?? "") !== String(w[f] ?? "")));
+    if(!fs.length) return; const n = kNow(x) + seq++;
+    fs.forEach(f => { if(f in w) e[f] = f === "del" ? (w[f] ? 1 : 0) : String(w[f] ?? ""); e.f[f] = n; }); e.at = Math.max(e.at, n); S.lib.e[k] = e; owe[k] = fs; });
+  if(Object.keys(owe).length){ libChanged(); libOwe(owe); } }
+// Back (Undo) or again (Redo): each field a step set goes to its other value, only where the kid still has the step's.
+function libRe(from, to){ const m = {}; Object.keys(to).forEach(k => { const e = S.lib.e[k], w = {}; if(!e) return;
+  Object.keys(to[k]).forEach(f => { if(LF.includes(f) && String(e[f] ?? "") === String((from[k] || {})[f] ?? "")) w[f] = to[k][f]; }); if(Object.keys(w).length) m[k] = w; }); libApply(m); }
+const sayRe = (from, to) => sayPut(Object.fromEntries(Object.keys(to).filter(k => (S.say[k] || "") === (from[k] || "")).map(k => [k, to[k]])));
+// Kept on the device (like S.sayOwe) until the cloud has them, so a change made with no signal goes up after a reload.
+function libOwe(m){ const o = S.libOwe = S.libOwe || {}, n = oweStamp(); Object.entries(m).forEach(([k, fs]) => { const x = o[k] = o[k] && typeof o[k] === "object" ? o[k] : {}; fs.forEach(f => { x[f] = n; }); }); save(); Sync.dirtyLib(); }
+// A change to the saved rosters (and the phonetics that go with it) as one undoable step.
+function libSteps(p, label){ const s = p.say || {was:{}, now:{}}; if(!Object.keys(p.now).length && !Object.keys(s.now).length) return false;
+  libApply(p.now); sayPut(s.now); undoable(label, () => { libRe(p.now, p.was); sayRe(s.now, s.was); }, () => { libRe(p.was, p.now); sayRe(s.was, s.now); }); return true; }
+// From the Scorer screen: its player edits have no Undo, so neither does this.
+function libBook(g, pairs){ const p = libFlow(g, pairs); libApply(p.now); sayPut(p.say.now); }
+// The cloud's saved rosters, merged field by field: the later change to a field wins (the cloud's on a tie). A field this
+// device still owes stays until the cloud has it or something newer, and one here newer than the cloud's (an older write
+// landed after it) goes up again. On the first copy heard, this device's own seed gives way wherever the shared one has
+// that opponent, with the phonetics it seeded and hasn't sent (unless a game's list uses that id).
+function libMerge(r, first){ const cl = (r && r.e) || {}, m = S.lib.e = S.lib.e || {}, ow = S.libOwe = S.libOwe || {}, fix = {};
+  if(first){ const has = new Set(Object.values(cl).map(e => e && e.t + "|" + e.o)), used = new Set(Object.values(S.booth || {}).flatMap(b => Object.keys((b && b.visBy) || {})));
+    Object.keys(m).forEach(k => { const x = m[k]; if(x && (x.at || 0) <= 1 && !cl[k] && has.has(x.t + "|" + x.o)){ delete m[k]; delete ow[k]; if(!used.has(k) && k in (S.sayOwe || {})){ delete S.say[k]; delete S.sayOwe[k]; } } }); }
+  Object.entries(cl).forEach(([k, y]) => { if(!y || typeof y !== "object" || !y.t) return; const x = m[k], o = ow[k] && typeof ow[k] === "object" ? ow[k] : null;
+    if(!x){ m[k] = libNorm({...y}); return; }
+    const e = libNorm({...x}), c = libNorm({...y}), up = [];
+    LF.forEach(f => { const a = e.f[f], b = c.f[f], owed = o ? f in o : k in ow;
+      if(owed ? b > a : b >= a){ e[f] = c[f]; e.f[f] = b; if(owed && o) delete o[f]; }
+      else if(!owed && String(e[f] ?? "") !== String(c[f] ?? "")) up.push(f); });
+    if(o && !Object.keys(o).length) delete ow[k];
+    e.at = Math.max(...LF.map(f => e.f[f])); m[k] = e; if(up.length) fix[k] = up; });
+  Object.keys(m).forEach(k => { if(!cl[k] && !(k in ow)) fix[k] = LF; });
+  libChanged(); if(Object.keys(fix).length) libOwe(fix); else save(); }
+
+// The editor: from Rosters, or from Prep. Each box saves as it's left, with Undo, like Prep.
+const LIBF = {name:"Name", pos:"Position", grade:"Year", ht:"Height"};
+function libSheet(t, o){ openSheet({wide:true, lib:{t, o}, html:() => libSheetHtml(t, o)}); }
+function libSheetHtml(t, o){
+  const name = libName(t, o), kids = sortRoster(libRoster(t, o, true).filter(e => !e.del)), seen = {}, dup = new Set();
+  kids.forEach(e => { if(seen[e.num]) dup.add(e.num); seen[e.num] = 1; });
+  // A row's boxes have no grey examples (only the add row has them), so an empty box never reads as data.
+  const box = (e, f, lbl, x = "") => { const v = f === "say" ? S.say[e.pid] || "" : e[f] || ""; return `<input type="text" class="l${f}" name="lib:${e.pid}:${f}" data-lib="${e.pid}" data-f="${f}" value="${esc(v)}"${v && (f === "name" || f === "say") ? ` title="${esc(v)}"` : ""} aria-label="${lbl} for #${esc(e.num)}"${x}>`; };
+  const yr = (v, at) => `<select class="lgrade" ${at}>${["", "Fr", "So", "Jr", "Sr"].map(y => `<option value="${y}" ${y === (v || "") ? "selected" : ""}>${y || "–"}</option>`).join("")}</select>`;
+  const row = e => `<div class="librow${dup.has(e.num) ? " dup" : ""}">${box(e, "num", "Number", ' inputmode="numeric"')}${box(e, "name", "Name")}${box(e, "say", "Phonetic spelling")}${box(e, "pos", "Position")}${yr(e.grade, `name="lib:${e.pid}:grade" data-lib="${e.pid}" data-f="grade" aria-label="Year for #${esc(e.num)}"`)}${box(e, "ht", "Height")}<button class="btn sm ldel" type="button" data-act="libdel" data-pid="${e.pid}" title="Take #${esc(e.num)} off the saved roster" aria-label="Take #${esc(e.num)} off the saved roster">✕</button></div>`;
+  return `<div class="row between" style="align-items:flex-start"><div><div class="kicker">${t === "girls" ? "Girls" : "Boys"} · saved roster</div><h3>${esc(name)}</h3></div>${undoBtn()}</div>
+    <p class="small" style="margin:0 0 8px">A new game against ${esc(name)} starts with these players on the Scorer screen and in the PA's Prep. A name fixed here is fixed on tonight's list too. Each box saves as you leave it${Sync.live() ? " and goes to everyone signed in" : ""}. Phonetic spellings show only on the PA and broadcast pages.</p>
+    ${dup.size ? `<div class="flag"><span>Two players here wear ${[...dup].map(n => "#" + esc(n)).join(", ")}. Change one number, or take one off with ✕.</span></div>` : ""}
+    <div class="librow libhead" aria-hidden="true"><span>#</span><span>Name</span><span>Phonetic</span><span>Pos</span><span>Yr</span><span>Ht</span><span></span></div>
+    <form id="libform" class="librow libadd"><input type="text" class="lnum" name="num" inputmode="numeric" placeholder="#" aria-label="New player's number"><input type="text" class="lname" name="name" placeholder="Full name" aria-label="New player's name"><input type="text" class="lsay" name="say" placeholder="SHAY-vee-on" aria-label="New player's phonetic spelling"><input type="text" class="lpos" name="pos" placeholder="G" aria-label="New player's position">${yr("", `name="grade" aria-label="New player's year"`)}<input type="text" class="lht" name="ht" placeholder="6-2" aria-label="New player's height"><button class="btn sm primary ldel" type="submit" title="Add to the saved roster (Enter)">Add</button></form>
+    ${kids.length ? `<div class="liblist">${kids.map(row).join("")}</div>` : `<p class="small" style="margin:6px 0">No players saved for ${esc(name)}. Add them above, or paste a roster.</p>`}
+    <details class="libpaste"${ui.sheet && ui.sheet.paste ? " open" : ""}><summary>Paste a roster</summary><div class="stack" style="margin-top:6px;gap:6px"><textarea name="libpaste" rows="6" placeholder="1 - Ella Ray - G - Sr&#10;12 Jaylen Smith F Jr 6-1&#10;3 Holt, Kim  G  Jr  5-9"></textarea>
+      <div class="row"><button class="btn sm primary" type="button" data-act="libpastego">Add these</button><span class="small" style="flex:1 1 240px">One player per line, number first. A player already here takes the new number, position, year or height; somebody new on a saved number is added next to the player there.</span></div></div></details>
+    <div class="row" style="margin-top:10px"><button class="btn" type="button" data-close>Done</button>${kids.length ? `<button class="btn dark" type="button" data-act="libwipe">Delete this saved roster</button>` : ""}</div>`;
+}
+// The editor drawn again (another device's change, an Undo): what's typed in the add row and the paste box, words typed
+// but not saved in the box the cursor is in, the cursor itself and the scroll all stay.
+function libRefresh(){ const s = ui.sheet; if(!s || !s.lib || !$("#sheet .sheet")) return;
+  const sh = $("#sheet .sheet"), top = sh.scrollTop, a = document.activeElement, k = a && $("#sheet").contains(a) ? a.name || "" : "", d = $("#sheet details.libpaste");
+  const keep = $$('#libform [name], #sheet [name="libpaste"]').map(i => [i.name, i.value]), typed = k && /^lib:/.test(k) && a.tagName === "INPUT" && a.value !== a.defaultValue ? a.value : null, sel = k && a.tagName !== "SELECT" ? [a.selectionStart, a.selectionEnd] : null;
+  if(d) s.paste = d.open; renderSheet(); const nb = $("#sheet .sheet"); if(nb) nb.scrollTop = top;
+  keep.forEach(([n, v]) => { const i = $$("#libform [name], #sheet [name=libpaste]").find(x => x.name === n); if(i) i.value = v; });
+  const n = k && $$("#sheet [name]").find(i => i.name === k); if(n){ if(typed != null) n.value = typed; n.focus({preventScroll:true}); try{ if(sel) n.setSelectionRange(sel[0], sel[1]); }catch(e){} } }
+// A name fixed in the editor is fixed on the lists of games set up with that kid (under his id, or on his number with his
+// old name: a pasted list has its own ids), started or with a list of their own (one still following the saved roster gets
+// it from libTie, and so does a reset game held only for the 10 minutes of its Undo, once they're over: written here, its
+// list would be tonight's own and stop following; one whose book has a kid the scorer typed in has stopped following, so
+// it gets the name here), wherever the list still has the old name, so tonight's name and phonetic stay one kid's. Not a
+// final. Returns how many lists changed (each its own step to join).
+function libEcho(pid, was, now, label){ let n = 0; const e = S.lib.e[pid] || {};
+  Object.values(S.games).forEach(g => { const b = S.booth[g.id] || {}, l = paVis(g), v = l.find(x => x.pid === pid) || l.find(x => paNum(x.num) === e.num && nameKey(x.name) === nameKey(was));
+    if(!v || !libOk(g) || !libIs(g, pid) || g.status === "final" || nameKey(v.name) !== nameKey(was) || (g.status === "pre" && !rzKeep(g) && b.lib && !libOwnList(g))) return;
+    if(visStep(g, label, l => { const x = l.find(y => y.pid === v.pid); if(x) x.name = now; }, false)) n++; });
+  return n; }
+function libField(t){ const s = ui.sheet; if(!s || !s.lib) return; const pid = t.dataset.lib, f = t.dataset.f, e = S.lib.e[pid], v = t.value.trim(); if(!e || e.del) return;
+  if(f === "say"){ if(v !== (S.say[pid] || "")) saySteps({was:{[pid]:S.say[pid] || ""}, now:{[pid]:v}}, `Phonetic for #${e.num}`); return; }
+  const nv = f === "num" ? paNum(v) : f === "pos" ? v.toUpperCase() : f === "ht" ? normHt(v) : v; if(nv === (e[f] || "")) return;
+  if(f === "num"){ const x = libRoster(e.t, e.o).find(k => k.num === nv && k.pid !== pid);
+    if(!/^\d{1,2}$/.test(nv) || x){ toast(x ? `#${nv} is already ${x.name || "on this roster"}. Change that number first.` : "A jersey number is one or two digits.", 4000); t.value = e.num; return; } }
+  const label = f === "num" ? `#${e.num} is #${nv}` : `${LIBF[f]} for #${e.num}`;
+  if(libSteps(libPlan({[pid]:{[f]:nv}}), label) && f === "name"){ const k = libEcho(pid, e.name || "", nv, label); if(k) undoJoin(k + 1, label); } }
+// The add row: a number, Tab, the name and the rest, Enter. The cursor goes back to the number for the next one.
+function libSubmit(f){ const s = ui.sheet; if(!s || !s.lib) return; const {t, o} = s.lib, d = new FormData(f), num = paNum(d.get("num")), name = String(d.get("name") || "").trim(), say = String(d.get("say") || "").trim();
+  if(!/^\d{1,2}$/.test(num)){ toast(num ? "A jersey number is one or two digits." : "Type the number first."); return; }
+  const x = libRoster(t, o).find(e => e.num === num); if(x){ toast(`#${num} is already ${x.name || "on this roster"}. Change it in its row.`, 4000); return; }
+  const pid = rid(), label = `Add #${num}${name ? " " + name : ""}`;
+  libSteps(libPlan({[pid]:{t, o, del:0, num, name, pos:String(d.get("pos") || "").trim().toUpperCase(), grade:String(d.get("grade") || ""), ht:normHt(String(d.get("ht") || ""))}}), label);
+  if(say && saySteps({was:{[pid]:""}, now:{[pid]:say}}, label)) undoJoin(2, label);
+  f.reset(); libRefresh(); const nf = $("#libform [name=num]"); if(nf) nf.focus(); render(); }
+// Rosters: every saved roster by boys and girls, with how many players each has.
+function viewLib(){
+  const by = {}; Object.values(S.lib.e || {}).forEach(e => { if(e && e.t && e.o && !e.del) (by[e.t] = by[e.t] || new Set()).add(e.o); });
+  const col = team => { const os = [...(by[team] || [])].map(o => ({o, name:libName(team, o), n:libRoster(team, o).length, dup:libRoster(team, o, true).filter(e => !e.del).length})).sort((a, b) => a.name.localeCompare(b.name));
+    const more = [...new Set(Object.values(S.games).filter(x => x.team === team && libOk(x)).map(x => okey(x.opp)))].filter(o => !os.some(x => x.o === o)).map(o => [o, libName(team, o)]).sort((a, b) => a[1].localeCompare(b[1]));
+    return `<div><div class="kicker" style="margin:12px 0 0">${team === "girls" ? "Girls" : "Boys"} · ${os.length} saved</div><div class="olist">${os.map(x => { const i = oppInfo(x.name);
+      return `<button class="orow" data-act="libopen" data-team="${team}" data-opp="${esc(x.o)}" style="${varsOf(inkOf(i.c1, i.c2))}"><span class="init">${esc(i.abbr)}</span><span style="flex:1;min-width:0"><b>${esc(x.name)}</b><span class="small">${x.n} player${x.n === 1 ? "" : "s"}${x.dup > x.n ? " · two share a number" : ""}</span></span></button>`; }).join("") || `<p class="small" style="margin:0">None yet. They fill in as games are played.</p>`}</div>
+      ${more.length ? `<select data-libnew="${team}" style="margin-top:6px;width:auto;max-width:100%" aria-label="Start a saved ${team} roster for another opponent"><option value="">Start one for another opponent…</option>${more.map(([o, n]) => `<option value="${esc(o)}">${esc(n)}</option>`).join("")}</select>` : ""}</div>`; };
+  return `<div class="card"><div class="kicker">Their players</div><h2>Saved rosters</h2>
+    <p class="small" style="margin:6px 0 0">Each opponent's players and how to say their names. A new game against them starts with this list on the Scorer screen and in the PA's Prep. Fixes made during a game come back here; a player left off one night's list stays. Tap one to fix numbers, names and spellings, add or take off players, or paste a roster. Never on the fan page.</p>
+    <div class="libteams">${col("boys")}${col("girls")}</div></div>`;
 }
 
 // A press on Undo or Redo (the bar's or a toast's) leaves the cursor in the box it's in: otherwise leaving the box saves
@@ -2352,7 +2774,7 @@ document.addEventListener("mousedown", ev => { if(PUB || ev.detail < 2 || !(ui.t
 // undo stays in charge of the words.
 document.addEventListener("keydown", ev => {
   if(deskKey(ev)) return;   // the scoring screen's own Undo
-  if(PUB || !(ui.tab === "ann" || ui.tab === "bc")) return;
+  if(PUB || !(ui.tab === "ann" || ui.tab === "bc" || (ui.sheet && ui.sheet.lib))) return;   // the saved-roster editor's Undo too
   const a = document.activeElement, k = (ev.key || "").toLowerCase();
   const typing = a && (a.isContentEditable || /^(TEXTAREA|SELECT)$/.test(a.tagName) || (a.tagName === "INPUT" && !/^(checkbox|radio|button|submit|reset)$/.test(a.type)));
   if((ev.metaKey || ev.ctrlKey) && !ev.altKey && (k === "z" || (k === "y" && ev.ctrlKey && !ev.metaKey))){ if(typing) return; ev.preventDefault(); paUndo(k === "y" || ev.shiftKey); return; }
@@ -2639,6 +3061,7 @@ function viewScript(){
     <button class="btn sm" data-act="scriptedit">Edit the script</button><button class="btn sm dark" data-act="emerg">Emergency cards</button><button class="btn sm" data-act="scriptclear" ${games.some(x => (booth(x.id).done || []).length) ? "" : "disabled"} title="Every line for this night back to unread (Undo puts them back)">Uncheck everything</button>${saySwitch()}${undoBtn()}
     <span class="small">${Sync.live() ? "Shared with everyone signed in." : "Saved on this device."}</span></div>`;
   if(!games.length) return h + `<div class="card">No games that night.</div>`;
+  games.forEach(x => libTie(x));   // a game with no list yet starts from its saved roster
   if(games.every(x => x.ha === "Away")) h += `<div class="flag">This is a road night, so the home school's PA runs it. The script is here if you want it.</div>`;
   // Live strip: score, fouls and the table for every game tonight, so the PA never leaves this page.
   const strip = `<div class="livestrip">${games.map(g => {
@@ -2973,7 +3396,7 @@ function viewTeams(){
       ${rs.map(p => { const a = sl[p.pid]; return `<tr><td class="l"><button class="lnk" data-act="glog" data-team="${team}" data-pid="${p.pid}" title="Game log">${esc(p.num)} ${esc(p.name)}</button>${S.say[p.pid] ? `<div class="small" style="font-style:italic">${esc(S.say[p.pid])}</div>` : ""}</td><td class="l">${esc(p.pos || "")}</td><td class="l">${esc(p.grade || "")}</td><td class="l">${esc(p.ht || "")}</td><td>${a ? a.g : 0}</td><td>${a ? a.pts : 0}</td><td>${avg(a, "pts")}</td><td>${a && a.g ? ((a.oreb + a.dreb) / a.g).toFixed(1) : "–"}</td><td>${avg(a, "ast")}</td><td>${avg(a, "stl")}</td><td>${avg(a, "blk")}</td><td>${avg(a, "to")}</td><td>${avg(a, "pf")}</td><td>${a && a.to ? (a.ast / a.to).toFixed(1) : a && a.ast ? "–" : "–"}</td><td>${a ? pct(a.x.fgm, a.x.fga) : "–"}</td><td>${a ? pct(a.x.tpm, a.x.tpa) : "–"}</td><td>${a ? a.fta : 0}</td><td>${a ? pct(a.x.ftm, a.x.fta) : "–"}</td>${edit ? `<td><button class="btn sm" data-act="editroster" data-team="${team}" data-pid="${p.pid}">Edit</button></td>` : ""}</tr>`; }).join("") || `<tr><td class="l" colspan="19">No players yet. Paste the roster: one player per line, like <b>12 Jaylen Smith G Sr 6-2</b>.</td></tr>`}</table></div>
       ${teamLine(team)}
       <div class="row" style="margin-top:6px"><p class="small" style="margin:0;flex:1 1 260px">Season numbers count games that are over. Shooting percentages leave out points-only games. Tap a player for the game log. Year and height feed the PA's starting-lineup intros.</p><button class="btn sm" data-act="seasoncsv" data-team="${team}">Season CSV</button><button class="btn sm" data-act="allcsv" data-team="${team}">All games CSV</button></div></div>`;
-  }).join("") + viewOpps() + `</div>`;
+  }).join("") + viewOpps() + viewLib() + `</div>`;
 }
 function oppNames(){
   const m = {};
@@ -3233,9 +3656,40 @@ document.addEventListener("click", async ev => {
         const add = themParse(txt); if(!add.length){ toast("No players in that. Start each line with the number."); return; }
         const r = visAdd(gg, add, `Paste ${add.length} player${add.length === 1 ? "" : "s"}`); render(); if(r.n + r.named) undoToast(r.words); else toast(r.words || "Nothing new.", 4000); }, 8, "12 Jaylen Smith\n3 Holt, Kim  G  Jr  5-9"); break; }
     case "viscopy": { const gg = S.games[a.dataset.gid], src = S.games[a.dataset.from]; if(!gg || !src) break;
-      const r = visAdd(gg, paRoster(src, "them").map(p => ({...p})), `Use their roster from ${fmtDate(src.date)}`); render(); if(r.n + r.named) undoToast(r.words + " Fix numbers that changed."); else toast(r.words || "Nothing new."); break; }
+      const r = visAdd(gg, paRoster(src, "them").map(p => ({...p})), `Use their roster from ${fmtDate(src.date)}`, false); render(); if(r.n + r.named) undoToast(r.words + " Fix numbers that changed."); else toast(r.words || "Nothing new."); break; }
     case "visdel": { const gg = S.games[a.dataset.gid], v = gg && paVis(gg).find(x => x.pid === a.dataset.vid); if(!v) break; const who = `#${v.num}${v.name ? " " + v.name : ""}`;
       visStep(gg, "Remove " + who, l => { const i = l.findIndex(x => x.pid === v.pid); if(i >= 0) l.splice(i, 1); }); render(); undoToast(who + " is off your list."); break; }
+    // Tonight's list empty again (it stays empty: a list taken off is a list of tonight's own). The saved roster keeps them.
+    // Only before the tip: once the game is on, the scorer's bench is in the book from this list.
+    case "visclear": { const gg = S.games[a.dataset.gid], n = gg ? paVis(gg).length : 0; if(!n || gg.status !== "pre") break;
+      visStep(gg, "Clear tonight's list", l => { l.splice(0); }, false); render(); undoToast(`Tonight's list is empty (${n} off). The saved roster still has them.`); break; }
+    case "libopen": libSheet(a.dataset.team, a.dataset.opp); break;
+    // The saved roster for tonight, by hand: into the PA's list (undoable), or the Scorer screen's book (like copythem).
+    case "libuse": { const gg = S.games[a.dataset.gid], kids = gg && libOk(gg) ? libRoster(gg.team, gg.opp).map(e => ({pid:e.pid, ...kVis(e)})) : []; if(!kids.length) break;
+      if(a.dataset.book){ if(!canEdit(gg) || gg.them.length) break; claim(gg); gg.them = kids; touch(gg); toast(`${kids.length} players from the saved roster. Fix a number that changed from the player's card.`, 3500); break; }
+      const r = visAdd(gg, kids, "Use the saved roster", false); if(r.n + r.named && !booth(gg.id).lib) setBooth(gg, b => { b.lib = 1; }, ["lib"]); render(); if(r.n + r.named) undoToast(r.words); else toast(r.words || "Nothing new."); break; }
+    case "libdel": { const e = s && s.lib && S.lib.e[a.dataset.pid]; if(!e || e.del) break; const who = `#${e.num}${e.name ? " " + e.name : ""}`;
+      libSteps(libPlan({[a.dataset.pid]:{del:1}}), `Take ${who} off the saved roster`); libRefresh(); render(); undoToast(`${who} is off the saved roster.`); break; }
+    case "libwipe": { if(!s || !s.lib) break; const {t: lt, o} = s.lib, nm = libName(lt, o), kids = libRoster(lt, o, true).filter(e => !e.del); if(!kids.length) break;
+      if(!confirm(`Delete the saved ${nm} roster (${kids.length} player${kids.length === 1 ? "" : "s"})? Games already set up keep their players. Undo brings it back.`)) break;
+      libDetach(lt, o); libSteps(libPlan(Object.fromEntries(kids.map(e => [e.pid, {del:1}]))), `Delete the saved ${nm} roster`); libRefresh(); render(); undoToast(`The saved ${nm} roster is deleted.`); break; }
+    case "libpastego": { const ta = $('#sheet [name="libpaste"]'); if(!s || !s.lib || !ta) break; const {t: lt, o} = s.lib, add = themParse(ta.value);
+      if(add.some(p => p.grade)) for(const p of add) if(!p.grade && /\sJr\.?$/i.test(p.name)){ p.name = p.name.replace(/\s+Jr\.?$/i, ""); p.grade = "Jr"; }
+      if(!add.length){ toast("No players in that. Start each line with the number."); break; }
+      // The player on that number with that name (a spelling fixed), else that full name on another number (he changed
+      // numbers), else somebody new: never the player already saved on the number, who keeps his name and phonetic.
+      const kids = libRoster(lt, o, true).filter(e => !e.del), now = {}, seen = new Set(), dup = []; let n = 0, m = 0;
+      for(const p of add){ const num = paNum(p.num); if(seen.has(num)) continue; seen.add(num); const on = kids.filter(x => x.num === num);
+        const e = on.find(x => sameKid(x.name, p.name)) || (p.name && kids.find(x => nameKey(x.name) === nameKey(p.name)));
+        if(!e){ now[rid()] = {t:lt, o, del:0, ...kVis(p)}; n++; continue; }
+        const w = e.num !== num ? {num} : {}; ["name", "pos", "grade", "ht"].forEach(f => { if(p[f] && p[f] !== (e[f] || "")) w[f] = p[f]; }); if(Object.keys(w).length){ now[e.pid] = {...(now[e.pid] || {}), ...w}; m++; } }
+      // A number this paste names that has two kids once all of it is in: a kid moving off a number in the same paste frees
+      // it (two trading numbers, or a chain, is no duplicate), and a new kid on a number somebody keeps is one.
+      { const c = {}; kids.forEach(x => { const q = (now[x.pid] || {}).num || x.num; c[q] = (c[q] || 0) + 1; }); Object.keys(now).forEach(k => { if(!S.lib.e[k]) c[now[k].num] = (c[now[k].num] || 0) + 1; });
+        seen.forEach(q => { if(c[q] > 1) dup.push("#" + q); }); }
+      if(!libSteps(libPlan(now), `Paste ${add.length} player${add.length === 1 ? "" : "s"}`)){ toast("Nothing new: they're all here already."); break; }
+      ta.value = ""; s.paste = false; libRefresh(); render();
+      undoToast([n ? `${n} added` : "", m ? `${m} updated` : "", dup.length ? `${dup.join(" ")} now ${dup.length > 1 ? "have" : "has"} two players: take off whoever left with ✕` : ""].filter(Boolean).join(", ") + "."); break; }
     // No "are you sure?": Undo puts every line back.
     case "scriptclear": { const was = nightGames(ui.night).map(gg => [gg.id, (booth(gg.id).done || []).slice()]).filter(x => x[1].length), n = was.reduce((t, x) => t + x[1].length, 0); if(!n) break;
       const set = on => was.forEach(([id, keys]) => boothMark(id, "done", keys, on)); set(false); undoable(`Uncheck everything (${n})`, () => set(true), () => set(false)); render(); undoToast(`Unchecked ${n} line${n === 1 ? "" : "s"}.`); break; }
@@ -3311,7 +3765,8 @@ document.addEventListener("click", async ev => {
         <div class="row" style="margin-top:10px"><button class="btn primary" data-act="saysave">Save</button><button class="btn" data-close>Cancel</button></div>`}); break; }
     case "saysave": { const sg = s && s.say && S.games[s.say.gid], plan = {was:{}, now:{}}; let n = 0;
       $$("[data-say]").forEach(i => { const pid = i.dataset.say, v = i.value.trim(), p = sg && paPlayer(sg, s.say.tm, pid), k = Object.keys(plan.now).length;
-        if(p) sayPlan(sg, s.say.tm, p, v, plan.was, plan.now); else if(v !== (S.say[pid] || "")){ plan.was[pid] = S.say[pid] || ""; plan.now[pid] = v; }
+        // A box showing the saved roster's spelling, left as it was, isn't a change.
+        if(p){ if(v !== sayOf(sg, s.say.tm, p) || sayKeys(sg, s.say.tm, p).some(k => S.say[k])) sayPlan(sg, s.say.tm, p, v, plan.was, plan.now); } else if(v !== (S.say[pid] || "")){ plan.was[pid] = S.say[pid] || ""; plan.now[pid] = v; }
         if(Object.keys(plan.now).length > k) n++; });
       saySteps(plan, n === 1 ? "Phonetic spelling" : `Phonetic spellings (${n})`); closeSheet(); render(); break; }
     case "pmenu": if(g) pmenu(g, a.dataset.tm, a.dataset.pid); break;
@@ -3334,6 +3789,10 @@ document.addEventListener("click", async ev => {
           const ov = {...((g.usOver || {})[s.pid] || {})}; changed.forEach(k => { if(k !== "nopub") ov[k] = np[k]; }); delete ov.nopub; g.usOver = {...(g.usOver || {}), [s.pid]:ov}; }
         else if(us && g.usOver && g.usOver[s.pid]) changed.forEach(k => { delete g.usOver[s.pid][k]; });
         const q = player(g, s.tm, s.pid); Object.assign(q, np); if(changed.length) q.ed = Date.now();
+        // A visitor the scorer moves off a number the PA's list gave him leaves it his to fill (paLeft): her next kid on it
+        // comes in, and a kid he puts on it stays there.
+        if(s.tm === "them" && changed.includes("num")) paLeft(g, was.num);
+        if(s.tm === "them" && changed.length) libBook(g, [[{pid:q.pid, ...was}, q]]);   // the fix goes into the saved roster too
         // The season roster takes only what was changed here, not the rest of tonight's copy.
         const toSeason = us ? (both ? changed : changed.filter(k => k === "nopub")) : [];
         if(toSeason.length){ const T = S.teams[g.team], rp = T.roster.find(x => x.pid === q.pid); if(rp){ toSeason.forEach(k => { rp[k] = np[k]; }); rp.ed = q.ed || Date.now(); S.teamsRev++; Sync.dirtyTeams(); }
@@ -3451,7 +3910,7 @@ document.addEventListener("click", async ev => {
     case "pdel": if(s && s.opts && s.opts.onDelete){ s.opts.onDelete(); closeSheet(); } break;
     case "teamsundo": if(S.teamsPrev && confirm("Put back the rosters this device had? Every device gets them.")){ S.teams = keepNoPub(S.teams, S.teamsPrev.teams); S.teamsPrev = null; S.teamsRev = Math.max(S.teamsRev || 0, S.teamsBase || 0) + 1; save(); Sync.dirtyTeams(); render(); toast("Rosters put back."); } break;
     case "teamskeep": S.teamsPrev = null; save(); render(); break;
-    case "backup": download(`brier-stats-backup-${pubToday()}.json`, JSON.stringify({brierstats:1, at:Date.now(), teams:S.teams, games:S.games, booth:S.booth, say:S.say, bc:S.bc, settings:S.settings, opps:S.opps, script:S.script}, null, 1), "application/json"); break;
+    case "backup": download(`brier-stats-backup-${pubToday()}.json`, JSON.stringify({brierstats:1, at:Date.now(), teams:S.teams, games:S.games, booth:S.booth, say:S.say, bc:S.bc, lib:S.lib, settings:S.settings, opps:S.opps, script:S.script}, null, 1), "application/json"); break;
     case "restore": $("#restore-file").click(); break;
     default: Sync.click(act, a);
   }
@@ -3549,6 +4008,9 @@ document.addEventListener("change", ev => {
   if(t.hasAttribute("data-bcsaytog")){ ui.bcSay = t.checked; try{ localStorage.setItem(KEY + ".bcphon", ui.bcSay ? "1" : "0"); }catch(e){} render(); }
   // The PA's list of their players saves as the PA leaves a box, like the rest of Prep.
   if(t.dataset.vis || t.dataset.vissay){ const gg = S.games[t.dataset.gid]; if(gg){ visField(gg, t); afterPress(softRender); } }
+  // The saved roster's editor saves each box as it's left, like Prep.
+  if(t.dataset.lib){ libField(t); afterPress(() => { libRefresh(); softRender(); }); }
+  if(t.dataset.libnew && t.value){ const o = t.value; t.value = ""; libSheet(t.dataset.libnew, o); }
   if(t.hasAttribute("data-night")){ ui.night = t.value; render(); }
   // Prep saves as the PA leaves a box, and the redraw waits until the PA has landed: a Tab fires this before the cursor
   // reaches the next box, a mouse press before its click. Then it goes around the box the PA is typing in now (setView)
@@ -3590,6 +4052,7 @@ document.addEventListener("submit", ev => {
     const k = "o:" + g.team + ":" + okey(g.opp) + ":" + num;
     if(!note && !bcNote(k)){ toast("Type the note first."); box("note"); return; }
     const done = bcStep(k, note, `Note on #${num}`); closeSheet(); render(); toast(!done ? "No change." : note ? "Saved." : "Note cleared."); return; }
+  if(f.id === "libform"){ libSubmit(f); return; }
   if(f.dataset.visform){ visSubmit(f); return; }
   if(f.id === "egform" && s){ const g = S.games[s.gid]; if(!g || !canEdit(g)) return; const d = new FormData(f), fwas = GFIELDS.map(k => JSON.stringify(g[k] ?? null));
     // A postponed game given its makeup date is back on the schedule. A forfeit decides the game, whatever else is set,
@@ -3701,9 +4164,25 @@ const rzNet = () => !(S.sync || S.teamsBase != null) || Sync.ready(), rzNoNet = 
 // whose copies hold the same game (rzOf), so plays such a copy has that the Undo lacks fold back in (Sync's rzJoin).
 const RZ_REV = 1e6, RZ_F = ["status", "forfeit", "off", "offWas", "writer", "writerAt", "takeover"];
 function rzNew(g){ g.rz = Math.max(Date.now(), (g.rz || 0) + 1); g.rev = (g.rev || 0) + RZ_REV; }
-function resetGame(g){
+// A game reset before its day was scored by mistake. The visitors the scorer typed into its book on the day it was scored
+// (each one the saved roster got from that typing, under his own id), played or not, go with its plays: out of the book
+// and out of the saved roster, so the game follows the saved roster again after the 10 minutes and no later game gets
+// them. One typed on an earlier day (the book made ready ahead), one saved before, or one on tonight's list stays.
+const rzTyped = (g, day) => { if(!(g.date > day) || !g.ev.length) return []; const d0 = ymd(Math.min(...g.ev.map(e => e.at || Date.now()))), vis = paVis(g);
+  return (g.them || []).filter(p => { const e = S.lib.e[p.pid]; return !p.byPA && libIs(g, p.pid) && ymd(Math.min(...LF.map(f => (e.f || {})[f] || e.at || 0))) >= d0 && !vis.some(v => v.pid === p.pid); }); };
+// One of them that another game against the same team, today's or one under way or over, has in its book or on its list
+// (the schedule has that team twice: the wrong game was opened, and the scorer went on in the right one), is theirs for
+// real: he leaves this book but stays saved. On his number with his name (sameKid, as libAt has it) is him too: the
+// scorer typed him again there under another id.
+const rzReal = (g, k, day) => { const e = S.lib.e[k] || {}; return Object.values(S.games).some(x => x.id !== g.id && !x.deleted && !x.practice && x.date <= day && (x.date === day || x.status !== "pre") && x.team === g.team && okey(x.opp) === okey(g.opp)
+  && ((x.them || []).some(q => q.pid === k || (paNum(q.num) === e.num && !!nameKey(q.name) && !!nameKey(e.name) && sameKid(q.name, e.name))) || paVis(x).some(v => v.pid === k))); };
+function resetGame(g, vis){
   const was = JSON.parse(JSON.stringify(g)), f0 = GFIELDS.map(k => JSON.stringify(g[k] ?? null));
   rzNew(g); delete g.rzOf; g.ev = []; g.status = "pre"; if(g.offWas) g.off = g.offWas; delete g.offWas; delete g.forfeit; g.writer = null; delete g.writerAt; g.takeover = null;
+  // Whether tonight's visitors' list had anyone (1 or 0): only a list the reset found is kept (rzHold). Said for this
+  // reset (rzVisAt), so one made later on a device still on 0.4.2, which doesn't say, never reads as this one's. Its Undo
+  // carries it over, and a Redo keeps what the first reset found (vis).
+  g.rzVis = vis ?? paVis(g).length > 0 ? 1 : 0; g.rzVisAt = g.rz;
   edField(g, GFIELDS.filter((k, i) => JSON.stringify(g[k] ?? null) !== f0[i])); delete S.strand[g.id]; if(ui.gid === g.id) ui.fu = [];
   const ch = setBooth(g, b => { b.table = {us:[], them:[]}; b.said = []; b.done = (b.done || []).filter(k => /^(top|end):/.test(k)); }, ["table", "said", "done"]), b = booth(g.id);
   // Every kid and every line of the game gets a fresh "off", not only the ones on here: one sent to the table or marked read
@@ -3712,13 +4191,26 @@ function resetGame(g){
   for(const [f, ks] of Object.entries(keys)){ const m = kOf(b, f), put = {};
     new Set(ks).forEach(k => { if(!ch[f][k]) put[k] = {...(m[k] || (f === "table" ? {tm:"us", to:""} : {to:""})), on:0, at:kNow(m[k])}; });
     Object.assign(m, put); b[f] = kList(f, m); boothOwe(g.id, f, Object.keys(put)); }
-  Sync.reset(g.id); touch(g); return {was, ch, rz:g.rz};
+  // Before its day, the visitors typed for these plays go with them (rzTyped), after the table and the lines are stamped
+  // off for every kid. Undo puts them back (out), in the saved roster too (lib).
+  const out = rzTyped(was, ymd(g.rz)).map(p => p.pid); let lib = null; if(out.length) g.rzOut = out; else delete g.rzOut;
+  if(out.length){ g.them = g.them.filter(p => !out.includes(p.pid)); const off = out.filter(k => !S.lib.e[k].del && !rzReal(g, k, ymd(g.rz)));
+    if(off.length){ lib = libPlan(Object.fromEntries(off.map(k => [k, {del:1}]))); libApply(lib.now); } }
+  Sync.reset(g.id); touch(g); return {was, ch, rz:g.rz, vis:!!g.rzVis, lib, out};
 }
 // Undo: every play back as it was (same ids, removed ones still removed), the game's state and its scorer, and the table and
 // the lines read as the reset found them. The state comes back with the stamps it had, so a change made to it with no signal
 // before the reset (Final tapped on the iPad) still counts when that copy folds in.
-function rzBack(g, x){ const w = x.was;
-  rzNew(g); g.rzOf = [w.rz || 0, ...(w.rzOf || [])].slice(0, 9); g.ev = JSON.parse(JSON.stringify(w.ev)); g.fed = {...(g.fed || {})};
+function rzBack(g, x){ const w = x.was, at = g.rzVisAt === g.rz;
+  rzNew(g); if(at) g.rzVisAt = g.rz; delete g.rzOut; g.rzOf = [w.rz || 0, ...(w.rzOf || [])].slice(0, 9); g.ev = JSON.parse(JSON.stringify(w.ev)); g.fed = {...(g.fed || {})};
+  // A visitor the plays name who left the book since the reset (tonight's list cleared or changed, and an iPad folded it in)
+  // comes back as he was, and so does one the reset took out (typed for these plays before the game's day: x.out), in the
+  // saved roster too (x.lib). One whose number a new kid on the list took meanwhile comes back next to him (two kids: neither
+  // is moved onto the other's id), and Coach hears which numbers have two (x.two).
+  if(x.lib) libRe(x.lib.now, x.lib.was);
+  { const now = Date.now(), gone = (w.them || []).filter(p => !g.them.some(q => q.pid === p.pid) && (w.ev.some(e => e.pid === p.pid) || (x.out || []).includes(p.pid)));
+    if(gone.length) g.them = g.them.concat(gone.map(p => ({...p, ed:now})));
+    x.two = [...new Set(gone.filter(p => g.them.some(q => q.pid !== p.pid && paNum(q.num) === paNum(p.num))).map(p => "#" + paNum(p.num)))]; }
   RZ_F.forEach(k => { if(w[k] === undefined) delete g[k]; else g[k] = w[k]; if(GFIELDS.includes(k)){ if((w.fed || {})[k]) g.fed[k] = w.fed[k]; else delete g.fed[k]; } });
   setBooth(g, b => { Object.entries(x.ch).forEach(([f, m]) => Object.entries(m).forEach(([k, e]) => kSet(b, f, k, e[0]))); }, Object.keys(x.ch));
   Sync.reset(g.id); touch(g); x.rz = g.rz;
@@ -3740,9 +4232,10 @@ function resetStep(g){
       if(y.ev.length) return no("Can't put the plays back: this game has new plays since the reset.");
       if((UNDO.next.length || Date.now() - x.at > 60000) && !confirm(`Undo the reset of ${nm}? Its ${rzPl(n)} come${n === 1 ? "s" : ""} back on every device and the fan page.`)) return no("The reset stands.");
       // The toast says what came back, with no Redo on it: a second tap where Undo was never resets the game again.
-      rzBack(y, x); rzHush = Date.now() + 700; setTimeout(() => toast(`Put back the ${rzPl(n)} of ${nm}.`, 5000), 0); },
+      rzBack(y, x); rzHush = Date.now() + 700; const two = x.two || [];
+      setTimeout(() => toast(`Put back the ${rzPl(n)} of ${nm}.${two.length ? ` ${two.join(" ")} now ${two.length > 1 ? "have" : "has"} two players in the book: take off the one who didn't play.` : ""}`, two.length ? 8000 : 5000), 0); },
     () => { const y = S.games[gid]; if(!rzNet()) return no(rzNoNet("Redo"), true, true);
-      if(y && !y.deleted && y.rz === x.rz && y.ev.map(e => e.id).join() === x.was.ev.map(e => e.id).join()){ Object.assign(x, resetGame(y)); x.at = Date.now(); }
+      if(y && !y.deleted && y.rz === x.rz && y.ev.map(e => e.id).join() === x.was.ev.map(e => e.id).join()){ Object.assign(x, resetGame(y, x.vis)); x.at = Date.now(); }
       else no("The game changed since. Reset it again from its Edit sheet.", false, true); });
   const step = UNDO.past[UNDO.past.length - 1];
   rzHush = Date.now() + 700; undoToast(`${nm} reset: ${rzPl(n)} erased.`);
@@ -3752,13 +4245,13 @@ function resetStep(g){
 // card backs out with nothing changed. The first card says what the game is now (a final, or live on another device).
 let rzHush = 0;
 function rzSheet(g, step, more){
-  const n = g.ev.length, t = rzPl(n), s = {gid:g.id, rzStep:step, n, armAt:Date.now() + 700}, R = replay(g);
+  const n = g.ev.length, t = rzPl(n), s = {gid:g.id, rzStep:step, n, armAt:Date.now() + 700}, R = replay(g), ty = rzTyped(g, pubToday()), real = ty.filter(p => rzReal(g, p.pid, pubToday())), nm = l => l.map(p => "#" + p.num + (p.name ? " " + p.name : "")).join(", ");
   const now = g.status === "final" ? "Final · " + (resultWords(g) || R.sc.us + "-" + R.sc.them) : g.status === "live" ? `${mine(g) ? "Live" : "Live now on another device"} · ${R.sc.us}-${R.sc.them}, ${perLabel(g, R.q)}` : "Not started";
   const go = l => `<button class="btn dark" data-act="rzgo"${Date.now() < s.armAt ? " disabled" : ""}>${l}</button>`;
   s.html = () => step === 1 ? `<h3>Reset ${esc(usName(g))} ${gameTitle(g)}, ${esc(fmtDate(g.date))}?</h3><p class="small" style="margin:0">${esc(now)}</p>
     <div class="row" style="margin:6px 0 14px">${go(n === 1 ? "Yes, erase the 1 play" : "Yes, erase all " + t)}</div>
     <p style="margin:0 0 8px">Every play goes, and with them the score, the box score, fouls, timeouts, the arrow, the periods and Final. The game goes back to before tip-off on every device and the fan page, and any scorer can start it fresh. Subs waiting at the table and the lines the PA marked read for it are cleared too.</p>
-    <p class="small" style="margin:0 0 12px">Stays: the game on the schedule, both rosters, the PA's prep and notes, and Jim's notes.</p>
+    <p class="small" style="margin:0 0 12px">Stays: the game on the schedule, both rosters, the PA's prep and notes, and Jim's notes.${ty.length ? ` The game isn't until ${esc(fmtDate(g.date))}, so ${esc(nm(ty))}, typed in when it was scored, ${ty.length > 1 ? "go" : "goes"} too: out of the book${real.length < ty.length ? " and the saved roster" : ""}${real.length ? ` (${esc(nm(real))} ${real.length > 1 ? "are" : "is"} in another game against them, so ${real.length > 1 ? "stay" : "stays"} saved)` : ""}.` : ""}</p>
     <div class="row" style="justify-content:flex-end"><button class="btn" data-close>Cancel</button></div>`
   : `<h3>${more ? "More plays came in. " : ""}Erase ${t} for good?</h3><p style="margin:0 0 14px">Last check. Season records, game logs and the fan page stop counting this game until it's scored again. For 10 minutes, Undo (on the toast, or on the Announcer page) puts the plays back if nobody has scored in it since.</p>
     <div class="row between"><button class="btn" data-close>Cancel</button>${go(n === 1 ? "Erase it for good" : "Erase them for good")}</div>`;
@@ -3882,11 +4375,12 @@ function themParse(txt){
 // Adds them to tonight's opponent list. A number already listed isn't added twice (two #12s, and a later bench tap can put
 // the wrong one in); a name for a number that has none fills it in. Says what happened; true when anything changed.
 function themList(g, add){
-  let n = 0, named = []; const dup = [];
+  let n = 0, named = []; const dup = [], flow = [];
   for(const p of add){ const ex = g.them.find(x => String(x.num) === String(p.num));
-    if(!ex){ g.them.push(p); n++; }
-    else if(!ex.name && p.name){ ["name", "pos", "grade", "ht"].forEach(k => { if(p[k] && !ex[k]) ex[k] = p[k]; }); ex.ed = Date.now(); named.push(ex); }
+    if(!ex){ g.them.push(p); n++; flow.push([null, p]); }
+    else if(!ex.name && p.name){ ["name", "pos", "grade", "ht"].forEach(k => { if(p[k] && !ex[k]) ex[k] = p[k]; }); ex.ed = Date.now(); named.push(ex); flow.push([null, ex]); }
     else dup.push("#" + p.num); }
+  libBook(g, flow);   // new kids and names go into the saved roster too
   toast([n ? `Added ${n}.` : "", named.length === 1 ? `#${named[0].num} is ${named[0].name}.` : named.length ? `Names added to ${named.length} numbers already listed.` : "", dup.length ? `Already listed: ${dup.join(" ")}.` : ""].filter(Boolean).join(" "), dup.length ? 4000 : 2400);
   return n + named.length > 0;
 }
@@ -3896,32 +4390,46 @@ function themAdd(g, np){
     if(add.length > 1) return themList(g, add);
     if(add.length === 1){ np.num = add[0].num; if(!np.name) np.name = add[0].name; } }
   const ex = g.them.find(x => String(x.num) === String(np.num));
-  if(!ex){ g.them.push(np); return true; }
+  if(!ex){ g.them.push(np); libBook(g, [[null, np]]); return true; }
   if(!ex.name && np.name) return themList(g, [np]);
   if(confirm(`#${ex.num}${ex.name ? " " + ex.name : ""} is already here. Edit #${ex.num} instead?`))
     sheetPlayer({title:"Edit #" + ex.num, num:ex.num, name:np.name || ex.name, pos:np.pos || ex.pos, grade:np.grade || ex.grade, ht:np.ht || ex.ht, nopub:!!ex.nopub, optionalName:true, check:q => String(q.num) === String(ex.num) ? "" : numClash(g.them, q.num, ex.pid), onSave:q => {
       if(!canEdit(g)) return; delete q.both;
       if(String(q.num) !== String(ex.num) && g.them.some(x => x !== ex && String(x.num) === String(q.num))){ toast(`#${q.num} is already listed.`); return; }
       // The player as the game has him now: another device's fix folded in while this sheet was open brings new copies.
-      const p = player(g, "them", ex.pid) || ex; Object.assign(p, q); p.ed = Date.now(); touch(g); }});
+      const p = player(g, "them", ex.pid) || ex, was = {...p}; Object.assign(p, q); p.ed = Date.now(); if(paNum(was.num) !== paNum(p.num)) paLeft(g, was.num); libBook(g, [[was, p]]); touch(g); }});
   return false;
 }
 function lastThem(g){ return Object.values(S.games).filter(x => x.id !== g.id && !x.deleted && !x.practice && x.team === g.team && okey(x.opp) === okey(g.opp) && x.them && x.them.length).sort((a, b) => b.date.localeCompare(a.date))[0] || null; }
+// The backup's plays put back on a game reset since, as its Undo does: with the visitors that reset took out (rzOut), in the
+// book and, where still taken off, the saved roster.
+const rzRe = (m, g) => { const o = (m.rzOut || []).filter(k => (g.them || []).some(p => p.pid === k)), d = o.filter(k => (S.lib.e[k] || {}).del);
+  return {was:g, ch:{}, out:o, lib:d.length ? {now:Object.fromEntries(d.map(k => [k, {del:1}])), was:Object.fromEntries(d.map(k => [k, {del:0}]))} : null}; };
 function restore(text){
   let o; try{ o = JSON.parse(text); }catch(e){ toast("That file isn't a Brier Stats backup."); return; }
   if(!o || !o.brierstats || !o.games){ toast("That file isn't a Brier Stats backup."); return; }
   let n = 0;
-  for(const [id, g] of Object.entries(o.games)){ const m = S.games[id]; if(!m || (g.rev || 0) > (m.rev || 0)){ S.games[id] = g; n++; Sync.dirty(id); } }
+  const rzd = [];
+  for(const [id, g] of Object.entries(o.games)){ const m = S.games[id]; if(!m || (g.rev || 0) > (m.rev || 0)){ S.games[id] = g; n++; Sync.dirty(id); }
+    else if(!m.deleted && !m.ev.length && (m.rz || 0) > (g.rz || 0) && (g.ev || []).length) rzd.push([m, g]); }
+  // A game Coach reset after this backup was made keeps its reset (a backup never puts an older copy over a newer one), but
+  // Coach can have its plays back from here, the way the reset's Undo puts them back, on every device.
+  const kept = rzd.filter(([m, g]) => !(rzOk({...m, ev:g.ev}) && rzNet() && confirm(`${usName(m)} ${m.ha === "Away" ? "at" : "vs"} ${m.opp} was reset after this backup was made. Put back its ${rzPl(g.ev.length)} from the backup?`) && (rzBack(m, rzRe(m, g)), ++n)));
   // A name note this device already has is the newer one (the cloud's, or the PA's since the backup): only fill gaps.
   if(o.say){ const ch = Object.keys(o.say).filter(pid => o.say[pid] && !S.say[pid]); ch.forEach(pid => { S.say[pid] = o.say[pid]; }); if(ch.length && Sync.live()){ S.sayUpd = Date.now(); Sync.dirtySay(ch); } }
   if(o.script && (o.script.upd || 0) > ((S.script && S.script.upd) || 0)){ S.script = o.script; Sync.dirtyScript(); }
   if(o.booth) for(const [id, b] of Object.entries(o.booth)) if(!id.startsWith("_") && (!S.booth[id] || (b.upd || 0) > (S.booth[id].upd || 0))) S.booth[id] = b;
+  // Saved rosters: each field's newer change wins, as when two devices meet.
+  if(o.lib && o.lib.e){ const up = {}; Object.entries(o.lib.e).forEach(([k, y]) => { if(!y || !y.t) return; const x = S.lib.e[k], c = libNorm({...y});
+      if(!x){ S.lib.e[k] = c; up[k] = LF; return; } const e = libNorm({...x}), fs = LF.filter(f => c.f[f] > e.f[f]); if(!fs.length) return;
+      fs.forEach(f => { e[f] = c[f]; e.f[f] = c.f[f]; }); e.at = Math.max(e.at, c.at); S.lib.e[k] = e; up[k] = fs; });
+    if(Object.keys(up).length){ libChanged(); libOwe(up); } }
   // Jim's notes: like name notes, a backup fills in what's missing and never replaces a note this device has.
   if(o.bc && o.bc.n) for(const [k, v] of Object.entries(o.bc.n)) if(v && !bcNote(k)) setBcNote(k, v);
   if(o.teams && confirm("Also replace the rosters, opponents' colors and settings with the ones in the backup?")){ S.teams = keepNoPub(S.teams, o.teams); if(o.settings) Object.assign(S.settings, o.settings); if(o.opps) S.opps = o.opps; S.teamsRev++; Sync.dirtyTeams(); }
   // A game the other device was still scoring stays its game until this one takes it over.
   const theirs = Object.values(S.games).filter(g => !g.practice && !g.deleted && g.status === "live" && g.writer && g.writer !== S.dev).length;
-  save(); render(); toast("Restored " + n + " games." + (theirs ? ` ${theirs} unfinished game${theirs > 1 ? "s were" : " was"} being scored on the other device: open it and tap Take over to keep scoring here.` : ""), theirs ? 6000 : 2500);
+  save(); render(); toast("Restored " + n + " games." + (kept.length ? ` ${kept.length} reset after this backup ${kept.length > 1 ? "keep their resets" : "keeps its reset"}: ${kept.map(([m]) => m.opp).join(", ")}.` : "") + (theirs ? ` ${theirs} unfinished game${theirs > 1 ? "s were" : " was"} being scored on the other device: open it and tap Take over to keep scoring here.` : ""), theirs ? 6000 : 2500);
 }
 
 /* ---------- public page (?live, or /hoops/live/) ----------
@@ -4099,10 +4607,13 @@ const RULES = "rules_version = '2';\n// Mound Book live sync. Only people Coach 
 const Sync = (() => {
   const st = {phase:"off", err:"", uid:null, email:"", name:"", role:null, fb:null, auth:null, db:null, unsub:[], reqs:[], mems:[],
     dirty:new Set(), teamsDirty:false, teamsSent:null, teamsSentJ:"", gamesSeen:false, teamsSeen:false, tries:0, scriptDirty:false, pushing:false, timer:null, mode:"in", busy:false,
-    pub:{last:{}, timer:{}, seen:{}, rowk:{}, busy:{}, again:{}, retry:{}, other:{}}, seeded:false, stale:false, pubDel:new Set(), rzWas:{}};
+    pub:{last:{}, timer:{}, seen:{}, rowk:{}, busy:{}, again:{}, retry:{}, other:{}}, seeded:false, stale:false, pubDel:new Set(), rzWas:{}, boothSeen:false, libHeard:false};
   const live = () => st.phase === "live";
   const paint = () => { softRender(); askCard(); };
-  function clear(){ st.unsub.forEach(u => { try{ u(); }catch(e){} }); st.unsub = []; st.teamsSeen = false; st.gamesSeen = false; st.oweSent = false; }
+  function clear(){ st.unsub.forEach(u => { try{ u(); }catch(e){} }); st.unsub = []; st.teamsSeen = false; st.gamesSeen = false; st.oweSent = false; st.boothSeen = false; st.libHeard = false; }
+  // This device knows enough to start a game from its saved roster: it has heard the shared booth once (an empty copy
+  // with no signal counts), or it isn't sharing right now (never synced, signed out, waiting to be let in, no signal).
+  const settled = () => live() ? st.boothSeen : !S.sync || !["off", "loading"].includes(st.phase);
   async function start(){
     if(st.fb || st.phase === "loading") return;
     if(location.protocol === "file:"){ st.phase = "error"; st.err = "Live sync needs the app's web address, not a file."; paint(); return; }
@@ -4218,7 +4729,7 @@ const Sync = (() => {
       });
       // A scorer who signs in while another device is scoring tonight's game lands on the Announcer page, not on a desk
       // whose only live button is Take over.
-      if(!st.gamesSeen){ st.gamesSeen = true; const g = cur(); if(g && g.status === "live" && !mine(g) && ui.tab === "desk" && !ANN_ONLY){ ui.tab = "ann"; saveUi(); changed = true; } }
+      if(!st.gamesSeen){ st.gamesSeen = true; changed = true; const g = cur(); if(g && g.status === "live" && !mine(g) && ui.tab === "desk" && !ANN_ONLY){ ui.tab = "ann"; saveUi(); changed = true; } }
       if(Object.keys(S.pubRedo || {}).length && ready()) sendOwed();
       // Fixes to finals that never reached the fan page (the tab closed first) go now, from the cloud's copy.
       if(!st.oweSent && ready() && Object.keys(S.pubOwe || {}).length){ st.oweSent = true;
@@ -4231,6 +4742,7 @@ const Sync = (() => {
         if(d.id === "_say"){ const next = {...(r.say || {})}; Object.keys(S.sayOwe || {}).forEach(pid => { next[pid] = S.say[pid] || ""; }); S.say = next; S.sayUpd = r.upd || 0; changed = true; return; }
         if(d.id === "_script"){ if((r.upd || 0) > ((S.script && S.script.upd) || 0)){ S.script = r.segs ? {segs:r.segs, upd:r.upd} : null; changed = true; } return; }
         if(d.id === "_bc"){ const next = {...(r.n || {})}; Object.keys(S.bcDirty || {}).forEach(k => { next[k] = bcNote(k); }); S.bc = {n:next, upd:r.upd || 0}; changed = true; return; }
+        if(d.id === "_opp"){ libMerge(r, !st.libHeard); st.libHeard = true; changed = true; return; }
         if(d.id.startsWith("_")) return;   // a shared doc this version doesn't know: never a game's booth
         if(r.beat){ const was = BEAT[d.id]; BEAT[d.id] = {v:r.beat, at:!was ? Math.min(Date.now(), r.beat) : was.v !== r.beat ? Date.now() : was.at}; }
         // The cloud copy holds everyone's changes; keep only this device's own changes that haven't gone up yet (S.boothOwe,
@@ -4253,7 +4765,9 @@ const Sync = (() => {
         if(l && Object.keys(o).length){ next.upd = Math.max(l.upd || 0, r.upd || 0);
           Object.entries(o).forEach(([f, x]) => { if(!KEYED[f]) next[f] = typeof x !== "object" ? l[f] : {...(r[f] || {}), ...Object.fromEntries(Object.keys(x).filter(k => l[f] && k in l[f]).map(k => [k, l[f][k]]))}; }); }
         S.booth[d.id] = next; changed = true; });
-      if(changed){ save(); paFoldAll(); softRender(); }
+      // The first copy heard (an empty one too, with no signal) lets a game on screen start from its saved roster.
+      const first = !st.boothSeen; st.boothSeen = true;
+      if(changed){ save(); paFoldAll(); softRender(); if(ui.sheet && ui.sheet.lib) libRefresh(); } else if(first) softRender();
     }, dead));
     st.unsub.push(fb.onSnapshot(fb.doc(db, "hoopsBook", "teams"), snap => {
       st.teamsSeen = true;   // rosters go up only after this device has heard the cloud's copy once
@@ -4435,8 +4949,9 @@ const Sync = (() => {
   function dirtySay(pids){ if(!(pids || []).length) return; const n = oweStamp(); S.sayOwe = {...(S.sayOwe || {})}; pids.forEach(p => { S.sayOwe[p] = n; }); kick(700); }
   // Clears what a write paid for: a stamp that changed while it was on its way stays owed.
   function paid(o, sent){ if(o) Object.entries(sent).forEach(([k, x]) => { const y = o[k]; if(x && typeof x === "object"){ if(y && typeof y === "object"){ paid(y, x); if(!Object.keys(y).length) delete o[k]; } } else if(y === x) delete o[k]; }); }
-  const owedAny = () => !!(Object.keys(S.boothOwe || {}).length || Object.keys(S.sayOwe || {}).length || Object.keys(S.bcDirty || {}).length || S.scriptOwe);
+  const owedAny = () => !!(Object.keys(S.boothOwe || {}).length || Object.keys(S.sayOwe || {}).length || Object.keys(S.libOwe || {}).length || Object.keys(S.bcDirty || {}).length || S.scriptOwe);
   function dirtyBc(){ kick(700); }
+  function dirtyLib(){ kick(700); }
   function kick(ms){ clearTimeout(st.timer); st.timer = setTimeout(push, ms); }
   const clean = o => JSON.parse(JSON.stringify(o));
   async function push(){
@@ -4492,6 +5007,13 @@ const Sync = (() => {
       if(Object.keys(so).length){ const part = {}; Object.keys(so).forEach(pid => { part[pid] = S.say[pid] || ""; });
         await fb.setDoc(fb.doc(db, "hoopsBooth", "_say"), clean({say:part, upd:S.sayUpd || Date.now()}), {merge:true});
         paid(S.sayOwe, so); save(); }
+      // The saved rosters: only the fields owed, each with its stamp, merged into the shared copy (a kid's other fields,
+      // maybe fixed on another device, stay as the cloud has them).
+      const lo = clean(S.libOwe || {});
+      if(Object.keys(lo).length){ const part = {}; Object.entries(lo).forEach(([k, x]) => { const e = S.lib.e[k]; if(!e) return; const y = {t:e.t, o:e.o, at:e.at, f:{}};
+          (x && typeof x === "object" ? Object.keys(x) : LF).forEach(f => { if(LF.includes(f)){ y[f] = e[f] ?? ""; y.f[f] = (e.f || {})[f] || e.at || 0; } }); part[k] = y; });
+        if(Object.keys(part).length) await fb.setDoc(fb.doc(db, "hoopsBooth", "_opp"), clean({e:part, upd:Date.now()}), {merge:true});
+        paid(S.libOwe, lo); save(); }
       const owed = {...(S.bcDirty || {})};
       if(Object.keys(owed).length){ const part = {}; Object.keys(owed).forEach(k => { part[k] = bcNote(k); });
         await fb.setDoc(fb.doc(db, "hoopsBooth", "_bc"), clean({n:part, upd:(S.bc && S.bc.upd) || Date.now()}), {merge:true});
@@ -4578,7 +5100,7 @@ const Sync = (() => {
     }catch(e){ toast(authMsg(e), 5000); }
     st.busy = false; render();
   }
-  return {start, live, ready, dirty, reset, owePids, dirtyBooth, dirtyTeams, dirtySay, dirtyBc, dirtyScript, seedSeason, panel, click, submit,
+  return {start, live, ready, settled, dirty, reset, owePids, dirtyBooth, dirtyTeams, dirtySay, dirtyBc, dirtyLib, dirtyScript, seedSeason, panel, click, submit,
     phase:() => st.phase, role:() => st.role, uid:() => st.uid,
     stale:() => st.stale, label:() => (st.role === "owner" ? "Coach" : st.role === "scorer" ? "Scorer" : "Viewer") + (st.stale ? " · not updating" : st.role === "owner" && st.reqs.length ? " · " + st.reqs.length + " waiting" : pubOwed() ? " · updating fan page" : " · live")};
 })();
