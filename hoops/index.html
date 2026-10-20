@@ -1506,7 +1506,7 @@ function viewDesk(){
   else if(!canEdit(g)) h += `<div class="flag bad"><span>Another device is scoring this game. Only one device scores at a time.${S.strand[g.id] ? ` <b>${S.strand[g.id].length} play(s) tapped here never reached the cloud</b> before it took over: taking over puts them back in.` : ""}</span><button class="btn sm" data-act="takeover">Take over scoring here</button></div>`;
   // The first game of a doubleheader is over: the next one tonight is one tap away (the book has about ten minutes).
   if(g.status === "final"){ const nx = g.practice ? null : Object.values(S.games).filter(x => x.id !== g.id && !x.deleted && !x.practice && !x.off && !x.forfeit && x.date === g.date && x.status !== "final").sort((a, b) => (a.time || "").localeCompare(b.time || ""))[0];
-    h += `<div class="flag ok"><b>FINAL.</b> Corrections still work and fix the box score everywhere.${mine(g) ? ` <button class="btn sm" data-act="reopen">Reopen</button>` : ""}${nx ? `<span style="margin-left:auto">Next: <b>${esc(usName(nx))} ${gameTitle(nx)}</b>${nx.time ? " · " + esc(timeWords(nx.time)) : ""}</span><button class="btn sm" data-act="open" data-gid="${nx.id}">Open</button>` : ""}</div>`; }
+    h += `<div class="flag ok"><b>FINAL.</b> Corrections still work and fix the box score everywhere.${mine(g) ? ` <button class="btn sm" data-act="reopen">Reopen</button>` : ""}${canScore() ? ` <button class="btn sm" data-act="savebk">${bkSaved[g.id] >= (g.upd || 1) ? "Backup saved ✓" : "Save backup"}</button>` : ""}${nx ? `<span style="margin-left:auto">Next: <b>${esc(usName(nx))} ${gameTitle(nx)}</b>${nx.time ? " · " + esc(timeWords(nx.time)) : ""}</span><button class="btn sm" data-act="open" data-gid="${nx.id}">Open</button>` : ""}</div>`; }
   const flagged = h.length > 0, pers = []; for(let q = 1; q <= Math.max(Q, R.q); q++) pers.push(q);
   // Decided: the horn ended the fourth (or an overtime) with the score not tied and nothing played since. Only then is
   // "Make it final" the big button; through the fourth it's one confirm from sending FINAL to every fan.
@@ -3774,14 +3774,27 @@ function boxPdf(g){
   const name = `${g.date} ${school(ha.away)} at ${school(ha.home)} box score${fin ? "" : " (" + stage + ")"}.pdf`.replace(/[\\/:*?"<>|]+/g, "-");
   return {bytes:D.bytes(), name, title};
 }
-// The box score PDF: the share sheet on an iPad or phone (Print, Mail, Save to Files), a download on a laptop or wherever
-// sharing a file isn't offered.
-async function shareBox(g){
-  const p = boxPdf(g), blob = new Blob([p.bytes], {type:"application/pdf"}), file = typeof File === "function" ? new File([blob], p.name, {type:"application/pdf"}) : null;
+// A file the app makes: the share sheet on an iPad or phone (Print, Mail, Save to Files, Drive), a download on a laptop or
+// wherever sharing that file isn't offered. False when the scorer closes the share sheet without picking anything.
+async function shareFile(name, blob, title){
+  const file = typeof File === "function" ? new File([blob], name, {type:blob.type}) : null;
   if(file && navigator.maxTouchPoints && navigator.canShare && navigator.canShare({files:[file]})){
-    try{ await navigator.share({files:[file], title:p.title}); return; }catch(e){ if(e && e.name === "AbortError") return; }
+    try{ await navigator.share({files:[file], title}); return true; }catch(e){ if(e && e.name === "AbortError") return false; }
   }
-  download(p.name, blob, "application/pdf");
+  download(name, blob, blob.type); return true;
+}
+async function shareBox(g){ const p = boxPdf(g); await shareFile(p.name, new Blob([p.bytes], {type:"application/pdf"}), p.title); }
+// Everything on this device in one file: every game, both rosters, the library, the scripts and Setup. Setup's Full backup
+// and the Save backup button at every final write the same file, and Restore from a backup reads either.
+function backupJson(){ return JSON.stringify({brierstats:1, at:Date.now(), teams:S.teams, games:S.games, booth:S.booth, say:S.say, bc:S.bc, lib:S.lib, settings:S.settings, opps:S.opps, script:S.script}, null, 1); }
+// At the final the scorer saves a backup with one tap. On the iPad, Save to Files in the share sheet can drop it straight
+// into Google Drive, and it works with no signal. The file is named for the game, so a doubleheader's two sit side by side.
+// bkSaved keeps which version of each game was saved, so a correction after the save brings the button back.
+const bkSaved = {};
+async function saveBackup(g){
+  const name = `brier-stats-backup-${g.date}-${usName(g)}-${g.opp || "game"}.json`.replace(/[\\/:*?"<>|\s]+/g, "-");
+  if(!await shareFile(name, new Blob([backupJson()], {type:"application/json"}), "Brier Stats backup")) return;
+  bkSaved[g.id] = g.upd || 1; toast("Backup saved: every game and roster on this device."); render();
 }
 // At a break the scorer lines the app up with the official book at the table, as a college crew does every half: the
 // score by period, team fouls, timeouts left, the arrow and each player's fouls. Anything off gets fixed under Review game;
@@ -4128,7 +4141,8 @@ document.addEventListener("click", async ev => {
     case "pdel": if(s && s.opts && s.opts.onDelete){ s.opts.onDelete(); closeSheet(); } break;
     case "teamsundo": if(S.teamsPrev && confirm("Put back the rosters this device had? Every device gets them.")){ S.teams = keepNoPub(S.teams, S.teamsPrev.teams); S.teamsPrev = null; S.teamsRev = Math.max(S.teamsRev || 0, S.teamsBase || 0) + 1; save(); Sync.dirtyTeams(); render(); toast("Rosters put back."); } break;
     case "teamskeep": S.teamsPrev = null; save(); render(); break;
-    case "backup": download(`brier-stats-backup-${pubToday()}.json`, JSON.stringify({brierstats:1, at:Date.now(), teams:S.teams, games:S.games, booth:S.booth, say:S.say, bc:S.bc, lib:S.lib, settings:S.settings, opps:S.opps, script:S.script}, null, 1), "application/json"); break;
+    case "backup": download(`brier-stats-backup-${pubToday()}.json`, backupJson(), "application/json"); break;
+    case "savebk": if(g) saveBackup(g); break;
     case "restore": $("#restore-file").click(); break;
     default: Sync.click(act, a);
   }
