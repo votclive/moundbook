@@ -699,7 +699,7 @@ button.lnk{border:0;background:none;padding:0;font:inherit;color:inherit;text-al
    One device scores a game; everyone else signed in follows it live on the Announcer page. Each device's own saved copy is the
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
-const BS_VERSION = "0.7.1";
+const BS_VERSION = "0.7.2";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -1513,7 +1513,7 @@ function viewDesk(){
   else if(!canEdit(g)) h += `<div class="flag bad"><span>Another device is scoring this game. Only one device scores at a time.${S.strand[g.id] ? ` <b>${S.strand[g.id].length} play(s) tapped here never reached the cloud</b> before it took over: taking over puts them back in.` : ""}</span><button class="btn sm" data-act="takeover">Take over scoring here</button></div>`;
   // The first game of a doubleheader is over: the next one tonight is one tap away (the book has about ten minutes).
   if(g.status === "final"){ const nx = g.practice ? null : Object.values(S.games).filter(x => x.id !== g.id && !x.deleted && !x.practice && !x.off && !x.forfeit && x.date === g.date && x.status !== "final").sort((a, b) => (a.time || "").localeCompare(b.time || ""))[0];
-    h += `<div class="flag ok"><b>FINAL.</b> Corrections still work and fix the box score everywhere.${mine(g) ? ` <button class="btn sm" data-act="reopen">Reopen</button>` : ""}${canScore() ? ` <button class="btn sm" data-act="savebk">${bkSaved[g.id] >= (g.upd || 1) ? "Backup saved ✓" : "Save backup"}</button>` : ""}${nx ? `<span style="margin-left:auto">Next: <b>${esc(usName(nx))} ${gameTitle(nx)}</b>${nx.time ? " · " + esc(timeWords(nx.time)) : ""}</span><button class="btn sm" data-act="open" data-gid="${nx.id}">Open</button>` : ""}</div>`; }
+    h += `<div class="flag ok"><b>FINAL.</b> Corrections still work and fix the box score everywhere.${mine(g) ? ` <button class="btn sm" data-act="reopen">Reopen</button>` : ""}${canScore() ? ` <button class="btn sm" data-act="savebk">${bkSaved[g.id] >= (g.upd || 1) ? "Backup saved ✓" : "Save backup"}</button>${driveTag(g)}` : ""}${nx ? `<span style="margin-left:auto">Next: <b>${esc(usName(nx))} ${gameTitle(nx)}</b>${nx.time ? " · " + esc(timeWords(nx.time)) : ""}</span><button class="btn sm" data-act="open" data-gid="${nx.id}">Open</button>` : ""}</div>`; }
   const flagged = h.length > 0, pers = []; for(let q = 1; q <= Math.max(Q, R.q); q++) pers.push(q);
   // Decided: the horn ended the fourth (or an overtime) with the score not tied and nothing played since. Only then is
   // "Make it final" the big button; through the fourth it's one confirm from sending FINAL to every fan.
@@ -3527,6 +3527,7 @@ function viewSetup(){
       ${(() => { const b = storeUse(), pct = Math.round(b / 5e6 * 100), full = pct >= 60;
         return `<p class="small" style="margin:0">${full ? "<b>Getting full.</b> " : ""}Saved on this device: ${(b / 1e6).toFixed(1)} MB of about 5 MB (${pct}%, shared with Mound Book)${full ? ". Make a full backup now, and keep JV games and practice scoring off this iPad." : "."}</p>`; })()}
       ${/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) ? (navigator.standalone || matchMedia("(display-mode: standalone)").matches ? (emptyBook() ? `<div class="flag"><span><b>New book on this Home Screen app.</b> Bringing one over from Safari? Restore a Full backup here, or turn on live sync and sign in.</span></div>` : "") : `<div class="flag"><span><b>Add Brier Stats to the Home Screen</b> (Share › Add to Home Screen) and score from there: in a Safari tab, Safari can clear a site's saved book after a week or so without a visit. <b>The Home Screen app starts with an empty book of its own.</b> ${Sync.live() ? "Open it, turn on live sync and sign in: the games, rosters, script and name notes come back from the cloud." : "First tap Full backup above, then open Brier Stats from the Home Screen, tap Setup › Restore from a backup and pick that file."} After that, score only from the Home Screen.</span></div>`) : ""}</div>
+    <div class="card stack"><h3 style="font-size:22px">Google Drive backup</h3>${Drive.card()}</div>
     <div class="card"><h3 style="font-size:22px">About</h3><p class="small" style="margin:6px 0 0">Brier Stats ${BS_VERSION}. Built on Jim's ChatGPT draft and Mound Book's sync. The announcer page also opens on its own at <a href="?announcer">this address with ?announcer</a>, and Jim's broadcast page at <a href="?broadcast">?broadcast</a>. This device: ${esc(S.dev)}.</p></div></div>`;
 }
 
@@ -3807,10 +3808,117 @@ function backupJson(){ return JSON.stringify({brierstats:1, at:Date.now(), teams
 // into Google Drive, and it works with no signal. The file is named for the game, so a doubleheader's two sit side by side.
 // bkSaved keeps which version of each game was saved, so a correction after the save brings the button back.
 const bkSaved = {};
+function bkName(g){ return `brier-stats-backup-${g.date}-${usName(g)}-${g.opp || "game"}.json`.replace(/[\\/:*?"<>|\s]+/g, "-"); }
 async function saveBackup(g){
-  const name = `brier-stats-backup-${g.date}-${usName(g)}-${g.opp || "game"}.json`.replace(/[\\/:*?"<>|\s]+/g, "-");
-  if(!await shareFile(name, new Blob([backupJson()], {type:"application/json"}), "Brier Stats backup")) return;
+  if(!await shareFile(bkName(g), new Blob([backupJson()], {type:"application/json"}), "Brier Stats backup")) return;
   bkSaved[g.id] = g.upd || 1; toast("Backup saved: every game and roster on this device."); render();
+}
+
+/* ---------- automatic backup to Coach's Google Drive ----------
+   Coach sets up a small Google Apps Script once (DRIVE_GS: Setup > Google Drive backup has it and the steps) and pastes its
+   Web app link, which syncs to every device in settings.drive. After every final, the device scoring the game sends the
+   same file Save backup makes, named for the game, once the game has sat 20 seconds untouched so a quick fix rides along;
+   a correction later sends it again and the script replaces that game's file. The script runs as Coach and checks the
+   sender's Brier Stats sign-in with Firestore, so only Coach and scorers can save, and only into its own folder. Finals from
+   before this device first saw the link stay as they were. Each device keeps what it sent in its own key. */
+const DRIVE_GS = "// Brier Stats: automatic backup to Google Drive.\n// Set up once, on a laptop signed in to the Google account whose Drive should keep the backups:\n//   1. At script.google.com, start a New project, select everything in the editor and paste this whole file over it.\n//   2. Deploy > New deployment > the gear > Web app. Execute as: Me. Who has access: Anyone. Deploy, then allow access.\n//   3. Copy the Web app URL and paste it into Brier Stats: Setup > Google Drive backup.\n// After every final, the device scoring the game sends the same file Save backup makes. It lands in the\n// \"Brier Stats backups\" folder, one file per game; a correction after the final replaces that game's file.\n// Only someone signed in to Brier Stats as Coach or a scorer can save, and only a Brier Stats backup into that folder.\nconst PROJECT = \"moundbook-ghs\";\nconst FOLDER = \"Brier Stats backups\";\n\nfunction doPost(e){\n  const lock = LockService.getScriptLock();\n  let locked = false;\n  try{\n    const req = JSON.parse(e.postData.contents);\n    const email = scorer(req.token);\n    lock.waitLock(30000); locked = true;\n    const folder = home();\n    if(req.test) return reply({ok:true, folder:folder.getUrl(), owner:Session.getEffectiveUser().getEmail(), email:email});\n    const name = String(req.name || \"\"), data = String(req.data || \"\"), upd = Number(req.upd) || 0;\n    if(!/^brier-stats-backup-[\\w.-]{1,160}\\.json$/.test(name)) throw new Error(\"That isn't a Brier Stats backup.\");\n    if(data.length > 9e6) throw new Error(\"That backup is too big for one file.\");\n    if(JSON.parse(data).brierstats !== 1) throw new Error(\"That isn't a Brier Stats backup.\");\n    let f = null;\n    for(const it = folder.getFilesByName(name); it.hasNext();){ const x = it.next(); if(!x.isTrashed()){ f = x; break; } }\n    // Two devices can send the same game: the copy with the newer edit stays.\n    if(f && Number(f.getDescription()) > upd) return reply({ok:true, url:f.getUrl(), kept:true});\n    if(f) f.setContent(data); else f = folder.createFile(name, data, \"application/json\");\n    f.setDescription(String(upd));\n    return reply({ok:true, url:f.getUrl()});\n  }catch(err){\n    return reply({ok:false, error:String(err && err.message || err)});\n  }finally{\n    if(locked) lock.releaseLock();\n  }\n}\n\n// Opening the link in a browser shows it's running.\nfunction doGet(){ return reply({ok:true, app:\"Brier Stats backup\"}); }\n\n// The sign-in Brier Stats sends with each backup. Firestore checks it: a made-up or expired one is turned away, and\n// its rules let each person read only their own role. Coach is the Mound Book owner; scorers are on the Brier Stats list.\nfunction scorer(token){\n  const c = claims(token);\n  if(role(\"members/\" + c.uid, token) === \"owner\" || role(\"hoopsMembers/\" + c.uid, token) === \"scorer\") return c.email;\n  throw new Error(\"Only Coach and scorers can save backups.\");\n}\nfunction claims(token){\n  let part = String(token || \"\").split(\".\")[1];\n  if(!part) throw new Error(\"Sign in to Brier Stats first.\");\n  while(part.length % 4) part += \"=\";\n  const c = JSON.parse(Utilities.newBlob(Utilities.base64DecodeWebSafe(part)).getDataAsString());\n  if(c.aud !== PROJECT || c.iss !== \"https://securetoken.google.com/\" + PROJECT || !c.sub || c.exp * 1000 < Date.now())\n    throw new Error(\"Sign in to Brier Stats again.\");\n  return {uid:c.sub, email:c.email || \"\"};\n}\nfunction role(path, token){\n  const r = UrlFetchApp.fetch(\"https://firestore.googleapis.com/v1/projects/\" + PROJECT + \"/databases/(default)/documents/\" + path,\n    {headers:{Authorization:\"Bearer \" + token}, muteHttpExceptions:true});\n  if(r.getResponseCode() !== 200) return \"\";\n  const f = JSON.parse(r.getContentText()).fields || {};\n  return f.role && f.role.stringValue || \"\";\n}\n\n// The backups folder: the one this script made, or one by that name, or a new one.\nfunction home(){\n  const props = PropertiesService.getScriptProperties(), id = props.getProperty(\"folder\");\n  if(id){ try{ const f = DriveApp.getFolderById(id); if(!f.isTrashed()) return f; }catch(e){} }\n  let f = null;\n  for(const it = DriveApp.getFoldersByName(FOLDER); it.hasNext();){ const x = it.next(); if(!x.isTrashed()){ f = x; break; } }\n  if(!f) f = DriveApp.createFolder(FOLDER);\n  props.setProperty(\"folder\", f.getId());\n  return f;\n}\n\nfunction reply(o){ return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }\n";
+const Drive = (() => {
+  const KEYD = "brierstats.drive", QUIET = 20000, FOLDER = "Brier Stats backups";
+  let D = null, busy = false; try{ D = JSON.parse(localStorage.getItem(KEYD) || "null"); }catch(e){}
+  if(!D || typeof D !== "object") D = {};
+  D.g = D.g || {}; D.err = D.err || {};
+  const put = () => { try{ localStorage.setItem(KEYD, JSON.stringify(D)); }catch(e){} };
+  const url = () => String(S.settings.drive || "").trim();
+  const okUrl = u => /^https:\/\/script\.google\.com\/(a\/macros\/[^/]+\/|macros\/)s\/[\w-]{10,}\/exec$/.test(u);
+  const on = () => okUrl(url());
+  const coach = () => Sync.live() && Sync.role() === "owner";
+  const since = () => { if(!D.since){ D.since = Date.now(); put(); } return D.since; };
+  const msg = e => e && e.code === "auth/network-request-failed" ? "No signal to reach Google. It tries again on its own."
+    : e && e.name === "TypeError" ? "Couldn't reach the Drive script. Check the signal, and that it's deployed as a Web app that Anyone can open."
+    : e && e.name === "AbortError" ? "The Drive script took too long to answer." : String(e && e.message || e);
+  async function post(body){
+    const ac = new AbortController(), t = setTimeout(() => ac.abort(), 60000);
+    try{
+      // Plain text keeps it a simple request: Apps Script answers no preflight.
+      const r = await fetch(url(), {method:"POST", body:JSON.stringify({...body, token:await Sync.token()}), headers:{"Content-Type":"text/plain;charset=utf-8"}, signal:ac.signal});
+      let o = null; try{ o = await r.json(); }catch(e){}
+      if(!o) throw new Error("The Drive script didn't answer. Check the link under Setup, Google Drive backup.");
+      if(!o.ok) throw new Error(o.error || "The Drive script said no.");
+      return o;
+    }finally{ clearTimeout(t); }
+  }
+  async function send(g){
+    busy = true; const upd = g.upd || 0;
+    try{ const o = await post({name:bkName(g), data:backupJson(), upd}); D.g[g.id] = {upd, at:Date.now(), url:o.url || ""}; delete D.err[g.id]; return true; }
+    catch(e){ const n = ((D.err[g.id] || {}).n || 0) + 1; D.err[g.id] = {at:Date.now(), n, msg:msg(e)}; return false; }
+    finally{ busy = false; put(); softRender(); }
+  }
+  // Every 10 seconds and when the signal comes back: the oldest final that's owed goes. After a miss it waits 1, 2, 4...
+  // up to 30 minutes before trying that game again (Send to Drive in the FINAL banner tries at once).
+  function tick(){
+    if(busy || !on() || !Sync.live() || !canScore() || !navigator.onLine) return;
+    const now = Date.now(), base = since();
+    const g = Object.values(S.games).filter(g => g.status === "final" && !g.deleted && !g.practice && mine(g) && (g.upd || 0) >= base
+      && (g.upd || 0) > ((D.g[g.id] || {}).upd || 0) && now - (g.upd || 0) >= QUIET
+      && !(D.err[g.id] && now - D.err[g.id].at < Math.min(30, 2 ** (D.err[g.id].n - 1)) * 60000)).sort((a, b) => (a.upd || 0) - (b.upd || 0))[0];
+    if(g) send(g);
+  }
+  // What the FINAL banner says about this game: saved, not yet, a miss, or nothing (off, or another device sends it).
+  function state(g){
+    if(!on() || !g || g.practice || g.status !== "final") return null;
+    const s = D.g[g.id], upd = g.upd || 0;
+    if(s && s.upd >= upd) return {k:"ok", url:s.url};
+    if(!mine(g) || upd < since()) return null;
+    if(D.err[g.id]) return {k:"err", msg:D.err[g.id].msg};
+    return {k:!navigator.onLine || !Sync.live() ? "wait" : "soon"};
+  }
+  async function now(g){
+    if(!g || busy) return;
+    if(!Sync.live() || !navigator.onLine){ toast("No signal yet. It goes on its own when the signal's back.", 4000); return; }
+    toast("Sending to Google Drive…", 60000);
+    toast(await send(g) ? "Saved to Google Drive." : D.err[g.id].msg, 6000);
+  }
+  function card(){
+    const last = Object.entries(D.g).filter(([id]) => S.games[id]).sort((a, b) => b[1].at - a[1].at)[0], lg = last && S.games[last[0]];
+    return `<p style="margin:0">${on() ? "<b>On.</b> " : ""}After every final, the device scoring the game saves the same file as Save backup into the <b>${FOLDER}</b> folder in Coach's Google Drive, one file per game. A correction after the final replaces that game's file.${on() ? "" : " Coach sets it up once, on a laptop, in about five minutes."}</p>
+      ${on() && D.folder ? `<p class="small" style="margin:0">Tested from this device: <a href="${esc(D.folder)}" target="_blank" rel="noopener">open the folder</a>${D.owner ? " in " + esc(D.owner) + "'s Drive" : ""}.</p>` : ""}
+      ${on() && lg ? `<p class="small" style="margin:0">Last sent from this device: ${esc(usName(lg))} ${gameTitle(lg)}, ${esc(new Date(last[1].at).toLocaleString([], {month:"short", day:"numeric", hour:"numeric", minute:"2-digit"}))}.</p>` : ""}
+      ${coach() ? `<div class="row"><button class="btn${on() ? "" : " primary"}" data-act="drvsetup">${on() ? "Change or test it" : "Set it up"}</button></div>`
+        : !Sync.live() ? `<p class="small" style="margin:0">It needs this device signed in and live.</p>` : on() ? "" : `<p class="small" style="margin:0">Coach turns it on.</p>`}`;
+  }
+  function sheet(){
+    openSheet({wide:true, html:() => `<h3>Google Drive backup</h3>
+      <p class="small" style="margin:0 0 8px">Once, on a laptop, signed in to the Google account that should keep the backups:</p>
+      <ol class="small" style="margin:0 0 10px 20px;padding:0;display:grid;gap:6px">
+        <li>Tap <b>Copy the script</b> below.</li>
+        <li>Go to <b>script.google.com</b> and tap <b>New project</b>. Select everything in the editor and paste over it.</li>
+        <li>Tap <b>Deploy</b>, then <b>New deployment</b>. Tap the gear next to Select type and pick <b>Web app</b>. Set Execute as to <b>Me</b> and Who has access to <b>Anyone</b>, then tap <b>Deploy</b>.</li>
+        <li>Tap <b>Authorize access</b> and pick the account. Google warns that it hasn't verified the app, because it's your own script: tap <b>Advanced</b>, then <b>Go to Untitled project (unsafe)</b>, then <b>Allow</b>.</li>
+        <li>Copy the <b>Web app URL</b>, paste it here and tap <b>Save and test</b>.</li></ol>
+      <form id="drvform" class="stack">
+        <label class="fld"><span>Web app URL</span><input type="text" name="url" value="${esc(url())}" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+        <div class="row"><button class="btn primary" type="submit">Save and test</button><button class="btn" type="button" data-act="drvcopy">Copy the script</button>${url() ? `<button class="btn" type="button" data-act="drvoff">Turn it off</button>` : ""}<button class="btn" type="button" data-close>Close</button></div>
+        <details><summary class="small">Show the script</summary><textarea class="mono" rows="8" readonly id="drvtxt" style="width:100%">${esc(DRIVE_GS)}</textarea></details></form>`});
+  }
+  function setUrl(v){ S.settings.drive = v; S.teamsRev++; save(); Sync.dirtyTeams(); if(v) since(); render(); }
+  async function saveTest(v){
+    if(!coach()) return;
+    if(!okUrl(v)){ toast("That isn't the Web app URL. It starts with https://script.google.com/macros/s/ and ends with /exec.", 6000); return; }
+    setUrl(v); toast("Testing the link…", 60000);
+    try{ const o = await post({test:true}); D.folder = o.folder || ""; D.owner = o.owner || ""; put(); closeSheet();
+      toast(`Connected. Backups go to the ${FOLDER} folder in ${o.owner ? o.owner + "'s" : "your"} Google Drive.`, 7000); }
+    catch(e){ toast("Saved the link, but the test didn't get through. " + msg(e), 10000); }
+    render();
+  }
+  function off(){ if(!coach()) return; setUrl(""); D.folder = ""; put(); closeSheet(); toast("Google Drive backup is off."); }
+  return {tick, state, now, card, sheet, saveTest, off, okUrl};
+})();
+// The FINAL banner's word on the Drive copy.
+function driveTag(g){
+  const s = Drive.state(g); if(!s) return "";
+  if(s.k === "ok") return s.url ? ` <a class="small" href="${esc(s.url)}" target="_blank" rel="noopener" style="color:inherit;text-underline-offset:3px">Saved to Drive ✓</a>` : ` <span class="small">Saved to Drive ✓</span>`;
+  if(s.k === "err") return ` <button class="btn sm" data-act="drivenow" title="${esc(s.msg)}">Send to Drive</button>`;
+  return ` <span class="small">${s.k === "wait" ? "Drive: no signal yet" : "Drive: saving soon"}</span>`;
 }
 // At a break the scorer lines the app up with the official book at the table, as a college crew does every half: the
 // score by period, team fouls, timeouts left, the arrow and each player's fouls. Anything off gets fixed under Review game;
@@ -4159,6 +4267,10 @@ document.addEventListener("click", async ev => {
     case "teamskeep": S.teamsPrev = null; save(); render(); break;
     case "backup": download(`brier-stats-backup-${pubToday()}.json`, backupJson(), "application/json"); break;
     case "savebk": if(g) saveBackup(g); break;
+    case "drivenow": if(g) Drive.now(g); break;
+    case "drvsetup": Drive.sheet(); break;
+    case "drvoff": Drive.off(); break;
+    case "drvcopy": { const ta = $("#drvtxt"); if(ta) ta.closest("details").open = true; const ok = await copyText(DRIVE_GS, ta); toast(ok ? "Script copied. Paste it into a new project at script.google.com." : "Open Show the script, select it all and copy it by hand.", 5000); break; }
     case "restore": $("#restore-file").click(); break;
     default: Sync.click(act, a);
   }
@@ -4275,6 +4387,7 @@ document.addEventListener("change", ev => {
 document.addEventListener("submit", ev => {
   ev.preventDefault();
   const f = ev.target, s = ui.sheet;
+  if(f.id === "drvform"){ Drive.saveTest(String(new FormData(f).get("url") || "").trim()); return; }
   if(f.id === "missform"){ const d = new FormData(f), g = cur(); if(!g || !canEdit(g)) return; const [tm, pid] = String(d.get("who")).split(":");
     if(addMissed(g, +d.get("q"), tm, pid, String(d.get("k")))){ closeSheet(); toast("Added."); } return; }
   if(f.id === "pform" && s){ const d = new FormData(f), p = {num:String(d.get("num")).trim().replace(/^#/, ""), name:String(d.get("name")).trim(), pos:String(d.get("pos")).trim().toUpperCase(), grade:String(d.get("grade") || ""), ht:normHt(String(d.get("ht") || "")), nopub:!!d.get("nopub")};
@@ -5452,6 +5565,7 @@ const Sync = (() => {
   }
   return {start, live, ready, settled, dirty, reset, owePids, dirtyBooth, dirtyTeams, dirtySay, dirtyBc, dirtyLib, dirtyScript, seedSeason, panel, click, submit,
     phase:() => st.phase, role:() => st.role, uid:() => st.uid,
+    token:() => st.auth && st.auth.currentUser ? st.auth.currentUser.getIdToken() : Promise.reject(new Error("Sign in to Brier Stats first.")),
     stale:() => st.stale, label:() => (st.role === "owner" ? "Coach" : st.role === "scorer" ? "Scorer" : "Viewer") + (st.stale ? " · not updating" : st.role === "owner" && st.reqs.length ? " · " + st.reqs.length + " waiting" : pubOwed() ? " · updating fan page" : " · live")};
 })();
 
@@ -5475,6 +5589,7 @@ if(!ui.gid || !S.games[ui.gid]){
 }
 render();
 if(S.sync) Sync.start();
+setInterval(() => Drive.tick(), 10000); window.addEventListener("online", () => setTimeout(() => Drive.tick(), 3000));
 if("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
 }
 </script>
