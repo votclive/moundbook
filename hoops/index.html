@@ -335,7 +335,8 @@ th.tn{white-space:normal}
    desk never grows past one iPad screen. */
 .desk .mini{max-height:150px;overflow-y:auto}
 
-/* Follow-up strip (assist / rebound / shot spot / sub): pinned to the bottom, never blocks the next tap. */
+/* Follow-up strip (assist / rebound / sub): pinned to the bottom, never blocks the next tap. The shot spot covers the
+   screen instead (below). */
 .fu{position:fixed;left:0;right:0;bottom:0;z-index:40;background:var(--white);border-top:4px solid var(--green);padding:8px 12px calc(8px + env(safe-area-inset-bottom))}
 .fu .wrap{display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:0}
 .fu .ask{font-family:var(--f-display);font-weight:800;font-size:18px;text-transform:uppercase;margin-right:6px}
@@ -350,12 +351,18 @@ th.tn{white-space:normal}
 /* Court markings only (class ln): a miss's X keeps its team's color. */
 .court .ln{fill:none;stroke:var(--grey);stroke-width:3}
 .fu .court{max-width:240px}
-@media (min-width:901px){
-  .fu.loc{left:50%;right:auto;width:300px;transform:translateX(-50%);border:4px solid var(--green);border-bottom:0;border-radius:8px 8px 0 0;box-shadow:0 -6px 18px rgba(0,0,0,.28)}
-  .fu.loc .wrap{justify-content:space-between}
-  .fu.loc .court{max-width:none;width:100%}
-}
-@media (min-width:901px) and (max-width:1180px){ .fu.loc{width:272px} }
+/* Where was the shot? The whole screen until the spot is tapped, the court as big as the window allows (--wh is the
+   window's height on a scaled desk), with Skip and Undo always on it. */
+.fu.loc{top:0;display:flex;align-items:center;justify-content:center;padding:max(8px, env(safe-area-inset-top)) 12px max(8px, env(safe-area-inset-bottom));background:rgba(0,0,0,.62);border:0;touch-action:none;overscroll-behavior:contain}
+.fu.loc .locbox{width:min(100%, calc((var(--wh, 100vh) - 118px) * 500 / 470 + 24px));background:var(--white);border:4px solid var(--green);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:8px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+@supports (height:100dvh){ .fu.loc .locbox{width:min(100%, calc((var(--wh, 100dvh) - 118px) * 500 / 470 + 24px))} }
+.fu.loc .locbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.fu.loc .ask{margin-right:0}
+.fu.loc .locwho{display:inline-flex;align-items:center;gap:8px;padding:4px 10px 4px 4px;border-radius:6px;background:var(--tf,var(--green));color:var(--ti,var(--white));font-size:16px;line-height:1.1}
+.fu.loc .locwho img{width:30px;height:29px;flex:none}
+.fu.loc .locwho .init{min-width:30px;height:30px;padding:0 4px;border:2px solid var(--ti,var(--white));border-radius:4px;display:grid;place-items:center;font-family:var(--f-display);font-weight:800;font-size:14px}
+.fu.loc .btn{min-height:44px;font-size:16px}
+.fu.loc .court{max-width:none;width:100%}
 
 /* Plays */
 .plays{list-style:none;margin:0;padding:0}
@@ -692,7 +699,7 @@ button.lnk{border:0;background:none;padding:0;font:inherit;color:inherit;text-al
    One device scores a game; everyone else signed in follows it live on the Announcer page. Each device's own saved copy is the
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
-const BS_VERSION = "0.7.0";
+const BS_VERSION = "0.7.1";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -1689,7 +1696,11 @@ function renderFu(){
     return use.map(p => { const out = outNow(tm, p.pid); return `<button class="chip${tm === "them" ? " skip" : ""}${out ? " dark" : ""}" style="${tm === "them" ? "border-color:" + teamInk(g, tm).line : ""}" data-fu="pick" data-tm="${tm}" data-pid="${p.pid}"><b>${esc(p.num)}</b><span class="nm">${esc(pShort(p))}${out ? " · OUT" : ""}</span></button>`; }).join("");
   };
   let h = "";
-  if(f.k === "loc") h = `<span class="ask">Where was the shot?</span><button class="chip skip" data-fu="skip">Skip</button>${courtSvg([], "loc")}`;
+  // The shot chart takes the whole screen until the spot is tapped: the court as big as the window allows, the shot it's
+  // for in its team's colors, and the ways out (Skip, or Undo the shot) always on it.
+  if(f.k === "loc"){ const e = g.ev.find(x => x.id === f.id), p = e.pid ? player(g, e.tm, e.pid) : null;
+    el.innerHTML = `<div class="fu loc no-print"><div class="locbox"><div class="locbar"><span class="ask">Where was the shot?</span><span class="locwho" style="${tvars(g, e.tm)}">${badge(g, e.tm)}<span><b>${p ? "#" + esc(p.num) + " " + esc(pShort(p)) : esc(tmName(g, e.tm))}</b> ${e.m ? "made" : "missed"} a ${e.p}</span></span><button class="btn" data-act="undo" style="margin-left:auto">↶ Undo shot</button><button class="btn dark" data-fu="skip">Skip</button></div>${courtSvg([], "loc", g, e.tm)}</div></div>`;
+    document.body.classList.add("has-fu"); return; }
   else if(f.k === "ast") h = `<span class="ask">Assist?</span>${chips(f.tm, f.shooter)}<button class="chip skip" data-fu="skip">No assist</button>`;
   // Rebounds keep one order whoever missed: the left column's team on the left, the right's on the right, so the book
   // learns where each chip lives. The side that's defending is marked, not moved.
@@ -1716,9 +1727,14 @@ function fuPick(tm, pid){
 }
 
 /* court: NFHS half court, 50 ft wide x 47 ft deep, basket at top. 10 svg units per foot. x,y saved as 0..1. */
-function courtSvg(shots, mode, g){
+// On the shot-spot picker (tm: the shooting team) the lane wears that team's color, with our bobcat or the visitors'
+// letters in it, so a glance says the shot went to the right team.
+function courtSvg(shots, mode, g, tm){
+  const k = g && tm ? teamInk(g, tm) : null, ab = k && tm !== "us" ? oppInfo(g.opp, g).abbr.slice(0, 4) : "";
+  const paint = !k ? "" : `<rect class="pt" x="190" y="0" width="120" height="190" fill="${k.fill}"/>` + (tm === "us" ? `<image href="bobcat-head.png" x="203" y="76" width="94" height="92"/>`
+    : `<text x="250" y="${ab.length > 3 ? 138 : 142}" text-anchor="middle" fill="${k.ink}" style="font-family:var(--f-display);font-weight:800;font-size:${ab.length > 3 ? 36 : ab.length > 2 ? 46 : 60}px">${esc(ab)}</text>`);
   let s = `<svg class="court" viewBox="0 0 500 470" ${mode === "loc" ? 'data-court="loc"' : ""} role="img" aria-label="Half court">
-    <rect class="fl" x="1.5" y="1.5" width="497" height="467"/><rect class="ln" x="190" y="0" width="120" height="190"/><circle class="ln" cx="250" cy="190" r="60"/>
+    <rect class="fl" x="1.5" y="1.5" width="497" height="467"/>${paint}<rect class="ln" x="190" y="0" width="120" height="190"/><circle class="ln" cx="250" cy="190" r="60"/>
     <line class="ln" x1="220" y1="40" x2="280" y2="40"/><circle class="ln" cx="250" cy="52.5" r="7.5"/><path class="ln" d="M52.5 0 V52.5 A197.5 197.5 0 0 0 447.5 52.5 V0"/><path class="ln" d="M190 470 A60 60 0 0 1 310 470"/>`;
   for(const sh of shots){
     const e = sh.e; if(e.x == null) continue;
@@ -4147,7 +4163,8 @@ document.addEventListener("click", async ev => {
     default: Sync.click(act, a);
   }
 });
-document.addEventListener("keydown", ev => { if(ev.key === "Escape" && ui.sheet) closeSheet(); });
+document.addEventListener("keydown", ev => { if(ev.key !== "Escape") return;
+  if(ui.sheet) closeSheet(); else if(ui.fu[0] && ui.fu[0].k === "loc" && $(".fu.loc")){ ui.fu.shift(); renderFu(); } });
 document.addEventListener("input", ev => {
   const t = ev.target;
   if(t.dataset.hex || t.dataset.hext){ const k = t.dataset.hex || t.dataset.hext, pair = $(t.dataset.hex ? `[data-hext="${k}"]` : `[data-hex="${k}"]`);
