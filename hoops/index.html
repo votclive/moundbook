@@ -258,6 +258,38 @@ main:has(.desk){padding-bottom:4px}
 .board .seam span{background:var(--white);color:var(--black);border:2px solid var(--black);border-radius:4px;font-family:var(--f-display);font-weight:900;line-height:1.1;padding:2px 6px;white-space:nowrap}
 .board .q{font-size:17px;letter-spacing:.02em}
 .board .poss{font-size:15px}
+/* The score bug for the stream (?bug): laid out on a 1920x1080 canvas and scaled to the browser source, on a see-through
+   page. Visitors on the left, home on the right, the way a broadcast reads "away at home". */
+html.obs,body.obs,body.obs main{background:transparent!important;overflow:hidden}
+body.obs header.top,body.obs #fu,body.obs #sheet,body.obs .toast{display:none!important}
+body.obs main .wrap{max-width:none;padding:0;margin:0}
+.ostage{position:fixed;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;font-family:var(--f-display);text-transform:uppercase}
+.obug{position:absolute;left:64px;bottom:56px;display:flex;height:96px;border-radius:8px;overflow:hidden;box-shadow:-6px 8px 0 rgba(0,0,0,.55)}
+.ostage.top .obug{top:48px;bottom:auto}
+.obug .tm{display:flex;align-items:center;gap:18px;padding:0 20px;width:300px;background:var(--tf,var(--green));color:var(--ti,var(--white))}
+.obug .nm{display:grid;gap:4px;min-width:0}
+.obug .ab{font-weight:900;font-size:44px;line-height:1;letter-spacing:.03em;white-space:nowrap}
+.obug .sub{display:flex;align-items:center;gap:8px;font-family:var(--f-body);font-weight:700;font-size:16px;letter-spacing:.04em;white-space:nowrap}
+.obug .dots{display:flex;gap:4px}.obug .dots i{width:9px;height:9px;border-radius:50%;background:currentColor}
+.obug .bon{font-style:normal;background:var(--white);color:var(--black);border-radius:3px;padding:0 5px;font-family:var(--f-display);font-weight:800}
+.obug .sc{margin-left:auto;font-weight:900;font-size:70px;line-height:1;text-shadow:-3px 4px 0 var(--ts,var(--black))}
+.obug .per{display:grid;place-items:center;align-content:center;gap:2px;min-width:132px;padding:0 16px;background:var(--white);color:var(--black);font-weight:900;font-size:38px;line-height:1}
+.obug .per small{font-size:22px}
+.ocard{position:absolute;left:50%;top:120px;transform:translateX(-50%);width:1180px;background:var(--white);color:var(--black);border-radius:10px;overflow:hidden;box-shadow:-8px 10px 0 rgba(0,0,0,.55)}
+.ocard .kick{background:var(--black);color:var(--white);font-weight:800;font-size:26px;letter-spacing:.12em;padding:12px 28px}
+.ocard .row2{display:flex;align-items:center;gap:24px;padding:14px 28px;background:var(--tf,var(--green));color:var(--ti,var(--white))}
+.ocard .row2 .full{font-weight:900;font-size:46px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ocard .row2 .sc{font-weight:900;font-size:76px;line-height:1;text-shadow:-3px 4px 0 var(--ts,var(--black))}
+.ocard .row2.lost .full,.ocard .row2.lost .sc{opacity:.8}
+.ocard table{width:100%;border-collapse:collapse;font-family:var(--f-display);font-size:26px;font-weight:800}
+.ocard th{font-size:18px;color:#555;padding:10px 12px 4px;text-align:center}
+.ocard td{padding:6px 12px;text-align:center;border-top:1px solid #ddd}
+.ocard td.l,.ocard th.l{text-align:left;padding-left:28px}
+.ocard .two{display:grid;grid-template-columns:1fr 1fr;border-top:2px solid var(--black)}
+.ocard .two>div+div{border-left:2px solid var(--black)}
+.ocard .ld{padding:12px 28px 16px;font-size:24px;font-weight:800;text-transform:none;font-family:var(--f-body)}
+.ocard .ld h4{margin:0 0 6px;font-family:var(--f-display);font-size:20px;letter-spacing:.1em;text-transform:uppercase;color:#555}
+.ocard .ld div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .board.big .half{padding:12px 10px 14px}
 .board.big .t{font-size:30px}
 .board.big .st{font-size:15px}
@@ -660,13 +692,15 @@ button.lnk{border:0;background:none;padding:0;font:inherit;color:inherit;text-al
    One device scores a game; everyone else signed in follows it live on the Announcer page. Each device's own saved copy is the
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
-const BS_VERSION = "0.6.0";
+const BS_VERSION = "0.7.0";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
 const pct = (m, a) => a ? Math.round(100 * m / a) + "%" : "–";
 const PUB = /[?&#]live\b/.test(location.search + location.hash);           // the public page for fans: no sign-in, read only
 const ANN_ONLY = !PUB && /[?&#]announcer\b/.test(location.search + location.hash);
+// The score bug for the stream (?bug, or /hoops/bug/): an OBS browser source on Jim's MacBook. No sign-in, see-through page.
+const OBS = !PUB && /[?&#]bug\b/.test(location.search + location.hash);
 const BC_ONLY = !PUB && !ANN_ONLY && /[?&#]broadcast\b/.test(location.search + location.hash);   // Jim's broadcast page
 
 /* ---------- schedule (from the 2026-27 master sheet in the social kit) ---------- */
@@ -1417,6 +1451,7 @@ function retitle(){
   let g = null, R = null;
   if(PUB){ const sn = PS.gid && PS.snap[PS.gid]; if(sn){ const p = pubGame(sn); g = p.g; R = p.R; } }
   else if(ui.tab === "ann" || ui.tab === "desk" || ui.tab === "bc"){ g = cur(); if(g && g.ev.length) R = replay(g); }
+  if(OBS){ document.title = "Brier Stats score bug"; return; }
   const base = PUB ? "Greenbrier Basketball Live" : "Brier Stats";
   if(!g || !R || g.status === "pre"){ document.title = base; return; }
   const ha = homeAway(g), ab = tm => tm === "us" ? "GHS" : (g.oi && g.oi.abbr) || oppInfo(g.opp, g).abbr;
@@ -1442,6 +1477,7 @@ function signalFlag(g){
 function draw(){
   pendingRender = false;
   if(PUB){ $("#view").innerHTML = viewPublic(); return; }
+  if(OBS){ $("#view").innerHTML = viewBug(); return; }
   $("#tabs").innerHTML = TABS.map(([k, l]) => `<button role="tab" data-tab="${k}" aria-selected="${ui.tab === k}">${l}</button>`).join("");
   const pill = $("#syncpill"), ph = Sync.phase();
   pill.className = "pill" + (ph === "live" && !Sync.stale() ? " live" : ph === "error" || Sync.stale() ? " bad" : "");
@@ -3467,7 +3503,7 @@ function viewSetup(){
       <p style="margin:0">Fans follow the score, box score and play-by-play at <a href="${esc(pubLink())}" target="_blank" rel="noopener">${esc(pubLink().replace(/^https?:\/\//, ""))}</a> with no sign-in. Put the link in the stream description. It never shows notes, the table or name notes.</p>
       <div class="row"><button class="btn${S.settings.pub !== false ? " primary" : ""}" data-act="pubtoggle" ${dis} aria-pressed="${S.settings.pub !== false}">${S.settings.pub !== false ? "On" : "Off"}</button>
         <label class="row small">Send an update at most every <select data-set="pubSec" style="width:auto" ${dis}>${[15, 30, 60].map(n => `<option value="${n}" ${(st.pubSec || 30) === n ? "selected" : ""}>${n} seconds</option>`).join("")}</select></label>
-        <button class="btn sm" data-act="copypub">Copy the link</button><button class="btn sm" data-act="copypub" data-delay="30" title="For the stream description: the page holds each update 30 seconds so it doesn't run ahead of the video">Copy the stream link (30 s behind)</button></div>
+        <button class="btn sm" data-act="copypub">Copy the link</button><button class="btn sm" data-act="copypub" data-delay="30" title="For the stream description: the page holds each update 30 seconds so it doesn't run ahead of the video">Copy the stream link (30 s behind)</button><button class="btn sm" data-act="copybug" title="For OBS on the stream laptop: add it as a Browser Source, 1920 by 1080">Copy the score bug link (OBS)</button></div>
       <p class="small" style="margin:0">Ends of quarters and finals go out right away. Every phone watching costs one Firebase read per update, and the free plan allows 50,000 reads a day, shared with the scorer, PA, booth and Mound Book: at ${esc(String(st.pubSec || 30))} seconds that's roughly ${Math.floor(50000 / (3 * 3600 / Math.max(10, st.pubSec || 30)) / 10) * 10} phones through a doubleheader. <b>Go over and the PA's and booth's screens stop too, until about 2 AM.</b> Before a big night, move the Firebase project to the pay-as-you-go Blaze plan with a small budget alert (a 1,000-phone night costs well under a dollar), or slow the updates down.</p></div>
     <div class="card stack"><h3 style="font-size:22px">Back up and move</h3>
       <div class="row"><button class="btn" data-act="backup">Full backup (all games)</button><button class="btn" data-act="restore">Restore from a backup</button><input type="file" id="restore-file" accept=".json,application/json" hidden></div>
@@ -3599,6 +3635,13 @@ function pubSnap(g0){
     box:{us:sortRoster(roster(g, "us")).filter(p => played("us", p)).map(p => line("us", p)), them:sortRoster(roster(g, "them")).filter(p => played("them", p)).map(p => line("them", p))},
     tt:{us:[R.team.us.oreb, R.team.us.dreb, R.team.us.to], them:[R.team.them.oreb, R.team.them.dreb, R.team.them.to]},
     plays, more:all.length > plays.length, fl:flowOf(R), x:extrasOf(g, R), sponsor:((b.info || {}).sponsor || "").trim(), every:S.settings.pubSec || 30, upd:Date.now()};
+}
+// What the score bug needs (hoopsPublic/_bug): the teams, the score, the period, fouls, the bonus, timeouts and the arrow.
+function bugSnap(g){
+  const R = replay(g), o = oppInfo(g.opp);
+  return {v:1, id:g.id, date:g.date, team:g.team, usName:usName(g), opp:g.opp, oi:{mascot:o.mascot, girls:o.girls, c1:o.c1, c2:o.c2, abbr:o.abbr}, ha:g.ha,
+    quarters:g.quarters || 4, status:g.forfeit || g.status === "final" || gameOver(g) ? "final" : g.status, q:R.q, brk:R.brk, sc:R.sc, poss:R.poss,
+    tf:{us:teamFouls(g, R, "us"), them:teamFouls(g, R, "them")}, bonus:{us:inBonus(g, R, "us"), them:inBonus(g, R, "them")}, tol:{us:toLeft(g, R, "us"), them:toLeft(g, R, "them")}};
 }
 function seasonRow(g){
   const R = g.ev.length ? replay(g) : null, o = oppInfo(g.opp);
@@ -4011,6 +4054,7 @@ document.addEventListener("click", async ev => {
         const back = use.length ? mergeEv(g, use) : 0; delete S.strand[g.id]; touch(g);
         const R1 = replay(g); toast("This device scores the game now." + (back ? ` ${back} play(s) from here are back in: ${R0.sc.us}-${R0.sc.them} is now ${R1.sc.us}-${R1.sc.them}.` : ""), 5000); } break;
     case "pubtoggle": if(!canScore()) break; S.settings.pub = S.settings.pub === false; S.teamsRev++; save(); Sync.dirtyTeams(); Sync.seedSeason(true); render(); toast(S.settings.pub ? "Public page on." : "Public page off. Fans see a 'live stats are off' note."); break;
+    case "copybug": { const u = new URL("bug/", location.href.split(/[?#]/)[0]).href, ok = await copyText(u); toast(ok ? "Score bug link copied. In OBS: Sources, +, Browser, paste it, 1920 by 1080." : u, 6000); break; }
     case "copypub": { const u = pubLink() + (a.dataset.delay ? "?delay=" + a.dataset.delay : ""), ok = await copyText(u); toast(ok ? "Link copied." : u, 4000); break; }
     case "resetprac": if(!g || !g.practice) break; S.games.practice = practiceGame(); delete S.booth.practice; save(); render(); toast("Practice game cleared."); break;
     case "send": sendSheet(); break;
@@ -4690,6 +4734,86 @@ const PubRead = (() => {
     try{ const u = new URL(location.href); u.searchParams.set("g", id); history.replaceState(null, "", u); }catch(e){} }
   return {start, pick};
 })();
+/* ---------- the score bug for the stream (?bug, or /hoops/bug/) ----------
+   An OBS browser source on Jim's MacBook, 1920x1080. It listens to hoopsPublic/_bug (the scoring device sends it on every
+   change to the score, period, fouls, timeouts or arrow) and to that game's public copy, for the card at halftime and the
+   final. Nothing shows before tip-off or for a game that's long over. &top puts the bug at the top, &card=off never shows
+   the card, &demo shows a made-up game to line the source up with. */
+const BS = {phase:"loading", bug:null, full:null, had:false, gone:false, gid:null, fb:null, db:null, unF:null, q:new URLSearchParams(location.search)};
+const BugRead = (() => {
+  async function start(){
+    addEventListener("resize", render);
+    if(BS.q.has("demo")){ demo(); return; }
+    try{
+      const fb = await import(new URL("fb.js", document.baseURI).href);
+      const app = fb.initializeApp(FB, "brierbug"), db = fb.initializeFirestore(app, {localCache:fb.memoryLocalCache()});
+      Object.assign(BS, {fb, db});
+      fb.onSnapshot(fb.doc(db, "hoopsPublic", "_bug"), d => { let b = null; try{ b = d.exists() ? JSON.parse(d.data().j) : null; }catch(e){}
+        BS.bug = b; BS.phase = "live"; full(); render(); }, () => { BS.phase = "error"; render(); });
+      // A game that's long over goes away by itself.
+      setInterval(render, 60000);
+    }catch(e){ BS.phase = "error"; render(); }
+  }
+  function full(){
+    const id = BS.bug && BS.bug.id; if(id === BS.gid) return;
+    if(BS.unF){ BS.unF(); BS.unF = null; } BS.gid = id; BS.full = null; BS.had = BS.gone = false; if(!id) return;
+    // The game's public copy going away, or back to before tip-off, means the game was reset (maybe on another device).
+    BS.unF = BS.fb.onSnapshot(BS.fb.doc(BS.db, "hoopsPublic", id), d => { let sn = null; try{ sn = d.exists() ? JSON.parse(d.data().j) : null; }catch(e){}
+      BS.full = sn; if(sn && sn.status !== "pre") BS.had = true; BS.gone = BS.had && (!sn || sn.status === "pre"); render(); }, () => {});
+  }
+  // A made-up game, to size and place the source in OBS before a real one starts.
+  function demo(){
+    const now = Date.now(), d = BS.q.get("demo"), fin = d === "final", half = d === "half";
+    const b = {v:1, id:"demo", date:pubToday(), team:"boys", usName:"Bobcats", opp:"Jo Byrns", oi:{mascot:"Red Devils", girls:"", c1:"#CC0022", c2:"#FFFFFF", abbr:"JB"}, ha:"Home", quarters:4,
+      status:fin ? "final" : "live", q:half ? 3 : fin ? 4 : 3, brk:half, sc:fin ? {us:61, them:55} : half ? {us:30, them:27} : {us:44, them:41}, poss:"them", tf:{us:3, them:5}, bonus:{us:true, them:false}, tol:{us:{60:2, 30:2}, them:{60:1, 30:2}}, upd:now};
+    const P = (num, name, l) => [num, name, "", "", ""].concat(l, [1, 0, 0, 0]);
+    BS.bug = b; BS.full = (fin || half) ? {...b, qs:fin ? {us:[14, 16, 17, 14], them:[12, 15, 15, 13]} : {us:[14, 16], them:[12, 15]}, time:"19:30", district:false, event:"",
+      box:{us:[P("3", "Cam Johnson", [22, 8, 15, 3, 6, 3, 4, 1, 5, 2, 1, 0, 2, 2]), P("10", "Christopher Montgomery", [14, 6, 11, 0, 2, 2, 2, 3, 7, 1, 0, 1, 1, 3]), P("1", "José Núñez-O’Brien", [11, 4, 9, 1, 3, 2, 2, 0, 2, 6, 2, 0, 1, 1]), P("0", "Jaylen Smith", [8, 3, 7, 2, 5, 0, 0, 1, 1, 4, 1, 0, 3, 2]), P("2", "Tre Davis", [6, 3, 4, 0, 0, 0, 1, 2, 4, 0, 0, 2, 0, 4])],
+        them:[P("11", "Ed Eleven", [19, 7, 14, 3, 7, 2, 2, 1, 3, 2, 1, 0, 2, 3]), P("3", "Al Byrns", [15, 6, 12, 0, 1, 3, 5, 2, 8, 1, 0, 1, 3, 2]), P("1", "Ella Ray", [12, 5, 11, 2, 5, 0, 0, 1, 2, 5, 2, 0, 4, 1]), P("5", "Sam Lee", [9, 4, 9, 1, 3, 0, 1, 2, 5, 0, 1, 1, 1, 4])]},
+      tt:{us:[1, 2, 1], them:[0, 1, 2]}, plays:[], fl:{lc:4, ties:3, big:{us:9, them:4}}, x:null} : null;
+    if(half){ BS.full.status = "live"; BS.full.q = 3; BS.full.brk = true; }
+    BS.phase = "live"; render();
+  }
+  return {start};
+})();
+// Who leads a stat ("Cam Johnson 22"), ties named, up to two.
+function bugLead(g, R, tm, k){
+  const val = l => k === "reb" ? l.oreb + l.dreb : l[k], ls = Object.entries(R.box[tm]), top = Math.max(0, ...ls.map(([, l]) => val(l)));
+  if(!top) return "–";
+  return ls.filter(([, l]) => val(l) === top).map(([pid]) => player(g, tm, pid)).filter(Boolean).slice(0, 2).map(p => esc(p.name ? pShort(p) : "#" + p.num)).join(", ") + " " + top;
+}
+// Halftime and the final: the score, points by period, each team's leaders and a few team numbers.
+function bugCard(sn){
+  const {g, R} = pubGame(sn), ha = homeAway(g), fin = sn.status === "final", Q = g.quarters || 4, lq = Math.max(1, lastQ(R)), order = [ha.away, ha.home];
+  const full = tm => tm === "us" ? (/greenbrier/i.test(usName(g)) ? usName(g) : "Greenbrier " + usName(g)) : oppFull(g);
+  const stage = fin ? "Final" + (lq > Q ? (lq - Q > 1 ? ` (${lq - Q}OT)` : " (OT)") : "") : "Halftime", won = tm => fin && R.sc[tm] > R.sc[OTHER(tm)];
+  const per = Array.from({length:lq}, (_, i) => i + 1);
+  const tot = tm => sumLines(Object.values(R.box[tm]).concat([R.team[tm]])), T = {us:tot("us"), them:tot("them")};
+  const st = [["FG", t => `${t.fgm}-${t.fga}`, t => !t.po], ["3PT", t => `${t.tpm}-${t.tpa}`, t => !t.po], ["FT", t => `${t.ftm}-${t.fta}`, t => !t.po], ["REB", t => t.oreb + t.dreb, () => true], ["TO", t => t.to, () => true]]
+    .filter(([, , ok]) => order.every(tm => ok(T[tm])));
+  return `<div class="ocard"><div class="kick">${esc(stage)} · ${g.team === "girls" ? "Girls" : "Boys"} basketball</div>
+    ${order.map(tm => `<div class="row2${fin && !won(tm) && R.sc.us !== R.sc.them ? " lost" : ""}" style="${tvars(g, tm)}"><span class="full">${esc(full(tm))}</span><span class="sc">${R.sc[tm]}</span></div>`).join("")}
+    <table><tr><th class="l"></th>${per.map(q => `<th>${perLabel(g, q)}</th>`).join("")}<th>T</th>${st.map(s => `<th>${s[0]}</th>`).join("")}</tr>
+      ${order.map(tm => `<tr><td class="l">${esc(tm === "us" ? "GHS" : oppInfo(g.opp, g).abbr)}</td>${per.map(q => `<td>${(R.qs[tm] || [])[q - 1] || 0}</td>`).join("")}<td><b>${R.sc[tm]}</b></td>${st.map(s => `<td>${s[1](T[tm])}</td>`).join("")}</tr>`).join("")}</table>
+    <div class="two">${order.map(tm => `<div class="ld"><h4>${esc(tmName(g, tm))} leaders</h4><div>Points: ${bugLead(g, R, tm, "pts")}</div><div>Rebounds: ${bugLead(g, R, tm, "reb")}</div><div>Assists: ${bugLead(g, R, tm, "ast")}</div></div>`).join("")}</div></div>`;
+}
+function viewBug(){
+  const k = Math.min(innerWidth / 1920, innerHeight / 1080), wrap = h => `<div class="ostage${BS.q.has("top") ? " top" : ""}" style="transform:scale(${k})">${h}</div>`;
+  const b = BS.bug; if(!b || !b.sc || (BS.gone && BS.gid === b.id)) return wrap("");
+  const g = {id:b.id, date:b.date, team:b.team, usName:b.usName, opp:b.opp, oi:b.oi, ha:b.ha, quarters:b.quarters, status:b.status};
+  const R = {q:b.q, brk:!!b.brk, sc:b.sc, poss:b.poss}, Q = g.quarters || 4;
+  // A final the scorer never marked (the horn after regulation with a winner) reads as the final.
+  const fin = b.status === "final" || (b.brk && b.q > Q && b.sc.us !== b.sc.them), age = Date.now() - (b.upd || 0);
+  if(age > (fin ? 2 : 4) * 3600e3 && b.id !== "demo") return wrap("");
+  const half = !fin && b.brk && nowLabel(g, R) === "HALFTIME", sn = BS.full;
+  if((fin || half) && BS.q.get("card") !== "off" && sn && sn.id === b.id && sn.box && (fin ? sn.status === "final" || (sn.brk && sn.q > Q && sn.sc.us !== sn.sc.them) : sn.brk && sn.q === b.q))
+    return wrap(bugCard(fin ? {...sn, status:"final"} : sn));
+  const ha = homeAway(g), lbl = fin ? "FINAL" : nowLabel(g, R).replace("HALFTIME", "HALF");
+  const tm = t => { const n = (b.tol[t] || {})[60] + (b.tol[t] || {})[30] || 0;
+    return `<div class="tm" style="${tvars(g, t)}"><div class="nm"><b class="ab">${esc(t === "us" ? "GHS" : oppInfo(g.opp, g).abbr)}</b>${fin ? "" : `<span class="sub"><span class="dots" title="Timeouts left">${"<i></i>".repeat(Math.max(0, Math.min(6, n)))}</span>${b.tf[t]} FOULS${b.bonus[t] ? ` <i class="bon">BONUS</i>` : ""}</span>`}</div><b class="sc">${b.sc[t]}</b></div>`; };
+  const arrow = fin || !b.poss ? "" : b.poss === ha.away ? "◀" : "▶";
+  return wrap(`<div class="obug">${tm(ha.away)}<div class="per">${esc(lbl)}${arrow ? `<small>${arrow}</small>` : ""}</div>${tm(ha.home)}</div>`);
+}
 function pubRowName(r){ return `${esc(r.usName || (r.team === "girls" ? "Lady Cats" : "Bobcats"))} ${r.ha === "Away" ? "at" : "vs"} ${esc(r.opp)}`; }
 // Each team's leader in one stat, ties named ("Wing, Post 12").
 function leadCard(g, R, k, lbl){
@@ -4781,7 +4905,7 @@ const RULES = "rules_version = '2';\n// Mound Book live sync. Only people Coach 
 const Sync = (() => {
   const st = {phase:"off", err:"", uid:null, email:"", name:"", role:null, fb:null, auth:null, db:null, unsub:[], reqs:[], mems:[],
     dirty:new Set(), teamsDirty:false, teamsSent:null, teamsSentJ:"", gamesSeen:false, teamsSeen:false, tries:0, scriptDirty:false, pushing:false, timer:null, mode:"in", busy:false,
-    pub:{last:{}, timer:{}, seen:{}, rowk:{}, busy:{}, again:{}, retry:{}, other:{}}, seeded:false, stale:false, pubDel:new Set(), rzWas:{}, boothSeen:false, libHeard:false};
+    pub:{last:{}, timer:{}, seen:{}, rowk:{}, busy:{}, again:{}, retry:{}, other:{}}, bug:{fin:{}, timer:null, busy:false, again:null, last:"", id:null}, seeded:false, stale:false, pubDel:new Set(), rzWas:{}, boothSeen:false, libHeard:false};
   const live = () => st.phase === "live";
   const paint = () => { softRender(); askCard(); };
   function clear(){ st.unsub.forEach(u => { try{ u(); }catch(e){} }); st.unsub = []; st.teamsSeen = false; st.gamesSeen = false; st.oweSent = false; st.boothSeen = false; st.libHeard = false; }
@@ -5058,7 +5182,28 @@ const Sync = (() => {
   // A name changes only the copy, not the results row: a fresh upd on a live row would pull fans on the plain link over to
   // that game (pubPick). A stale row is healed by seedSeason.
   function copyOnly(id){ const g = S.games[id]; if(!g || id in st.pub.seen) return; const R = replay(g); st.pub.seen[id] = g.status + ":" + R.q; if(g.status === "final") st.pub.rowk[id] = "final:" + R.sc.us + "-" + R.sc.them; }
+  /* The score bug on the stream (?bug): one small doc, hoopsPublic/_bug, with the score, the period, fouls, timeouts and the
+     arrow. It goes out within a second of any change to those, since the only thing listening is the stream's browser
+     source. Only the device scoring a game sends it, and only up to that game's final: a fix to a final made later in the
+     night never takes the bug away from the game on the floor. A game undone or reset back to before tip-off takes its
+     bug down. */
+  function bugQueue(id){
+    const g = S.games[id], B = st.bug;
+    if(!pubOk(g) || !mine(g) || (g.status === "pre" && B.id !== id)) return;
+    if(g.status !== "final") delete B.fin[id]; else if(B.fin[id]) return;
+    clearTimeout(B.timer); B.timer = setTimeout(() => bugSend(id), 400);
+  }
+  async function bugSend(id){
+    const B = st.bug, g = S.games[id]; if(!pubOk(g) || !mine(g)) return;
+    if(B.busy){ B.again = id; return; }
+    const b = g.status === "pre" ? {v:1, id, status:"pre"} : bugSnap(g), k = JSON.stringify(b); if(k === B.last) return;
+    B.busy = true;
+    try{ const upd = Date.now(); await st.fb.setDoc(st.fb.doc(st.db, "hoopsPublic", "_bug"), {j:JSON.stringify({...b, upd}), upd, w:g.writer || S.dev}); B.last = k; B.id = id; if(b.status === "final") B.fin[id] = true; }
+    catch(e){ B.last = ""; }
+    finally{ B.busy = false; if(B.again){ const a = B.again; B.again = null; bugSend(a); } }
+  }
   function pubQueue(id, soon){
+    bugQueue(id);
     const g = S.games[id]; if(!pubOk(g)) return;
     // A period break, the final, or any fix after the final goes out right away; anything else waits its turn.
     const P = st.pub, R = replay(g), big = soon || g.status === "final" || P.seen[id] !== g.status + ":" + R.q;
@@ -5280,7 +5425,10 @@ const Sync = (() => {
 })();
 
 /* ---------- boot ---------- */
-if(PUB){
+if(OBS){
+  S = blank(); document.documentElement.classList.add("obs"); document.body.classList.add("obs");
+  render(); BugRead.start();
+}else if(PUB){
   S = blank(); document.body.classList.add("pub");
   $(".brand b").innerHTML = "BRIER STATS<small>LIVE</small>";
   const mf = $('link[rel="manifest"]'); if(mf) mf.href = "live.webmanifest";
