@@ -6,7 +6,9 @@ service cloud.firestore {
     function signedIn() { return request.auth != null; }
     function member() { return signedIn() && exists(/databases/$(db)/documents/members/$(request.auth.uid)); }
     function role() { return get(/databases/$(db)/documents/members/$(request.auth.uid)).data.role; }
-    function owner() { return member() && role() == 'owner'; }
+    // Coach (the owner) and the Admins Coach names run Mound Book. Coach's own entry is the one nobody can change or remove.
+    function owner() { return member() && role() in ['owner', 'admin']; }
+    function isTheOwner(uid) { return get(/databases/$(db)/documents/config/owner).data.uid == uid; }
     function ownerEmail() { return request.auth.token.email != null && request.auth.token.email.lower() == 'kevcriswell@gmail.com'; }
 
     // Claiming the program: only the owner email, only once, and only together with the owner's member record.
@@ -17,21 +19,22 @@ service cloud.firestore {
         && getAfter(/databases/$(db)/documents/members/$(request.auth.uid)).data.role == 'owner';
       allow update, delete: if false;
     }
-    // Pitch-count rules and pitch types: everyone reads, Coach sets them.
+    // Pitch-count rules and pitch types: everyone reads, Coach or an Admin sets them.
     match /config/{name} {
       allow read: if member();
       allow write: if owner() && name != 'owner';
     }
     match /members/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || member());
-      allow create: if owner()
+      allow create: if (owner() && request.resource.data.role in ['coach', 'admin'])
         || (signedIn() && uid == request.auth.uid && ownerEmail()
             && request.resource.data.role == 'owner'
             && !exists(/databases/$(db)/documents/config/owner)
             && existsAfter(/databases/$(db)/documents/config/owner));
-      allow update, delete: if owner();
+      allow update: if owner() && !isTheOwner(uid) && request.resource.data.role in ['coach', 'admin'];
+      allow delete: if owner() && !isTheOwner(uid);
     }
-    // "Let me in" requests from a new phone. Coach approves them inside Mound Book.
+    // "Let me in" requests from a new phone. Coach or an Admin lets them in inside Mound Book.
     match /requests/{uid} {
       allow read: if signedIn() && (uid == request.auth.uid || owner());
       allow create, update: if signedIn() && uid == request.auth.uid
@@ -45,11 +48,11 @@ service cloud.firestore {
       allow delete: if owner();
     }
     // One document per game. Our hitters' names never come here, only lineup slot and bats.
-    // A copy can't go backwards: rev never decreases. A game moves to another device only when Coach moves it
-    // or a signed-in coach taps Take over (that copy names them in takeover).
+    // A copy can't go backwards: rev never decreases. A game moves to another device only when Coach or an Admin
+    // moves it, or a signed-in coach taps Take over (that copy names them in takeover).
     match /games/{gid} {
       allow read: if member();
-      // Only Coach deletes a game for everyone, or brings a deleted one back.
+      // Only Coach or an Admin deletes a game for everyone, or brings a deleted one back.
       allow create: if member() && request.resource.data.id == gid
         && (request.resource.data.deleted == false || owner());
       allow update: if member()
@@ -68,53 +71,82 @@ service cloud.firestore {
 
     // ---------- Brier Stats (basketball) ----------
     // Its own people list: being let into Brier Stats does not let anyone into Mound Book, and the other way round.
-    // Coach (the Mound Book owner) is in both. Scorers write games; viewers only watch.
-    function hoopsIn() { return signedIn() && (owner() || exists(/databases/$(db)/documents/hoopsMembers/$(request.auth.uid))); }
-    function hoopsScorer() { return signedIn() && (owner() || (exists(/databases/$(db)/documents/hoopsMembers/$(request.auth.uid))
-        && get(/databases/$(db)/documents/hoopsMembers/$(request.auth.uid)).data.role == 'scorer')); }
+    // Four groups, as levels: Admin 4 (Coach and Mound Book's Admins are Admins here too), Coach 3 (everything but the back
+    // end: rosters, schedule, opponents, settings, letting people in), Scorer 2 (scores games), Viewer 1 (watches).
+    // Coaches and Admins are kept as scorers with a tier, so whatever only checks for a scorer (an older copy of the app,
+    // the Drive backup script) still lets them score. Each rule works the level out once (four document reads at most).
+    function hoopsLevel() {
+      let me = /databases/$(db)/documents/hoopsMembers/$(request.auth.uid);
+      let rec = exists(me) ? get(me).data : {};
+      return owner() ? 4 : rec.get('role', '') == 'viewer' ? 1 : rec.get('role', '') != 'scorer' ? 0
+        : rec.get('tier', '') == 'admin' ? 4 : rec.get('tier', '') == 'coach' ? 3 : 2;
+    }
+    function hoopsIn() { return signedIn() && hoopsLevel() >= 1; }
+    function hoopsScorer() { return signedIn() && hoopsLevel() >= 2; }
+    function hoopsCoach() { return signedIn() && hoopsLevel() >= 3; }
+    function hoopsAdmin() { return signedIn() && hoopsLevel() >= 4; }
+    // A person's entry: a scorer (maybe with the Coach or Admin tier) or a viewer. Admins give and take away anything; a
+    // Coach anything but Admin.
+    function hoopsEntry(d) { return d.role in ['scorer', 'viewer'] && d.get('tier', '') in ['', 'coach', 'admin']
+        && (d.role == 'scorer' || d.get('tier', '') == ''); }
+    function hoopsMayGive(lvl, d) { return lvl >= 4 || (lvl == 3 && d.get('tier', '') != 'admin'); }
     match /hoopsMembers/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || hoopsIn());
-      allow write: if owner();
+      allow create: if signedIn() && hoopsEntry(request.resource.data) && hoopsMayGive(hoopsLevel(), request.resource.data);
+      allow update: if signedIn() && hoopsEntry(request.resource.data) && hoopsMayChange(hoopsLevel(), resource.data, request.resource.data);
+      allow delete: if signedIn() && hoopsMayGive(hoopsLevel(), resource.data);
     }
+    function hoopsMayChange(lvl, was, now) { return hoopsMayGive(lvl, was) && hoopsMayGive(lvl, now); }
     match /hoopsRequests/{uid} {
-      allow read: if signedIn() && (uid == request.auth.uid || owner());
+      allow read: if signedIn() && (uid == request.auth.uid || hoopsCoach());
       allow create, update: if signedIn() && uid == request.auth.uid
         && request.resource.data.keys().hasOnly(['email', 'name', 'at']);
-      allow delete: if owner() || (signedIn() && uid == request.auth.uid);
+      allow delete: if signedIn() && (uid == request.auth.uid || hoopsCoach());
     }
-    // Rosters and settings.
+    // Rosters, opponents and settings: Coaches and Admins. The back-end settings (the Google Drive backup link, the fan
+    // page switch and how often it updates) only an Admin changes: a Coach's save has to carry them as they were.
+    function hoopsAdminSet(d) { let s = d.get('settings', {}); return [s.get('drive', ''), s.get('pub', true), s.get('pubSec', 30)]; }
+    function hoopsBookWrite(lvl, was) { return lvl >= 4 || (lvl == 3 && hoopsAdminSet(request.resource.data) == was); }
     match /hoopsBook/{name} {
       allow read: if hoopsIn();
-      allow write: if hoopsScorer();
+      allow create: if signedIn() && hoopsBookWrite(hoopsLevel(), ['', true, 30]);
+      allow update: if signedIn() && hoopsBookWrite(hoopsLevel(), hoopsAdminSet(resource.data));
+      allow delete: if hoopsAdmin();
     }
     // One document per game, the whole play-by-play inside. A copy can't go backwards (rev never decreases), and a game
-    // moves to another device only when Coach moves it or a scorer taps Take over (that copy names them in takeover).
+    // moves to another device only when an Admin moves it or a scorer taps Take over (that copy names them in takeover).
+    // Only an Admin deletes a game or brings one back.
     match /hoopsGames/{gid} {
       allow read: if hoopsIn();
-      allow create: if hoopsScorer() && request.resource.data.id == gid
-        && (request.resource.data.deleted == false || owner());
-      allow update: if hoopsScorer()
-        && request.resource.data.rev >= resource.data.rev
-        && (request.resource.data.deleted == false || owner())
-        && (resource.data.deleted == false || owner())
-        && (resource.data.writer == null || request.resource.data.writer == resource.data.writer
-            || owner() || request.resource.data.takeover == request.auth.uid);
-      allow delete: if owner();
+      allow create: if signedIn() && hoopsGameNew(hoopsLevel(), gid);
+      allow update: if signedIn() && hoopsGameEdit(hoopsLevel());
+      allow delete: if hoopsAdmin();
     }
-    // The table (subs waiting to check in), booth notes and name notes: not stats, so the announcer can add to them too.
-    // The PA's game-night script and prep (coaches, officials, sponsor, starters) live here as well.
+    function hoopsGameNew(lvl, gid) { return lvl >= 2 && request.resource.data.id == gid
+        && (request.resource.data.deleted == false || lvl >= 4); }
+    function hoopsGameEdit(lvl) { return lvl >= 2
+        && request.resource.data.rev >= resource.data.rev
+        && ((request.resource.data.deleted == false && resource.data.deleted == false) || lvl >= 4)
+        && (resource.data.writer == null || request.resource.data.writer == resource.data.writer
+            || lvl >= 4 || request.resource.data.takeover == request.auth.uid); }
+    // The table (subs waiting to check in), booth notes, name notes, the opponent library and the PA's game-night script
+    // and prep: scorers and up write them, viewers read them.
     match /hoopsBooth/{doc} {
-      allow read, write: if hoopsIn();
+      allow read: if hoopsIn();
+      allow write: if hoopsScorer();
     }
     // The public page: a small copy of each game (score, box score, recent plays) and the season list. Anyone can read it
     // with no sign-in; only scorers write it. Nothing private goes here: no notes, no table, no name notes.
     match /hoopsPublic/{doc} {
       allow read: if true;
-      // A game's copy comes only from the device scoring it, so copies queued on a device that lost the game are refused.
-      allow create, update: if hoopsScorer() && (doc == '_season'
-        || !exists(/databases/$(db)/documents/hoopsGames/$(doc))
-        || request.resource.data.w == get(/databases/$(db)/documents/hoopsGames/$(doc)).data.writer);
-      allow delete: if hoopsScorer();
+      allow create, update: if signedIn() && hoopsPublicWrite(hoopsLevel(), doc);
+      allow delete: if signedIn() && (doc == '_season' ? hoopsLevel() >= 4 : hoopsLevel() >= 2);
     }
+    // A game's copy comes only from the device scoring it, so copies queued on a device that lost the game are refused.
+    // The season list's off switch (the fan page turned off) is an Admin's: anyone else's write leaves it as it was.
+    function hoopsPublicWrite(lvl, doc) { return lvl >= 2 && (doc == '_season'
+        ? lvl >= 4 || request.resource.data.get('off', false) == (resource == null ? false : resource.data.get('off', false))
+        : !exists(/databases/$(db)/documents/hoopsGames/$(doc))
+          || request.resource.data.w == get(/databases/$(db)/documents/hoopsGames/$(doc)).data.writer); }
   }
 }
