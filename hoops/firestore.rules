@@ -68,6 +68,12 @@ service cloud.firestore {
       allow create, update: if member() && request.resource.data.id == pid;
       allow delete: if owner();
     }
+    // Their catcher and defense, one document per opposing team. Any coach Coach let in can change it.
+    match /teams/{tk} {
+      allow read: if member();
+      allow create, update: if member() && request.resource.data.key == tk && request.resource.data.by == request.auth.uid;
+      allow delete: if owner();
+    }
 
     // ---------- Brier Stats (basketball) ----------
     // Its own people list: being let into Brier Stats does not let anyone into Mound Book, and the other way round.
