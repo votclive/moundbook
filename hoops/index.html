@@ -4723,8 +4723,10 @@ function lateAdds(team){
     // Before the tip, a copy kept for tonight-only changes still follows Rosters for everything else (a fixed year or height).
     // A kid a scorer added for tonight only (late) stays on it.
     // A coach putting that kid on Rosters too (same number and name) makes one kid, not two: Rosters' entry takes over
-    // unless the book already has a play for tonight's.
-    const twin = p => R.find(r => String(r.num) === String(p.num) && nameKey(r.name) === nameKey(p.name)), used = p => g.ev.some(e => e.pid === p.pid);
+    // unless the book already has a play for tonight's, or the PA has him already (his phonetic, her five, the table).
+    const twin = p => R.find(r => String(r.num) === String(p.num) && nameKey(r.name) === nameKey(p.name)),
+      used = p => { const b = S.booth[g.id] || {}, has = l => (l || []).includes(p.pid);
+        return g.ev.some(e => e.pid === p.pid) || !!S.say[p.pid] || has((b.start || {}).us) || has((b.table || {}).us) || has(b.said); };
     if(g.status === "pre" && g.usOver && R.length){ const late = g.us.filter(p => p.late && !R.some(r => r.pid === p.pid) && !(twin(p) && !used(p)));
       const nu = R.filter(r => !late.some(p => twin(p) === r)).map(p => ({...p, ...(g.usOver[p.pid] || {})})).concat(late); if(key(nu) !== key(g.us)){ g.us = nu; touch(g); } continue; }
     const have = new Set(g.us.map(p => p.pid)), add = R.filter(p => !have.has(p.pid) && !g.us.some(q => q.late && twin(q) === p));
@@ -5272,7 +5274,12 @@ const Sync = (() => {
       if(changed){ save(); paFoldAll(); softRender(); if(ui.sheet && ui.sheet.lib) libRefresh(); } else if(first) softRender();
     }, dead));
     st.unsub.push(fb.onSnapshot(fb.doc(db, "hoopsBook", "teams"), snap => {
+      // Opened with no signal: no rosters here only means none heard yet, not an empty cloud. Sending this device's on that
+      // would put them over the cloud's the moment the signal's back.
+      if(!snap.exists() && snap.metadata && snap.metadata.fromCache) return;
       st.teamsSeen = true;   // rosters go up only after this device has heard the cloud's copy once
+      // This device's own save, not the cloud's answer yet: if the cloud refuses it, the cloud's copy comes next.
+      if(snap.metadata && snap.metadata.hasPendingWrites) return;
       if(!snap.exists()){ st.adminSet = {}; if(canCoach()){ st.teamsDirty = true; kick(300); } return; }
       const r = snap.data(), rv = r.rev || 0, base = S.teamsBase;
       st.adminSet = r.settings || {};   // the Drive link and the fan page switch and speed, as the cloud has them
@@ -5556,8 +5563,10 @@ const Sync = (() => {
       else if(st.teamsDirty && st.teamsSeen){ st.teamsDirty = false; const rev = S.teamsRev || 0; st.teamsSent = rev; st.teamsSentJ = JSON.stringify(clean(S.teams));
         // A Coach's save carries the back-end settings as the cloud has them (an Admin may have just changed one).
         const set = cloudSettings(S.settings), was = st.adminSet || {}; if(!canAdmin()) ADMIN_SET.forEach(k => { if(k in was) set[k] = was[k]; else delete set[k]; });
-        await fb.setDoc(fb.doc(db, "hoopsBook", "teams"), clean({teams:S.teams, rev, settings:set, opps:S.opps || {}, upd:Date.now()}));
-        S.teamsBase = rev; save(); }
+        // A Coach's save the cloud refuses (an Admin changed the Drive link or the fan page while it was on its way) isn't
+        // a sync failure: the cloud's copy comes back to the listener, which keeps this one under "Put this device's back".
+        try{ await fb.setDoc(fb.doc(db, "hoopsBook", "teams"), clean({teams:S.teams, rev, settings:set, opps:S.opps || {}, upd:Date.now()})); S.teamsBase = rev; save(); }
+        catch(e){ if(canAdmin() || !String((e && e.code) || "").includes("permission")) throw e; } }
       st.err = "";
     }catch(e){ st.bad = true; fail(e); }
     st.pushing = false;
@@ -5610,11 +5619,11 @@ const Sync = (() => {
         h += `<div><div class="kicker" style="margin-bottom:4px">Asking to get in</div>${st.reqs.length ? st.reqs.map(r => row(`<b>${esc(r.name || r.email)}</b> ${esc(r.email)}`, `<button class="btn sm primary" data-act="sy-approve" data-uid="${r.uid}" data-lvl="viewer">Viewer</button><button class="btn sm" data-act="sy-approve" data-uid="${r.uid}" data-lvl="scorer">Scorer</button><button class="btn sm" data-act="sy-approve" data-uid="${r.uid}" data-lvl="coach">Coach</button><button class="btn sm" data-act="sy-deny" data-uid="${r.uid}">No</button>`)).join("") : `<p style="margin:0">Nobody waiting.</p>`}</div>
           <div><div class="kicker" style="margin-bottom:4px">Let in</div>${st.mems.length ? st.mems.map(m => { const l = lvlOf(m), mine = m.uid === st.uid, hands = st.role === "owner" || l !== "admin";
             return row(`<b>${esc(m.name || m.email)}</b> ${esc(m.email)} · ${LVL_NAME[l]}${mine ? " (you)" : ""}`, mine || !hands ? "" : ["viewer", "scorer", "coach", "admin"].filter(x => x !== l && (x !== "admin" || st.role === "owner")).map(x => `<button class="btn sm" data-act="sy-approve" data-uid="${m.uid}" data-lvl="${x}">Make ${x === "admin" ? "Admin" : x}</button>`).join("") + `<button class="btn sm dark" data-act="sy-remove" data-uid="${m.uid}">Remove</button>`); }).join("") : `<p style="margin:0">Just you so far.</p>`}</div>
-          <p class="small" style="margin:0">Admins can do everything; Mound Book's owner and its Admins are Admins here too. Coaches: rosters, the schedule, opponents, game rules and letting people in. Scorers: scoring, the table, notes and the PA's prep. Viewers watch.${st.role === "owner" ? "" : " Only an Admin makes or changes an Admin."}</p>`;
+          <p class="small" style="margin:0">Admins can do everything. Mound Book's owner and its admins are Admins here too, whatever their row says. To make one less, make them a coach in Mound Book first, then change them here. Coaches: rosters, the schedule, opponents, game rules and letting people in. Scorers: scoring, the table, notes and the PA's prep. Viewers watch.${st.role === "owner" ? "" : " Only an Admin makes or changes an Admin."}</p>`;
       }
     }
     if(st.role === "owner" || st.phase === "error")
-      h += `<details><summary style="font-weight:600;cursor:pointer">Firestore rules (Admin, one time)</summary><p style="font-size:14px"><b>First</b>, open Brier Stats twice with signal on every device that scores, runs the PA or does the broadcast, until Setup › About says ${BS_VERSION}: an older copy gets locked out mid-game once these rules are in. Then Firebase console › Firestore Database › Rules: replace everything with this and tap Publish. It's Mound Book's rules plus the basketball part (Mound Book 3.1.0 and later shows the same ones).</p>
+      h += `<details><summary style="font-weight:600;cursor:pointer">Firestore rules (Admin, one time)</summary><p style="font-size:14px"><b>First</b>, open Brier Stats twice with signal on every device anyone uses it on, viewers too, until Setup › About says ${BS_VERSION}: an older copy gets locked out once these rules are in, mid-game if it's scoring. Then Firebase console › Firestore Database › Rules: replace everything with this and tap Publish. It's Mound Book's rules plus the basketball part (Mound Book 3.1.0 and later shows the same ones).</p>
         <textarea class="mono" rows="8" readonly id="rulestxt" style="width:100%">${esc(RULES)}</textarea><div class="row" style="margin-top:6px"><button class="btn sm" data-act="sy-copyrules">Copy rules</button></div></details>`;
     return h + `</div>`;
   }
