@@ -300,6 +300,15 @@ body.obs main .wrap{max-width:none;padding:0;margin:0}
 .bugcap{display:flex;justify-content:space-between;gap:4px 10px;align-items:baseline;flex-wrap:wrap;font-family:var(--f-display);font-weight:700;font-size:13px;letter-spacing:.12em;text-transform:uppercase;margin:0 0 4px}
 /* Line score: on white, each row starting with a block of its team's color. */
 .linesc{max-width:560px;width:100%;margin:0 auto}
+/* The gym scoreboard's feed under the Scorer's board: its clock (green), lost (red, once it's been heard this game) or none
+   yet (grey), and the score check when the board and the book disagree. */
+.bfeed{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;margin:6px 0 0}
+.bchip{min-height:34px;border-radius:17px;border:1px solid var(--grey);background:var(--white);color:#555;font-weight:700;font-size:14px;padding:3px 12px}
+.bchip b{font-family:var(--f-display);font-weight:900;font-size:18px;font-variant-numeric:tabular-nums;margin:0 2px}
+.bchip.on{border-color:var(--green);color:var(--green);box-shadow:inset 0 0 0 1px var(--green)}
+.bchip.lost,.bchip.bad{background:var(--f5);border-color:var(--f5);color:var(--white)}
+.plays .pq .gcl{margin-left:4px;font-weight:700;font-variant-numeric:tabular-nums}
+.plays .pq button.gcl{border:1px dashed var(--grey);border-radius:4px;background:none;font:inherit;font-weight:700;padding:0 4px;min-height:24px;cursor:pointer}
 .linesc table{font-size:13px}
 .linesc th,.linesc td{padding:3px 6px}
 .linesc td.lsn{font-family:var(--f-display);font-weight:700;text-transform:uppercase;border-left:8px solid var(--tf,var(--green));padding-left:6px}
@@ -699,7 +708,7 @@ button.lnk{border:0;background:none;padding:0;font:inherit;color:inherit;text-al
    One device scores a game; everyone else signed in follows it live on the Announcer page. Each device's own saved copy is the
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
-const BS_VERSION = "0.8.0";
+const BS_VERSION = "0.9.0";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -849,6 +858,18 @@ function practiceGame(){
 /* ---------- replay: every number comes from here ---------- */
 const LINE = () => ({pts:0,fgm:0,fga:0,tpm:0,tpa:0,ftm:0,fta:0,oreb:0,dreb:0,ast:0,stl:0,blk:0,to:0,pf:0,tf:0,pm:0,gp:0,po:0});
 const OTHER = tm => tm === "us" ? "them" : "us";
+// A game clock as the board shows it: 5:49, and under a minute 0:45.3 (the horn is 0:00). "" without one.
+function clockText(s){ if(typeof s !== "number" || !isFinite(s) || s < 0) return ""; if(s < .05) return "0:00"; if(s < 60) return "0:" + (Math.floor(s * 10 + 1e-6) / 10).toFixed(1).padStart(4, "0");
+  const t = Math.floor(s + 1e-6); return Math.floor(t / 60) + ":" + String(t % 60).padStart(2, "0"); }
+const periodLen = (g, q) => (q <= (g.quarters || 4) ? (g.qlen || S.settings.qlen || 8) : (S.settings.otlen || 4)) * 60;
+// A play's clock in the book's period q: a board still on the last period's 0:00 at a play the book has after the horn
+// (a sub in the break) is the start of this one, and a board already reset for the next period before the horn was
+// tapped is this one's end. Null with no clock.
+function gcIn(g, e, q){ const c = e && e.gc; if(!c || typeof c.s !== "number") return null; const L = periodLen(g, q);
+  if(!c.m && Number.isInteger(c.q) && c.q !== q){ if(c.q === q - 1 && c.s <= 1) return L; if(c.q === q + 1 && c.s >= periodLen(g, q + 1) - 1) return 0; }
+  return Math.min(L, Math.max(0, c.s)); }
+// The clock to show on a play: in its period when that's known (g and q), else as stamped.
+const gcText = (e, g, q) => !e || !e.gc ? "" : clockText(g && q ? gcIn(g, e, q) : e.gc.s);
 function perLabel(g, q){ const Q = g.quarters || 4; return q <= Q ? "Q" + q : (q === Q + 1 ? "OT" : "OT" + (q - Q)); }
 function replay(g){
   const R = {q:1, sc:{us:0,them:0}, qs:{us:[0],them:[0]}, tf:{us:{},them:{}}, tmo:{us:{60:0,30:0},them:{60:0,30:0}},
@@ -912,6 +933,85 @@ function teamFouls(g, R, tm){ const Q = g.quarters || 4; if(R.q <= Q) return R.t
 // A team is "in the bonus" (shooting free throws on every foul) when the OTHER team has reached the bonus foul.
 function inBonus(g, R, tm){ return teamFouls(g, R, OTHER(tm)) >= S.settings.bonus; }
 function toLeft(g, R, tm){ const ot = Math.max(0, R.q - (g.quarters || 4) - (R.brk && R.sc.us !== R.sc.them ? 1 : 0)); return {60: S.settings.to60 + ot - R.tmo[tm][60], 30: S.settings.to30 - R.tmo[tm][30]}; }
+/* ---------- minutes played and lineups (ours) ----------
+   From the game clock on each play (e.gc: the gym scoreboard's while its feed is up, or typed under Plays). The starters
+   go in at the opening tip, a period's horn ends every stint at 0:00 and whoever's on starts the next period at its full
+   length, and in between each sub's clock ends one stint and starts the next. A sub with no clock leaves the stints it
+   ends and starts unmeasured: nothing is guessed, those players' minutes are marked short (*), and the sub is listed so
+   its clock can be set. A board still showing the last period's 0:00 at a sub in the break (or already reset for the
+   next period while the book's horn hasn't been tapped) counts as the break. The period being played counts up to the
+   last clock stamped in it. Lineups are each group of five on the floor together: time, points for and against. */
+function clockStats(g, R){
+  const len = q => periodLen(g, q), clk = (e, q) => gcIn(g, e, q);
+  const M = {show:false, sec:{}, byQ:{}, short:new Set(), shortQ:{}, miss:[], units:new Map()};
+  const add = (pid, s, q) => { if(!(s > 0)) return; M.sec[pid] = (M.sec[pid] || 0) + s; const b = M.byQ[q] || (M.byQ[q] = {}); b[pid] = (b[pid] || 0) + s; };
+  const short = (pid, q) => { M.short.add(pid); (M.shortQ[q] || (M.shortQ[q] = new Set())).add(pid); };
+  const U = key => { let u = M.units.get(key); if(!u) M.units.set(key, u = {pids:key ? key.split(",") : [], sec:0, pf:0, pa:0, short:false}); return u; };
+  const on = new Map();                  // who's on the floor: pid -> the clock their stint started at (null: not known)
+  let started = false, low = null, unit = null, subAt, prev = {us:0, them:0}, anyIn = false;
+  // The group on the floor changed at the last sub: close the old group's time at that sub's clock, start the new one's.
+  const settle = q => { const key = [...on.keys()].sort().join(","), at = subAt === undefined ? len(q) : subAt;
+    if(unit && unit.key === key) return;
+    if(unit){ const u = U(unit.key); if(unit.from != null && at != null) u.sec += Math.max(0, unit.from - at); else u.short = true; }
+    unit = {key, from:at}; };
+  for(const p of R.plays){ if(p.void) continue; const e = p.e, q = p.q;
+    if(e.gc) M.show = true;
+    const pre = !started && PREGAME(e); if(!pre) started = true;
+    if(e.tm === "us" && e.pid && (e.t === "IN" || e.t === "OUT")){
+      anyIn = true;
+      const c = pre ? len(1) : clk(e, q);
+      if(!pre){ if(subAt !== undefined && c !== subAt) settle(q); subAt = c;
+        if(c == null){ const k = e.grp || e.id; let m = M.miss.find(x => x.k === k); if(!m) M.miss.push(m = {k, q, at:e.at, ins:[], outs:[], id:e.id}); (e.t === "IN" ? m.ins : m.outs).push(e.pid); } }
+      if(e.t === "IN"){ if(!on.has(e.pid)) on.set(e.pid, c); }
+      else if(on.has(e.pid)){ const s = on.get(e.pid); on.delete(e.pid); if(!pre){ if(s != null && c != null) add(e.pid, s - c, q); else short(e.pid, q); } }
+      prev = p.sc; continue; }
+    if(!started) continue;
+    settle(q);
+    const c = clk(e, q); if(c != null) low = low == null ? c : Math.min(low, c);
+    if(p.scored){ const u = U(unit.key); u.pf += p.sc.us - prev.us; u.pa += p.sc.them - prev.them; }
+    if(e.t === "PER"){
+      for(const [pid, s] of on){ if(s != null) add(pid, s, q); else short(pid, q); on.set(pid, len(q + 1)); }
+      const u = U(unit.key); if(unit.from != null) u.sec += unit.from; else u.short = true;
+      unit.from = len(q + 1); subAt = undefined; low = null; }
+    prev = p.sc;
+  }
+  // The period being played (not between periods): stints so far run to the last clock stamped in it, or the horn when
+  // the game is final with its last horn never tapped.
+  const end = g.status === "final" ? 0 : low;
+  if(started && !R.brk && unit){
+    for(const [pid, s] of on){ if(s == null) short(pid, R.q); else if(end != null) add(pid, s - end, R.q); }
+    const u = U(unit.key); if(unit.from == null) u.short = true; else if(end != null) u.sec += Math.max(0, unit.from - end); }
+  M.show = M.show && anyIn;
+  return M;
+}
+// A player's minutes in the box score: whole minutes, * when some of their time couldn't be measured. q: one period only.
+function minCell(M, pid, q){ const sec = q ? (M.byQ[q] || {})[pid] : M.sec[pid], sh = q ? !!(M.shortQ[q] && M.shortQ[q].has(pid)) : M.short.has(pid);
+  return sec || sh ? Math.round((sec || 0) / 60) + (sh ? "*" : "") : ""; }
+const minSum = (M, q) => { const v = Object.values(q ? M.byQ[q] || {} : M.sec).reduce((a, b) => a + b, 0); return v ? Math.round(v / 60) + ((q ? M.shortQ[q] && M.shortQ[q].size : M.short.size) ? "*" : "") : ""; };
+// Our lineups with time on the floor, most used first.
+function lineupsOf(g, M){
+  const num = pid => { const p = player(g, "us", pid); return p ? p.num : "?"; };
+  return [...M.units.values()].filter(u => u.pids.length === 5 && (u.sec >= 1 || u.pf || u.pa))
+    .map(u => ({...u, nums:u.pids.map(num).sort((a, b) => (parseInt(a, 10) || 0) - (parseInt(b, 10) || 0) || String(a).localeCompare(String(b)))}))
+    .sort((a, b) => b.sec - a.sec || (b.pf - b.pa) - (a.pf - a.pa));
+}
+const mss = s => Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0");
+const pmText = n => n > 0 ? "+" + n : String(n);
+// The subs that have no clock, for the note under the box score.
+function missText(g, M, n = 6){
+  const one = m => `${perLabel(g, m.q)}${m.at ? " " + new Date(m.at).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}) : ""}: ${[m.ins.map(pid => "#" + ((player(g, "us", pid) || {}).num ?? "?") + " in").join(", "), m.outs.map(pid => "#" + ((player(g, "us", pid) || {}).num ?? "?") + " out").join(", ")].filter(Boolean).join(", ")}`;
+  return M.miss.slice(0, n).map(one).join("; ") + (M.miss.length > n ? `; and ${M.miss.length - n} more` : "");
+}
+// Under our box score (Box score page, Jim's page): the lineups, and what the * means.
+function lineupCard(g, R, M, cls = "card"){
+  if(!M || !M.show) return "";
+  const L = lineupsOf(g, M), top = L.slice(0, 10);
+  const note = M.short.size ? `<p class="small" style="margin:6px 0 0">* Short: ${M.miss.length} sub${M.miss.length === 1 ? "" : "s"} with no game clock (${esc(missText(g, M))}). Set each one's clock under Plays.</p>` : "";
+  if(!top.length) return note ? `<div class="${cls}">${note}</div>` : "";
+  return `<div class="${cls}"><h3 style="font-size:22px;margin-bottom:4px">${esc(usName(g))} lineups</h3><div class="scroll-x"><table class="lineups"><tr><th class="l">On the floor</th><th>MIN</th><th>PTS</th><th>OPP</th><th>+/-</th></tr>
+    ${top.map(u => `<tr><td class="l">${u.nums.map(n => "#" + esc(n)).join(" ")}</td><td>${mss(u.sec)}${u.short ? "*" : ""}</td><td>${u.pf}</td><td>${u.pa}</td><td>${pmText(u.pf - u.pa)}</td></tr>`).join("")}</table></div>
+    ${L.length > top.length ? `<p class="small" style="margin:4px 0 0">And ${L.length - top.length} more lineup${L.length - top.length === 1 ? "" : "s"}.</p>` : ""}${note}</div>`;
+}
 
 /* ---------- names ---------- */
 function roster(g, tm){ if(tm === "them") return g.them; return (g.us && g.us.length) ? g.us : (S.teams[g.team] || {}).roster || []; }
@@ -1298,6 +1398,9 @@ function rec(e, opts = {}){
   if(!canEdit(g)){ toast(canScore() ? "Another device is scoring this game. Take over first." : "Viewers can't score."); return null; }
   if(g.status === "final"){ toast("This game is final. Tap Reopen to add plays, or fix plays under Plays."); return null; }
   claim(g); e.id = rid(); e.at = Date.now();
+  // The gym scoreboard's period and clock, while its feed is up (Board). A follow-up (the assist, the steal that goes
+  // with a turnover) happened with its play, so it shares that play's.
+  if(!e.gc){ const f = e.ref && g.ev.find(x => x.id === e.ref), gc = f && f.gc && !f.gc.m ? f.gc : Board.stamp(g); if(gc) e.gc = {...gc}; }
   if(g.status === "pre" && !PREGAME(e)) startGame(g);
   g.ev.push(e);
   if(!opts.keepFu) ui.fu = [];
@@ -1494,7 +1597,7 @@ function signalFlag(g){
   return `<div class="flag bad" role="alert"><span><b>Nothing from the scorer's iPad for ${Math.floor(q / 60)}:${String(q % 60).padStart(2, "0")}.</b> Check the gym scoreboard before you read a score.</span></div>`;
 }
 function draw(){
-  pendingRender = false;
+  pendingRender = false; Board.check();
   if(PUB){ $("#view").innerHTML = viewPublic(); return; }
   if(OBS){ $("#view").innerHTML = viewBug(); return; }
   $("#tabs").innerHTML = TABS.map(([k, l]) => `<button role="tab" data-tab="${k}" aria-selected="${ui.tab === k}">${l}</button>`).join("");
@@ -1535,7 +1638,7 @@ function viewDesk(){
     <div class="periods" role="group" aria-label="Period">${pers.map(q => `<button class="${q === R.q ? "on" : ""}" data-act="period" data-q="${q}" ${edit ? "" : "disabled"} aria-pressed="${q === R.q}">${perLabel(g, q)}</button>`).join("")}${R.q >= Q && !ended ? `<button data-act="period" data-q="${R.q + 1}" ${edit ? "" : "disabled"}>${R.sc.us !== R.sc.them ? "End " + perLabel(g, R.q) : "+OT"}</button>` : ""}</div>
     <div class="row no-print"><button class="btn sm" data-act="toggle" data-k="extra" aria-pressed="${!!S.settings.extra}">Every stat</button><button class="btn sm" data-act="toggle" data-k="chart" aria-pressed="${!!S.settings.chart}">Shot spots</button>${flipBtn()}<button class="btn sm dark" data-act="undo" ${edit && g.ev.some(e => !e.v) ? "" : "disabled"} title="Undo the last play (${UNDO_KEY})">↶ Undo</button></div></div>`;
   h += `<div class="row only-narrow" style="margin-bottom:8px">${[sd.left, sd.right].map(tm => `<button class="btn sm" aria-pressed="${ui.narrow === hk(tm)}" data-act="narrow" data-v="${hk(tm)}">${esc(tmName(g, tm))}</button>`).join("")}</div>`;
-  h += `<div class="desk">${teamCol(g, R, sd.left, sd.left === ha.home ? "Home" : "Away", ui.narrow !== hk(sd.left))}<div class="center">${board(g, R)}${teamBox(g, R, sd.left, edit)}${teamBox(g, R, sd.right, edit)}
+  h += `<div class="desk">${teamCol(g, R, sd.left, sd.left === ha.home ? "Home" : "Away", ui.narrow !== hk(sd.left))}<div class="center">${board(g, R)}${Board.strip(g)}${teamBox(g, R, sd.left, edit)}${teamBox(g, R, sd.right, edit)}
     <div class="cact no-print">
       <button class="btn" data-act="poss" ${edit ? "" : "disabled"}>Arrow ${R.poss ? (R.poss === sd.left ? "◀ " : "▶ ") + `<span class="an">${esc(tmName(g, R.poss))}</span>` : "· set"}</button>
       <button class="btn" data-act="note" ${edit ? "" : "disabled"}>+ Warning / note</button>
@@ -1678,6 +1781,11 @@ function teamBox(g, R, tm, edit){
     <div class="nums"><span class="fouls"><b>${tf}</b>fouls</span><button class="tmo" data-act="tmo" data-tm="${tm}" data-len="60" ${dis} title="Call a 60-second timeout"><b>${left[60]}</b>60s TO</button><button class="tmo" data-act="tmo" data-tm="${tm}" data-len="30" ${dis} title="Call a 30-second timeout"><b>${left[30]}</b>30s TO</button></div>
     <div class="grid no-print"><button data-st="reb" data-tm="${tm}" data-pid="" ${dis}>Team reb</button><button data-st="to" data-tm="${tm}" data-pid="" ${dis}>Team TO</button><button data-st="tf" data-tm="${tm}" data-pid="" ${dis}>Bench tech</button></div></div>`;
 }
+// A play's game clock in the list, next to its period. On the Plays page, for whoever can fix the game, it's a button that
+// sets it (and our subs with none say + clock: minutes played need them; lineup taps before the tip don't).
+function playClock(g, e, p, edit){ const c = gcText(e, g, p.q);
+  if(edit && !p.void && (c || ((e.t === "IN" || e.t === "OUT") && e.tm === "us" && !e.lu))) return `<button class="gcl" data-act="gclk" data-id="${e.id}" title="Set this play's game clock">${c || "+ clock"}</button>`;
+  return c ? `<span class="gcl">${c}</span>` : ""; }
 function playList(g, R, limit, edit, keep, fix){
   const rows = R.plays.filter(p => (limit === 0 || (p.e.t !== "IN" && p.e.t !== "OUT")) && (!keep || keep(p)));
   // The full list reads newest first unless the Plays page asked for oldest first (keep.old), to follow along with film.
@@ -1686,7 +1794,7 @@ function playList(g, R, limit, edit, keep, fix){
   const sd = sides(g);
   return `<ul class="plays">${show.map(p => { const e = p.e;
     const tapFix = limit && fix && !p.void && ["FG","FT","REB","AST","STL","BLK","TO","PF","TF"].includes(e.t);
-    return `<li class="${p.void ? "void" : ""} ${p.scored ? "score" : ""} ${e.t === "NOTE" ? "note" : ""}${tapFix ? " tapfix" : ""}" style="${e.tm === "them" ? tvars(g, "them") : ""}"${tapFix ? ` data-act="fix" data-id="${e.id}" role="button" title="Fix this play"` : ""}><span class="pq">${perLabel(g, p.q)}${!limit && e.at ? `<small>${esc(new Date(e.at).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}))}</small>` : ""}</span><span class="ps">${p.sc[sd.left]}-${p.sc[sd.right]}</span><span class="pt">${e.tm && e.t !== "PER" && e.t !== "NOTE" ? `<span class="ptm">${esc(e.tm === "us" ? "GHS" : oppInfo(g.opp, g).abbr)}</span> ` : ""}${playText(g, e)}${p.auto ? " (its shot was removed or changed)" : p.void ? " (removed)" : ""}${e.ins ? ' <span class="tag">added later</span>' : ""}</span>
+    return `<li class="${p.void ? "void" : ""} ${p.scored ? "score" : ""} ${e.t === "NOTE" ? "note" : ""}${tapFix ? " tapfix" : ""}" style="${e.tm === "them" ? tvars(g, "them") : ""}"${tapFix ? ` data-act="fix" data-id="${e.id}" role="button" title="Fix this play"` : ""}><span class="pq">${perLabel(g, p.q)}${playClock(g, e, p, edit && !limit)}${!limit && e.at ? `<small>${esc(new Date(e.at).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}))}</small>` : ""}</span><span class="ps">${p.sc[sd.left]}-${p.sc[sd.right]}</span><span class="pt">${e.tm && e.t !== "PER" && e.t !== "NOTE" ? `<span class="ptm">${esc(e.tm === "us" ? "GHS" : oppInfo(g.opp, g).abbr)}</span> ` : ""}${playText(g, e)}${p.auto ? " (its shot was removed or changed)" : p.void ? " (removed)" : ""}${e.ins ? ' <span class="tag">added later</span>' : ""}</span>
       ${edit ? `<span class="row no-print">${!p.void && ["FG","FT","REB","AST","STL","BLK","TO","PF","TF"].includes(e.t) ? `<button class="btn sm" data-act="fix" data-id="${e.id}">Fix</button>` : ""}<button class="btn sm" data-act="voidtog" data-id="${e.id}">${p.void && !p.auto ? "Restore" : "Remove"}</button></span>` : ""}</li>`;
   }).join("")}</ul>`;
 }
@@ -2174,7 +2282,7 @@ function drawBroadcast(pre){
   put("last", hl.length || (g.status === "live" && lastAt) ? `<div class="lastplay">${hl.map(x => `<div>${x}</div>`).join("")}${g.status === "live" && lastAt ? `<div class="small" style="font-weight:500">Last play ${agoWords(lastAt)}</div>` : ""}</div>` : "");
   const sd = sides(g);
   put("left", bcBoard(g, R, sd.left)); put("right", bcBoard(g, R, sd.right));
-  put("box", `<div class="bchead"><h3>Box score</h3><span class="small">Every stat, both teams. Fouls: 3 yellow, 4 orange, 5 red.</span></div>${bcBox(g, R, sd.left)}${bcBox(g, R, sd.right)}`);
+  put("box", `<div class="bchead"><h3>Box score</h3><span class="small">Every stat, both teams. Fouls: 3 yellow, 4 orange, 5 red.</span></div>${bcBox(g, R, sd.left)}${bcBox(g, R, sd.right)}${lineupCard(g, R, clockStats(g, R), "card bcbox")}`);
   { const Q = g.quarters || 4, q = R.q - 1; put("drops", `<h3>${g.status === "final" ? "Final recap" : R.brk ? (q === Q / 2 ? "Halftime recap" : q === Q ? "End of regulation" : "End of " + esc(perLabel(g, q))) : "Talking points"}</h3>` + bcDrops(g, R)); }
   put("signal", signalFlag(g));
   put("line", g.ev.length ? `<div class="card"><div class="linesc">${lineScore(g, R)}</div></div>` : "");
@@ -2195,16 +2303,17 @@ function drawBroadcast(pre){
 function bcBox(g, R, tm){
   // Jim's box has technical fouls (TF, the book's tech column) right after PF. A player's also count in PF; a bench or
   // coach technical is on the Team row. The PA page doesn't get the column.
-  const usePm = R.plays.some(p => !p.void && p.e.t === "IN"), cols = BOXCOLS.flatMap(c => c[1] === "pf" ? [c, ["TF", "tf"]] : [c]).filter(c => c[1] !== "pm" || usePm);
+  const usePm = R.plays.some(p => !p.void && p.e.t === "IN"), M = tm === "us" ? clockStats(g, R) : null;
+  const cols = (M && M.show ? [["MIN", "min"]] : []).concat(BOXCOLS.flatMap(c => c[1] === "pf" ? [c, ["TF", "tf"]] : [c]).filter(c => c[1] !== "pm" || usePm));
   const ps = sortRoster(paRoster(g, tm)).filter(p => R.box[tm][p.pid]), tot = sumLines(ps.map(p => R.box[tm][p.pid]).concat([R.team[tm]]));
-  const cell = (ln, k) => k === "pf" && foulLvl(ln) ? `<i class="pfp${fcls(ln)}">${ln.pf}</i>` : cellOf(ln, k), live = g.status === "live";
+  const cell = (ln, k, pid) => k === "min" ? (pid ? minCell(M, pid) : minSum(M)) : k === "pf" && foulLvl(ln) ? `<i class="pfp${fcls(ln)}">${ln.pf}</i>` : cellOf(ln, k), live = g.status === "live";
   const row = p => { const ln = R.box[tm][p.pid];
-    return `<tr class="${fcls(ln).trim()}"><td class="l">${live && R.court[tm].has(p.pid) ? '<i class="onf" title="On the floor"></i>' : ""}<span class="pn">${esc(p.num)} ${esc(p.name || "")}</span>${ln.tf >= 2 ? ' <span class="tag solid">EJ</span>' : ln.pf >= 5 ? ' <span class="tag solid">FO</span>' : ""}</td>${cols.map(c => `<td>${cell(ln, c[1])}</td>`).join("")}</tr>`; };
+    return `<tr class="${fcls(ln).trim()}"><td class="l">${live && R.court[tm].has(p.pid) ? '<i class="onf" title="On the floor"></i>' : ""}<span class="pn">${esc(p.num)} ${esc(p.name || "")}</span>${ln.tf >= 2 ? ' <span class="tag solid">EJ</span>' : ln.pf >= 5 ? ' <span class="tag solid">FO</span>' : ""}</td>${cols.map(c => `<td>${cell(ln, c[1], p.pid)}</td>`).join("")}</tr>`; };
   const t = R.team[tm], pc = k => tot.po ? "–" : k === "fg" ? pct(tot.fgm, tot.fga) : k === "tp" ? pct(tot.tpm, tot.tpa) : k === "ft" ? pct(tot.ftm, tot.fta) : "";
   return `<section class="card bcbox" style="${tvars(g, tm)}"><div class="tc-head">${badge(g, tm)}<h3 class="fit" data-min="14">${esc(tmName(g, tm))}</h3><span class="disp" style="font-size:28px;font-weight:900">${R.sc[tm]}</span></div>
     ${ps.length ? `<div class="scroll-x"><table><tr><th class="l">Player</th>${cols.map(c => `<th${c[1] === "tf" ? ' title="Technical fouls. A player\'s also count in PF; the bench\'s are on the Team row."' : ""}>${c[0]}</th>`).join("")}</tr>${ps.map(row).join("")}
     ${t.oreb + t.dreb + t.to + t.tf ? `<tr><td class="l">Team</td>${cols.map(c => `<td>${["oreb","dreb","reb","to","tf"].includes(c[1]) ? cellOf(t, c[1]) : ""}</td>`).join("")}</tr>` : ""}
-    <tr class="tot"><td class="l">Totals</td>${cols.map(c => `<td>${c[1] === "pm" ? "" : cellOf(tot, c[1])}</td>`).join("")}</tr>
+    <tr class="tot"><td class="l">Totals</td>${cols.map(c => `<td>${c[1] === "pm" ? "" : c[1] === "min" ? minSum(M) : cellOf(tot, c[1])}</td>`).join("")}</tr>
     <tr><td class="l">Shooting</td>${cols.map(c => `<td>${pc(c[1])}</td>`).join("")}</tr></table></div>` : `<p class="small" style="margin:6px 0 0">No stats yet. The box fills in from the tip.</p>`}</section>`;
 }
 // Tap a player on the broadcast page: his night, his season, the phonetic spelling (the PA's, or his own for his page
@@ -3228,6 +3337,7 @@ const BOXCOLS = [["PTS","pts"],["FG","fg"],["3PT","tp"],["FT","ft"],["OR","oreb"
 // phone can leave them out (.fanbox, 4th and 5th columns).
 const PACOLS = [["PTS","pts"],["FOULS","pf"]];
 const FANCOLS = [["PTS","pts"],["REB","reb"],["OR","oreb"],["DR","dreb"],["AST","ast"],["PF","pf"],["FG","fg"],["3PT","tp"],["FT","ft"],["STL","stl"],["BLK","blk"],["TO","to"],["+/-","pm"]];
+const boxCell = (ln, k) => cellOf(ln, k);
 function cellOf(ln, k){
   switch(k){ case "fg": return ln.po ? ln.fgm + "-—" : ln.fgm + "-" + ln.fga; case "tp": return ln.po ? ln.tpm + "-—" : ln.tpm + "-" + ln.tpa; case "ft": return ln.po ? ln.ftm + "-—" : ln.ftm + "-" + ln.fta; case "reb": return ln.oreb + ln.dreb; case "pm": return ln.pm > 0 ? "+" + ln.pm : ln.pm; default: return ln[k]; }
 }
@@ -3236,13 +3346,16 @@ function sumLines(lines){ const t = LINE(); for(const ln of lines) for(const k o
 // only, with no team row or shooting line (they'd be empty).
 function boxTable(g, R, tm, fan, pa){
   const usePm = !R.noPm && R.plays.some(p => !p.void && p.e.t === "IN");
-  const cols = (pa ? PACOLS : fan ? FANCOLS : BOXCOLS).filter(c => c[1] !== "pm" || usePm);
+  // Minutes played: ours, from the game clock (clockStats), on the coaches' and the book's pages, never the fans' or PA's.
+  const M = tm === "us" && !fan && !pa ? clockStats(g, R) : null, mq = R.minQ || 0;
+  const cols = (M && M.show ? [["MIN", "min"]] : []).concat((pa ? PACOLS : fan ? FANCOLS : BOXCOLS).filter(c => c[1] !== "pm" || usePm));
+  const cellOf = (ln, k, pid) => k === "min" ? (pid ? minCell(M, pid, mq) : "") : boxCell(ln, k);
   const ps = sortRoster(roster(g, tm)).filter(p => R.box[tm][p.pid]);
   const tot = sumLines(ps.map(p => R.box[tm][p.pid]).concat([R.team[tm]]));
   return `<div style="${tvars(g, tm)}"><div class="tc-head">${badge(g, tm)}<h3 class="fit" data-min="14">${esc(tmName(g, tm))}</h3><span class="disp" style="font-size:28px;font-weight:900">${R.sc[tm]}</span></div></div><div class="scroll-x"><table><tr><th class="l">Player</th>${cols.map(c => `<th>${c[0]}</th>`).join("")}</tr>
-    ${ps.map(p => { const ln = R.box[tm][p.pid]; return `<tr><td class="l">${fan && g.status === "live" && R.court[tm].has(p.pid) ? '<i class="onfl" title="On the floor"></i>' : ""}<span class="pn">${esc(p.num)} ${esc(p.name)}${ln.tf >= 2 ? ' <span class="tag solid">EJ</span>' : ln.pf >= 5 ? ' <span class="tag solid">FO</span>' : ""}</span></td>${cols.map(c => `<td>${cellOf(ln, c[1])}</td>`).join("")}</tr>`; }).join("")}
+    ${ps.map(p => { const ln = R.box[tm][p.pid]; return `<tr><td class="l">${fan && g.status === "live" && R.court[tm].has(p.pid) ? '<i class="onfl" title="On the floor"></i>' : ""}<span class="pn">${esc(p.num)} ${esc(p.name)}${ln.tf >= 2 ? ' <span class="tag solid">EJ</span>' : ln.pf >= 5 ? ' <span class="tag solid">FO</span>' : ""}</span></td>${cols.map(c => `<td>${cellOf(ln, c[1], p.pid)}</td>`).join("")}</tr>`; }).join("")}
     ${!pa && R.team[tm].oreb + R.team[tm].dreb + R.team[tm].to + R.team[tm].tf ? `<tr><td class="l">Team</td>${cols.map(c => `<td>${["oreb","dreb","reb","to"].includes(c[1]) ? cellOf(R.team[tm], c[1]) : ""}</td>`).join("")}</tr>` : ""}
-    <tr class="tot"><td class="l">Totals</td>${cols.map(c => `<td>${c[1] === "pm" ? "" : cellOf(tot, c[1])}</td>`).join("")}</tr>
+    <tr class="tot"><td class="l">Totals</td>${cols.map(c => `<td>${c[1] === "pm" ? "" : c[1] === "min" ? minSum(M, mq) : cellOf(tot, c[1])}</td>`).join("")}</tr>
     ${pa ? "" : `<tr><td class="l">Shooting</td>${cols.map(c => `<td>${tot.po && ["fg","tp","ft"].includes(c[1]) ? "—" : c[1] === "fg" ? pct(tot.fgm, tot.fga) : c[1] === "tp" ? pct(tot.tpm, tot.tpa) : c[1] === "ft" ? pct(tot.ftm, tot.fta) : ""}</td>`).join("")}</tr>`}</table></div>
     ${tot.po && !pa ? `<p class="small" style="margin:4px 0 0">— Scored points-only for part of the game: makes are counted, misses weren't, so there's no shooting percentage.</p>` : ""}`;
 }
@@ -3288,7 +3401,7 @@ function boxGlance(g, R){
     <p class="small" style="margin:6px 0 0">Shooting counts a three as one and a half makes. The better number is in bold, and the team that wins three of the four usually wins the game.</p>` : ""}</div>`;
 }
 // One period's box score: the same table, built from that period's lines.
-function periodR(R, q){ const b = R.byQ[q] || {us:{}, them:{}, team:{us:LINE(), them:LINE()}}; return {...R, box:{us:b.us, them:b.them}, team:b.team, sc:{us:R.qs.us[q - 1] || 0, them:R.qs.them[q - 1] || 0}, noPm:true}; }
+function periodR(R, q){ const b = R.byQ[q] || {us:{}, them:{}, team:{us:LINE(), them:LINE()}}; return {...R, box:{us:b.us, them:b.them}, team:b.team, sc:{us:R.qs.us[q - 1] || 0, them:R.qs.them[q - 1] || 0}, noPm:true, minQ:q}; }
 function viewBox(){
   const g = cur(); if(!g) return needGame();
   const ff = g.forfeit === "W" || g.forfeit === "L" ? g.forfeit : "", played = g.ev.some(e => !e.v && !PREGAME(e));
@@ -3308,7 +3421,7 @@ function viewBox(){
     <div class="card no-print"><h3 style="font-size:22px;margin-bottom:8px">Review</h3>${review(g, R0).map(([k, t]) => `<div class="flag ${k === "bad" ? "bad" : k === "ok" ? "ok" : ""}" style="margin-bottom:6px">${esc(t)}</div>`).join("")}
       ${g.status !== "final" && R0.sc.us !== R0.sc.them && g.ev.length && canEdit(g) ? `<button class="btn primary" data-act="final">Make it final: ${esc(usName(g))} ${R0.sc.us}, ${esc(g.opp)} ${R0.sc.them}</button>` : ""}</div>
     <div class="row no-print"><span class="kicker">Box score</span>${qsel}</div>
-    <div class="card">${boxTable(g, R, sd.left)}${st(sd.left)}</div><div class="card">${boxTable(g, R, sd.right)}${st(sd.right)}</div></div>`;
+    <div class="card">${boxTable(g, R, sd.left)}${st(sd.left)}</div><div class="card">${boxTable(g, R, sd.right)}${st(sd.right)}</div>${bq ? "" : lineupCard(g, R0, clockStats(g, R0))}</div>`;
 }
 const PLAY_KINDS = {all:["All plays", () => true], score:["Scoring", e => (e.t === "FG" || e.t === "FT") && e.m], shots:["Shots", e => e.t === "FG" || e.t === "FT"],
   fouls:["Fouls", e => e.t === "PF" || e.t === "TF"], to:["Turnovers & steals", e => e.t === "TO" || e.t === "STL"], subs:["Subs", e => e.t === "IN" || e.t === "OUT"], other:["Timeouts, horns & notes", e => ["TMO","PER","POSS","NOTE"].includes(e.t)]};
@@ -3331,9 +3444,9 @@ function viewPlays(){
 // Every play with its time of day, for a spreadsheet.
 function playsCsv(g, pid){
   const R = replay(g), ha = homeAway(g), q = v => /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : v;
-  const rows = [["game_id","date","opponent","period","time_of_day",tmName(g, ha.home) + "_score",tmName(g, ha.away) + "_score","team","num","player","play","removed","added_later"]];
+  const rows = [["game_id","date","opponent","period","time_of_day",tmName(g, ha.home) + "_score",tmName(g, ha.away) + "_score","team","num","player","play","removed","added_later","game_clock"]];
   for(const p of R.plays){ const e = p.e, pl = e.pid ? player(g, e.tm, e.pid) : null; if(pid && e.pid !== pid) continue;
-    rows.push([g.id, g.date, g.opp, perLabel(g, p.q), e.at ? new Date(e.at).toLocaleTimeString([], {hour:"numeric", minute:"2-digit", second:"2-digit"}) : "", p.sc[ha.home], p.sc[ha.away], e.t === "PER" ? "" : tmName(g, e.tm), pl ? pl.num : "", pl ? pl.name : "", playText(g, e).replace(/<[^>]+>/g, ""), p.void ? "yes" : "", e.ins ? "yes" : ""]); }
+    rows.push([g.id, g.date, g.opp, perLabel(g, p.q), e.at ? new Date(e.at).toLocaleTimeString([], {hour:"numeric", minute:"2-digit", second:"2-digit"}) : "", p.sc[ha.home], p.sc[ha.away], e.t === "PER" ? "" : tmName(g, e.tm), pl ? pl.num : "", pl ? pl.name : "", playText(g, e).replace(/<[^>]+>/g, ""), p.void ? "yes" : "", e.ins ? "yes" : "", gcText(e, g, p.q)]); }
   return rows.map(r => r.map(q).join(",")).join("\n") + "\n";
 }
 // A play the scorer missed, put where it happened: into an earlier period goes just before that period's horn.
@@ -3657,7 +3770,7 @@ function pubSnap(g0){
   const played = (tm, p) => (R.box[tm][p.pid] || {}).gp || R.court[tm].has(p.pid);
   const line = (tm, p) => { const l = R.box[tm][p.pid] || LINE(); return [p.num, p.name || "", "", "", ""].concat(PUBK.map(k => l[k]), [l.gp ? 1 : 0, R.court[tm].has(p.pid) ? 1 : 0, l.po ? 1 : 0, l.tf || 0]); };
   const all = R.plays.filter(p => !p.void && !["IN","OUT","POSS","NOTE"].includes(p.e.t)), fin = g.status === "final" || gameOver(g0);
-  const plays = (fin ? all : all.slice(-40)).map(p => [p.q, p.sc.us, p.sc.them, playText(g, p.e).replace(/<[^>]+>/g, ""), p.scored ? 1 : 0, p.e.t === "PER" ? "" : p.e.tm, p.e.at || 0]);
+  const plays = (fin ? all : all.slice(-40)).map(p => [p.q, p.sc.us, p.sc.them, playText(g, p.e).replace(/<[^>]+>/g, ""), p.scored ? 1 : 0, p.e.t === "PER" ? "" : p.e.tm, p.e.at || 0, gcText(p.e, g, p.q)]);
   return {v:1, id:g.id, date:g.date, time:g.time || "", team:g.team, usName:usName(g), opp:g.opp, oi:{mascot:o.mascot, girls:o.girls, c1:o.c1, c2:o.c2, abbr:o.abbr},
     ha:g.ha, district:!!g.district, event:g.event || "", quarters:g.quarters || 4, status:g.forfeit || fin ? "final" : g.status, q:R.q, brk:R.brk, sc:R.sc, qs:R.qs,
     tf:{us:teamFouls(g, R, "us"), them:teamFouls(g, R, "them")}, bonus:{us:inBonus(g, R, "us"), them:inBonus(g, R, "them")},
@@ -3756,8 +3869,12 @@ function boxPdf(g){
   for(const tm of order){ y += 13; D.text(L + 3, y, full(tm), {sz:9, b:true, fit:lx - L - 8});
     per.forEach((q, i) => D.text(lc(i), y, String((R.qs[tm] || [])[q - 1] || 0), {sz:9, al:"c"})); D.text(lc(lq), y, String(R.sc[tm]), {sz:9, b:true, al:"c"}); }
   // Each team's box.
-  const cols = BOXCOLS.filter(c => c[1] !== "pm" || R.plays.some(p => !p.void && p.e.t === "IN")), sx = 222, bw = (RT - sx) / cols.length, cx = i => sx + bw * i + bw / 2;
+  // Ours has minutes played (MIN) when the game has clocks to count them from.
+  const M = clockStats(g, R), base = BOXCOLS.filter(c => c[1] !== "pm" || R.plays.some(p => !p.void && p.e.t === "IN")), sx = 222;
   for(const tm of order){
+    const cols = tm === "us" && M.show ? [["MIN", "min"]].concat(base) : base, bw = (RT - sx) / cols.length, cx = i => sx + bw * i + bw / 2;
+    // The starters' mark is *, so short minutes get a † on paper.
+    const cv = (ln, k, pid) => k === "min" ? String(pid ? minCell(M, pid) : minSum(M)).replace("*", "†") : cellOf(ln, k);
     const ps = sortRoster(roster(g, tm)).filter(p => R.box[tm][p.pid]), five = new Set(bookFive(g, tm)), tl = R.team[tm];
     const tot = sumLines(ps.map(p => R.box[tm][p.pid]).concat([tl]));
     y += 26; need(40 + 11.5 * (ps.length + 4));
@@ -3765,16 +3882,16 @@ function boxPdf(g){
     y += 11; D.text(L + 18, y, "#", {sz:7.5, b:true, al:"r", g:.35}); D.text(L + 24, y, "PLAYER", {sz:7.5, b:true, g:.35});
     cols.forEach((c, i) => D.text(cx(i), y, c[0], {sz:7.5, b:true, al:"c", g:.35}));
     y += 3.5; D.line(L, y, RT, y, .4, .6);
-    const row = (num, name, ln, b, only) => { y += 11.5; if(b) D.fill(L, y - 8.5, RT - L, 11.5, .92);
+    const row = (num, name, ln, b, only, pid) => { y += 11.5; if(b) D.fill(L, y - 8.5, RT - L, 11.5, .92);
       if(num !== "") D.text(L + 18, y, num, {sz:8.5, al:"r", b});
       D.text(L + 24, y, name, {sz:8.5, b, fit:sx - L - 30});
-      cols.forEach((c, i) => { if(!only || only.includes(c[1])) D.text(cx(i), y, String(cellOf(ln, c[1])), {sz:8.5, al:"c", b, fit:bw - 3}); }); };
-    ps.forEach(p => { const ln = R.box[tm][p.pid]; row(String(p.num), (p.name || "") + (five.has(p.pid) ? " *" : "") + (ln.tf >= 2 ? " (ejected)" : ln.pf >= 5 ? " (fouled out)" : ""), ln); });
+      cols.forEach((c, i) => { if(!only || only.includes(c[1])) D.text(cx(i), y, String(cv(ln, c[1], pid)), {sz:8.5, al:"c", b, fit:bw - 3}); }); };
+    ps.forEach(p => { const ln = R.box[tm][p.pid]; row(String(p.num), (p.name || "") + (five.has(p.pid) ? " *" : "") + (ln.tf >= 2 ? " (ejected)" : ln.pf >= 5 ? " (fouled out)" : ""), ln, false, null, p.pid); });
     if(tl.oreb + tl.dreb + tl.to) row("", "Team", tl, false, ["oreb", "dreb", "reb", "to"]);
     row("", "Totals", tot, true, cols.map(c => c[1]).filter(k => k !== "pm"));
     y += 11.5; D.text(L + 24, y, "Shooting", {sz:8, g:.3});
     cols.forEach((c, i) => { const s = {fg:["fgm", "fga"], tp:["tpm", "tpa"], ft:["ftm", "fta"]}[c[1]]; if(s) D.text(cx(i), y, tot.po ? "—" : pct(tot[s[0]], tot[s[1]]), {sz:8, al:"c", g:.3}); });
-    const notes = [five.size === 5 ? "* starter" : "", tot.po ? "Scored points-only for part of the game: makes are counted, misses weren't, so there's no shooting percentage." : ""].filter(Boolean);
+    const notes = [five.size === 5 ? "* starter" : "", cols[0][1] === "min" && M.short.size ? `Minutes marked † are short: ${M.miss.length} sub${M.miss.length === 1 ? "" : "s"} had no game clock.` : "", tot.po ? "Scored points-only for part of the game: makes are counted, misses weren't, so there's no shooting percentage." : ""].filter(Boolean);
     notes.forEach(n => { y += 10.5; D.text(L + 24, y, n, {sz:7.5, g:.4, fit:RT - L - 24}); });
   }
   // Team stats and the four factors, side by side.
@@ -3799,6 +3916,15 @@ function boxPdf(g){
       part.length ? `Paint points count the baskets with a shot spot (${part.map(tm => `${school(tm)} ${x.spots[tm][0]} of ${x.spots[tm][1]}`).join(", ")}).` : "",
       fr.length ? "Four factors: shooting counts a three as one and a half makes; the better number is in bold, and the team that wins three of the four usually wins." : ""]
       .filter(Boolean).forEach(n => { y += 12; D.text(L, y, n, {sz:7.5, g:.35, fit:RT - L}); });
+  }
+  // Our most-used lineups, from the game clock.
+  const lu = M.show ? lineupsOf(g, M).slice(0, 6) : [];
+  if(lu.length){
+    const c = [L + 250, L + 300, L + 345, L + 390];
+    y += 26; need(30 + 12 * lu.length);
+    D.text(L, y, `${full("us")} lineups`.toUpperCase(), {sz:10.5, b:true, fit:RT - L}); y += 5; D.line(L, y, L + 420, y, 1);
+    y += 11; D.text(L, y, "ON THE FLOOR", {sz:7.5, b:true, g:.35}); ["MIN", "PTS", "OPP", "+/-"].forEach((h, i) => D.text(c[i], y, h, {sz:7.5, b:true, al:"c", g:.35}));
+    lu.forEach(u => { y += 12; D.text(L, y, u.nums.map(n => "#" + n).join("  "), {sz:8.5, fit:c[0] - L - 30}); [mss(u.sec) + (u.short ? "†" : ""), u.pf, u.pa, pmText(u.pf - u.pa)].forEach((v, i) => D.text(c[i], y, String(v), {sz:8.5, al:"c"})); });
   }
   D.text(L, 770, `Brier Stats · ${stage} · made ${new Date().toLocaleString([], {month:"short", day:"numeric", hour:"numeric", minute:"2-digit"})}`, {sz:7, g:.45});
   const name = `${g.date} ${school(ha.away)} at ${school(ha.home)} box score${fin ? "" : " (" + stage + ")"}.pdf`.replace(/[\\/:*?"<>|]+/g, "-");
@@ -3951,13 +4077,13 @@ function bookCheck(g){
       <div class="row"><button class="btn primary" data-act="boxpdf">Box score PDF</button><button class="btn" data-act="logbox" data-gid="${esc(g.id)}">Fix something</button><button class="btn" data-close>It matches</button></div>`; }});
 }
 function csvOf(g){
-  const R = replay(g), cols = ["game_id","date","opponent","home_away","team","num","name","pos","pts","fgm","fga","tpm","tpa","ftm","fta","oreb","dreb","reb","ast","stl","blk","to","pf","tech","plus_minus"];
+  const R = replay(g), M = clockStats(g, R), cols = ["game_id","date","opponent","home_away","team","num","name","pos","pts","fgm","fga","tpm","tpa","ftm","fta","oreb","dreb","reb","ast","stl","blk","to","pf","tech","plus_minus","min"];
   const q = v => /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : v;
   const lines = [cols.join(",")], pre = [g.id, g.date, g.opp, g.ha];
   for(const tm of ["us","them"]){
     for(const p of sortRoster(roster(g, tm))){ const ln = R.box[tm][p.pid]; if(!ln) continue;
-      lines.push(pre.concat([tmName(g, tm), p.num, p.name, p.pos || "", ln.pts, ln.fgm, ln.po ? "" : ln.fga, ln.tpm, ln.po ? "" : ln.tpa, ln.ftm, ln.po ? "" : ln.fta, ln.oreb, ln.dreb, ln.oreb + ln.dreb, ln.ast, ln.stl, ln.blk, ln.to, ln.pf, ln.tf, ln.pm]).map(q).join(",")); }
-    const t = R.team[tm]; if(t.oreb + t.dreb + t.to + t.tf) lines.push(pre.concat([tmName(g, tm), "", "Team", "", "", "", "", "", "", "", "", t.oreb, t.dreb, t.oreb + t.dreb, "", "", "", t.to, "", t.tf, ""]).map(q).join(","));
+      lines.push(pre.concat([tmName(g, tm), p.num, p.name, p.pos || "", ln.pts, ln.fgm, ln.po ? "" : ln.fga, ln.tpm, ln.po ? "" : ln.tpa, ln.ftm, ln.po ? "" : ln.fta, ln.oreb, ln.dreb, ln.oreb + ln.dreb, ln.ast, ln.stl, ln.blk, ln.to, ln.pf, ln.tf, ln.pm, tm === "us" && M.show ? minCell(M, p.pid) : ""]).map(q).join(",")); }
+    const t = R.team[tm]; if(t.oreb + t.dreb + t.to + t.tf) lines.push(pre.concat([tmName(g, tm), "", "Team", "", "", "", "", "", "", "", "", t.oreb, t.dreb, t.oreb + t.dreb, "", "", "", t.to, "", t.tf, "", ""]).map(q).join(","));
   }
   return lines.join("\n") + "\n";
 }
@@ -4237,6 +4363,10 @@ document.addEventListener("click", async ev => {
     case "print": window.print(); break;
     case "boxpdf": if(g) shareBox(g); break;
     case "bkchk": if(g) bookCheck(g); break;
+    case "boardinfo": Board.sheet(); break;
+    case "gclk": { const x = g && g.ev.find(e => e.id === a.dataset.id); if(x && canEdit(g)) clockSheet(g, x); break; }
+    case "gclkclear": if(ui.sheet && ui.sheet.gc) setClock(ui.sheet.gc, null); break;
+    case "boardok": Board.dismiss(); break;
     case "playscsv": if(g){ const pid = (ui.pf && ui.pf.pid) || "", pl = pid && (player(g, "us", pid) || player(g, "them", pid));
       download(`${g.id}${pl ? "-" + String(pl.num).replace(/[^\w-]/g, "") : ""}-plays.csv`, playsCsv(g, pl ? pid : ""), "text/csv"); } break;
     case "missed": if(g && canEdit(g)) missedSheet(g); break;
@@ -4424,6 +4554,9 @@ document.addEventListener("submit", ev => {
   ev.preventDefault();
   const f = ev.target, s = ui.sheet;
   if(f.id === "drvform"){ Drive.saveTest(String(new FormData(f).get("url") || "").trim()); return; }
+  if(f.id === "gcform" && s && s.gc){ const v = parseClock(new FormData(f).get("clk"));
+    if(v == null || v > s.gc.L){ toast(v == null ? "Type the clock like 5:49, or 45.3 under a minute." : "That's more than the whole period (" + clockText(s.gc.L) + ")."); return; }
+    setClock(s.gc, v); return; }
   if(f.id === "missform"){ const d = new FormData(f), g = cur(); if(!g || !canEdit(g)) return; const [tm, pid] = String(d.get("who")).split(":");
     if(addMissed(g, +d.get("q"), tm, pid, String(d.get("k")))){ closeSheet(); toast("Added."); } return; }
   if(f.id === "pform" && s){ const d = new FormData(f), p = {num:String(d.get("num")).trim().replace(/^#/, ""), name:String(d.get("name")).trim(), pos:String(d.get("pos")).trim().toUpperCase(), grade:String(d.get("grade") || ""), ht:normHt(String(d.get("ht") || "")), nopub:s.opts.nopubLock ? !!s.opts.nopub : !!d.get("nopub")};
@@ -4516,6 +4649,7 @@ function fixSheet(g, e){
     ${["REB","TO","TF"].includes(e.t) ? `<div class="row" style="margin-top:8px"><button class="chip" data-act="fixpick" data-tm="us" data-pid="">${esc(usName(g))} team</button><button class="chip" data-act="fixpick" data-tm="them" data-pid="">${esc(g.opp)} team</button></div>` : ""}
     ${ask ? "" : ast}
     ${hornFix(g, e)}
+    <div class="row" style="margin-top:12px"><button class="btn sm" data-act="gclk" data-id="${e.id}">Game clock: ${gcText(e) || "none"}</button></div>
     <div class="row" style="margin-top:12px"><button class="btn" data-close>Cancel</button></div>`});
 }
 // A horn tapped late (or early) puts plays in the wrong quarter, and with them the team fouls and the quarter scores.
@@ -4530,6 +4664,27 @@ function hornFix(g, e){
   return `<div class="kicker" style="margin:12px 0 6px">Wrong quarter? (the horn was tapped late or early)</div><div class="row">
     ${next ? `<button class="btn sm" data-act="hornmove" data-id="${next.id}" data-to="${e.id}" data-where="before">${esc(perLabel(g, q + 1))} started before this play${nAfter > 1 ? ` (moves it and the ${nAfter - 1} after it)` : ""}</button>` : ""}
     ${prev ? `<button class="btn sm" data-act="hornmove" data-id="${prev.id}" data-to="${e.id}" data-where="after">Still ${esc(perLabel(g, q - 1))}: it ended after this play${nBefore > 1 ? ` (moves it and the ${nBefore - 1} before it)` : ""}</button>` : ""}</div>`;
+}
+// A play's game clock by hand: a tap made while the scoreboard feed was down, or a clock the board got wrong. A sub's
+// two halves (out and in) take it together. Typed clocks are marked (gc.m) so the feed never changes them.
+function clockSheet(g, e){
+  const R = replay(g), p = R.plays.find(x => x.e === e), q = p ? p.q : R.q, L = periodLen(g, q);
+  openSheet({gc:{gid:g.id, id:e.id, q, L}, html:() => `<h3>Game clock</h3><p style="margin:0 0 10px">${esc(perLabel(g, q))}: ${playText(g, e)}${e.at ? ` <span class="small">(${esc(new Date(e.at).toLocaleTimeString([], {hour:"numeric", minute:"2-digit", second:"2-digit"}))})</span>` : ""}</p>
+    <form id="gcform" class="stack"><label class="fld"><span>The clock when it happened, as the board showed it</span><input type="text" name="clk" inputmode="decimal" autocomplete="off" value="${esc(gcText(e, g, q))}" placeholder="5:49"></label>
+    <p class="small" style="margin:0">${clockText(L)} is the start of ${esc(perLabel(g, q))} and 0:00 its horn. Under a minute: 0:45.3 or 45.3.${e.grp && (e.t === "IN" || e.t === "OUT") ? " Both players in this sub get it." : ""}${e.gc && !e.gc.m ? " This one came from the gym scoreboard." : ""}</p>
+    <div class="row"><button class="btn primary" type="submit">Save</button>${e.gc ? `<button class="btn" type="button" data-act="gclkclear">No clock</button>` : ""}<button class="btn" type="button" data-close>Cancel</button></div></form>`});
+}
+// What the scorer typed as a clock, in seconds left: 5:49, 549, 0:45.3, 45.3. Null when it isn't one.
+function parseClock(v){ v = String(v || "").trim(); let m;
+  if((m = v.match(/^(\d{1,2}):(\d{2})(?:\.(\d))?$/)) && +m[2] < 60) return +m[1] * 60 + +m[2] + (m[3] ? +m[3] / 10 : 0);
+  if((m = v.match(/^(\d{1,2})(?:\.(\d))?$/)) && +m[1] < 60) return +m[1] + (m[2] ? +m[2] / 10 : 0);
+  if((m = v.match(/^(\d{1,2})(\d{2})$/)) && +m[2] < 60) return +m[1] * 60 + +m[2];
+  return null; }
+function setClock(s, sec){
+  const g = S.games[s.gid]; if(!g || !canEdit(g)) return; const e = g.ev.find(x => x.id === s.id); if(!e) return;
+  const grp = e.grp && (e.t === "IN" || e.t === "OUT") ? g.ev.filter(x => x.grp === e.grp && (x.t === "IN" || x.t === "OUT")) : [e], ed = Date.now();
+  grp.forEach(x => { if(sec == null) delete x.gc; else x.gc = {q:s.q, s:sec, m:1}; x.ed = ed; });
+  closeSheet(); touch(g); toast(sec == null ? "Clock taken off." : "Clock set: " + clockText(sec) + ".");
 }
 function newGameSheet(){
   const today = pubToday();
@@ -5061,7 +5216,7 @@ function viewPublic(){
       ${sn.fl ? teamGlance(g, R, sn) : ""}
       <div class="row only-narrow"><button class="btn sm" aria-pressed="${ui.pubTm !== "away"}" data-act="pubtm" data-v="home">${esc(tmName(g, ha.home))}</button><button class="btn sm" aria-pressed="${ui.pubTm === "away"}" data-act="pubtm" data-v="away">${esc(tmName(g, ha.away))}</button></div>
       <div class="ann-cols" id="pubbox"><div class="card fanbox${ui.pubTm === "away" ? " hide-narrow" : ""}">${boxTable(g, R, ha.home, true)}</div><div class="card fanbox${ui.pubTm !== "away" ? " hide-narrow" : ""}">${boxTable(g, R, ha.away, true)}</div></div>${!fin && (R.court.us.size || R.court.them.size) ? `<p class="small" style="margin:-6px 0 0"><i class="onfl"></i>On the floor now</p>` : ""}
-      <div class="card" id="pubplays"><h3 style="font-size:22px;margin-bottom:4px">${sn.more ? "Last " + sn.plays.length + " plays" : "Play-by-play"}</h3>${sn.plays.length ? `<ul class="plays">${sn.plays.slice().reverse().map(p => `<li class="${p[4] ? "score" : ""}" style="${p[5] === "them" ? tvars(g, "them") : ""}"><span class="pq">${esc(perLabel(g, p[0]))}${p[6] ? `<small>${esc(new Date(p[6]).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}))}</small>` : ""}</span><span class="ps">${ha.home === "us" ? p[1] + "-" + p[2] : p[2] + "-" + p[1]}</span><span class="pt">${p[5] ? `<span class="ptm">${esc(p[5] === "us" ? "GHS" : (g.oi && g.oi.abbr) || oppInfo(g.opp, g).abbr)}</span> ` : ""}${p[4] ? "<b>" + esc(unent(p[3])) + "</b>" : esc(unent(p[3]))}</span></li>`).join("")}</ul>` : `<p class="small">Plays show up here once the game starts.</p>`}</div>
+      <div class="card" id="pubplays"><h3 style="font-size:22px;margin-bottom:4px">${sn.more ? "Last " + sn.plays.length + " plays" : "Play-by-play"}</h3>${sn.plays.length ? `<ul class="plays">${sn.plays.slice().reverse().map(p => `<li class="${p[4] ? "score" : ""}" style="${p[5] === "them" ? tvars(g, "them") : ""}"><span class="pq">${esc(perLabel(g, p[0]))}${p[7] ? `<span class="gcl">${esc(p[7])}</span>` : ""}${p[6] ? `<small>${esc(new Date(p[6]).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}))}</small>` : ""}</span><span class="ps">${ha.home === "us" ? p[1] + "-" + p[2] : p[2] + "-" + p[1]}</span><span class="pt">${p[5] ? `<span class="ptm">${esc(p[5] === "us" ? "GHS" : (g.oi && g.oi.abbr) || oppInfo(g.opp, g).abbr)}</span> ` : ""}${p[4] ? "<b>" + esc(unent(p[3])) + "</b>" : esc(unent(p[3]))}</span></li>`).join("")}</ul>` : `<p class="small">Plays show up here once the game starts.</p>`}</div>
       ${sn.sponsor ? `<div class="card" style="text-align:center"><div class="kicker">Tonight's game is brought to you by</div><h2 style="margin-top:4px">${esc(sn.sponsor)}</h2></div>` : ""}
       <p class="pubnote">${fin ? "Final box score." : `Stats update about every ${esc(String(sn.every || 30))} seconds, so they can run a little ahead of or behind the video.${PS.delay ? ` This page holds each update ${PS.delay} seconds to match the stream.` : ""}`} Last update ${esc(new Date(sn.upd).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}))}${fin ? "" : ` (${esc(agoWords(sn.upd))})`}.</p></div>`;
   }
@@ -5654,8 +5809,155 @@ const Sync = (() => {
   }
   return {start, live, ready, settled, dirty, reset, owePids, dirtyBooth, dirtyTeams, dirtySay, dirtyBc, dirtyLib, dirtyScript, seedSeason, panel, click, submit,
     phase:() => st.phase, role:() => st.role, uid:() => st.uid,
+    // One doc to follow (the gym scoreboard's, Board): its unsubscribe, or null with sync off.
+    watch:(c, id, cb, err) => live() ? st.fb.onSnapshot(st.fb.doc(st.db, c, id), cb, err) : null,
     token:() => st.auth && st.auth.currentUser ? st.auth.currentUser.getIdToken() : Promise.reject(new Error("Sign in to Brier Stats first.")),
     stale:() => st.stale, label:() => (ROLE_NAME[st.role] || "Viewer") + (st.stale ? " · not updating" : boss(st.role) && st.reqs.length ? " · " + st.reqs.length + " waiting" : pubOwed() ? " · updating fan page" : " · live")};
+})();
+
+/* ---------- the gym scoreboard (hoopsPublic/_board) ----------
+   The Mac at the table hears the MP-80 scoreboard's radio (Kevin's receiver), and its relay, firestore_relay.py, signed in
+   as a Scorer, keeps this one doc up to date: the board's period, clock, both scores and team fouls. The clock is an
+   anchor, cs seconds left at the Mac's time ct (ms), that this iPad counts down itself while run is set, so the relay
+   writes only when something changes, plus every 5 seconds to say it's still there. Only the iPad scoring a home or
+   neutral game listens (Greenbrier is HOME on our board; an away gym's board isn't ours), so each write costs one read.
+   Every tap then gets the board's period and clock (e.gc) next to its time of day. With no word for 15 seconds, or the
+   relay saying the receiver stopped hearing the board, taps get the time of day only and the Scorer page says the feed
+   is lost; a play's clock can be typed in later under Plays. Possession and the board's bonus lamps aren't used: the
+   bonus comes from the book's team fouls. */
+const Board = (() => {
+  const STALE = 15000;
+  const st = {un:null, gid:null, d:null, got:0, offs:[], err:"", heard:{}, hist:[], since:{us:0, them:0}, was:null, lag:[], mm:null, flag:null, ok:{}, R:null, Rg:null, rev:-1, html:""};
+  // The game this iPad follows the board for: the one it's scoring, at home or neutral, not over. Before anyone has
+  // claimed it (every scorer's iPad opens tonight's game), only while its Scorer page is up.
+  const wanted = g => !!g && !g.deleted && g.ha !== "Away" && g.status !== "final" && Sync.live() && canScore() && (g.writer === S.dev || (!g.writer && ui.tab === "desk"));
+  function check(){
+    const g = PUB || OBS ? null : cur(), gid = wanted(g) ? g.id : null;
+    if(gid === st.gid) return;
+    if(st.un){ try{ st.un(); }catch(e){} }
+    Object.assign(st, {un:null, gid, d:null, got:0, offs:[], err:"", hist:[], since:{us:0, them:0}, was:null, mm:null, flag:null, R:null, Rg:null, rev:-1});
+    if(gid) st.un = Sync.watch("hoopsPublic", "_board", heard, e => { st.err = (e && (e.code || e.message)) || "error"; st.d = null; paint(); });
+  }
+  const ok = () => { const d = st.d; return !!d && !d.stale && !d.bye && typeof d.cs === "number" && st.got > 0 && Date.now() - st.got < STALE; };
+  // The Mac's clock less this iPad's, once they're far enough apart to matter: the smallest gap between the relay sending
+  // and this iPad hearing it (the trip itself is a few tenths, and both normally keep Apple's time).
+  const skew = () => { if(st.offs.length < 5) return 0; const m = Math.min(...st.offs); return Math.abs(m) > 1500 ? m : 0; };
+  const left = (d, t) => d.run ? d.cs - (t - skew() - d.ct) / 1000 : d.cs;
+  // The board shows 5:49 until it's under 5:49 (and 45.3 until under 45.3), so tenths round down.
+  const fl = s => Math.max(0, Math.floor(s * 10 + 1e-6) / 10);
+  function heard(snap){
+    if(snap.metadata.fromCache || !snap.exists()) return;          // this iPad's last copy, not word from the Mac
+    const d = snap.data(), now = Date.now();
+    if(!d || d.v !== 1 || (st.d && d.n === st.d.n && d.sent === st.d.sent)) return;
+    const prev = st.d; st.d = d; st.err = "";
+    // The doc as it stood when this iPad started listening counts only if it's fresh: a relay that died without saying
+    // goodbye (the Mac lost power) leaves its last write behind. Every one after that is the relay talking now.
+    if(!prev){ const at = d.at && d.at.toMillis ? d.at.toMillis() : 0; st.got = at && Math.abs(now - at) < STALE ? at : 0; }
+    else { st.got = now; if(typeof d.sent === "number"){ st.offs.push(now - d.sent); if(st.offs.length > 30) st.offs.shift(); } }
+    if(ok()) st.heard[st.gid] = true;
+    if(prev) refit(d, prev);
+    paint();
+  }
+  // The board's clock right now: its period, seconds left and whether it's running. Null with no live feed.
+  function clock(){ if(!ok()) return null; const d = st.d; return {q:Number.isInteger(d.q) ? d.q : null, s:fl(left(d, Date.now())), r:!!d.run}; }
+  // What a tap on this game gets: {q, s} (r:1 while the clock runs). Nothing from a clock longer than any period here
+  // (the board set up for something else).
+  function stamp(g){
+    if(!g || g.id !== st.gid) return null;
+    const c = clock(); if(!c || c.s > Math.max(g.qlen || S.settings.qlen || 8, S.settings.otlen || 4) * 60 + 1) return null;
+    return c.r ? {q:c.q, s:c.s, r:1} : {q:c.q, s:c.s};
+  }
+  // The relay calls a stop a second or two after the clock stopped (it waits to be sure it did; with one radio that misses
+  // packets it can take several seconds), and a start once it has seen the clock move twice. A tap in between got a clock
+  // still counting down, or still stopped: it gets the clock the board really had.
+  function refit(d, p){
+    const g = S.games[st.gid];
+    if(!g || !canEdit(g) || g.status === "final" || d.q !== p.q || typeof d.cs !== "number" || typeof p.cs !== "number" || d.stale || p.stale) return;
+    const now = Date.now(), k = skew(); let n = 0;
+    for(let i = g.ev.length - 1; i >= 0; i--){ const e = g.ev[i]; if(now - (e.at || 0) > 75000) break;
+      const x = e.gc, mac = e.at - k; if(!x || x.m || e.v || x.q !== d.q) continue;
+      let s = null, r = 0;
+      if(p.run && !d.run && x.r && d.runEnd && mac >= d.runEnd) s = d.cs;
+      else if(!p.run && d.run && !x.r && Math.abs(x.s - fl(p.cs)) < .15 && mac >= d.ct - (p.cs - d.cs) * 1000){ s = Math.min(p.cs, left(d, e.at)); r = 1; }
+      if(s == null || (fl(s) === x.s && !!r === !!x.r)) continue;
+      e.gc = r ? {q:x.q, s:fl(s), r:1} : {q:x.q, s:fl(s)}; e.ed = now; n++; }
+    if(n) touch(g);
+  }
+  // The board's score against the book's. A difference counts once it has lasted 10 seconds. When the board shows a score
+  // the book had a moment ago (the book's ahead), it's usually the board catching up: the operator's button, or a radio
+  // packet the receiver missed (one radio hears about a quarter of them, so the score can sit up to a minute behind).
+  // Then it waits a bit longer than the board's slowest catch-up tonight (75 seconds at most) and says the board may be
+  // behind. Greenbrier is HOME on the board.
+  const allow = () => st.lag.length ? Math.min(75000, Math.max(10000, Math.max(...st.lag) * 1.25 + 4000)) : 20000;
+  function xcheck(g, R){
+    const d = st.d; if(!ok() || g.status !== "live" || d.home == null || d.vis == null){ st.mm = null; st.was = null; return null; }
+    const now = Date.now(), B = {us:d.home, them:d.vis}, K = {us:R.sc.us, them:R.sc.them}, h = st.hist;
+    // Starting (or after a reload): the book's scores over the last two minutes, from its plays.
+    if(!h.length){ let c = {us:0, them:0, at:0};
+      for(const p of R.plays){ if(p.void || !p.scored) continue; const x = {us:p.sc.us, them:p.sc.them, at:p.e.at || 0};
+        if(now - x.at > 120000){ c = x; continue; } if(!h.length) h.push(c); h.push(x); }
+      if(!h.length) h.push(c);
+      for(const tm of ["us", "them"]){ let i = h.length - 1; while(i > 0 && h[i - 1][tm] === h[i][tm]) i--; st.since[tm] = h[i].at; } }
+    const last = h[h.length - 1];
+    if(!last || last.us !== K.us || last.them !== K.them){
+      for(const tm of ["us", "them"]) if(!last || last[tm] !== K[tm]) st.since[tm] = now;
+      h.push({...K, at:now}); while(h.length > 2 && now - h[1].at > 120000) h.shift(); }
+    // A team's board score reaching the book's after trailing it: how long the board took.
+    for(const tm of ["us", "them"]) if(st.was && st.was[tm] < K[tm] && B[tm] === K[tm] && st.since[tm] && now - st.since[tm] < 120000){ st.lag.push(now - st.since[tm]); if(st.lag.length > 8) st.lag.shift(); }
+    st.was = B;
+    if(B.us === K.us && B.them === K.them){ st.mm = null; return null; }
+    const key = `${B.us}-${B.them}/${K.us}-${K.them}`;
+    if(!st.mm || st.mm.key !== key) st.mm = {key, at:now};
+    if(st.ok[g.id + "/" + key]) return null;
+    // Behind: each team's board score is the book's, or one the book had in the last two minutes.
+    let behind = true, age = 0;
+    for(const tm of ["us", "them"]){ if(B[tm] === K[tm]) continue;
+      let j = -1; if(B[tm] < K[tm]) for(let i = h.length - 2; i >= 0; i--) if(h[i][tm] === B[tm]){ j = i; break; }
+      if(j < 0){ behind = false; break; }
+      age = Math.max(age, now - h[j + 1].at); }
+    const t = behind ? age : now - st.mm.at;
+    return t > (behind ? allow() : 10000) ? {B, K, behind, t, key} : null;
+  }
+  function chips(g){
+    const c = clock(), f = c && st.flag;
+    let h = c ? `<button class="bchip on" data-act="boardinfo" title="The gym scoreboard's clock: every tap gets it">Board <b>${clockText(c.s)}</b>${c.q ? ` ${esc(perLabel(g, c.q))}` : ""}${c.r ? "" : " · stopped"}</button>`
+      : lost(g) ? `<button class="bchip lost" data-act="boardinfo" title="Taps get the time of day only until it's back">Scoreboard feed lost</button>`
+      : `<button class="bchip" data-act="boardinfo" title="Nothing from the scoreboard Mac yet: taps get the time of day only">No board</button>`;
+    if(f) h += `<button class="bchip bad" data-act="boardinfo">Score check: board ${f.B.us}-${f.B.them}${f.behind ? ", may be behind" : ""}</button>`;
+    return h;
+  }
+  // Red once the feed has been heard for this game (on this iPad, or in its plays' clocks); grey before.
+  const lost = g => !ok() && !!(st.heard[g.id] || g.ev.some(e => e.gc && !e.gc.m && !e.v));
+  // The chips on the Scorer page, under the scoreboard. They update in place (twice a second) without redrawing the page.
+  function strip(g){ if(!g || g.id !== st.gid) return ""; st.html = chips(g); return `<div class="bfeed no-print" id="bfeed">${st.html}</div>`; }
+  function paint(){ const el = document.getElementById("bfeed"), g = st.gid && S.games[st.gid]; if(!el || !g) return; const h = chips(g); if(h !== st.html){ st.html = h; el.innerHTML = h; } }
+  setInterval(() => {
+    const g = st.gid && S.games[st.gid]; if(!g) return;
+    if(!st.R || st.Rg !== g || st.rev !== g.rev){ st.R = replay(g); st.Rg = g; st.rev = g.rev; }
+    st.flag = xcheck(g, st.R); paint();
+    // The sheet about the feed redraws when what it says changes; its clock moves in place.
+    if(ui.sheet && ui.sheet.board){ if(ui.sheet.key !== sheetKey(g)) renderSheet(); else { const c = clock(), el = document.getElementById("bsclk"); if(c && el) el.textContent = clockText(c.s); } }
+  }, 500);
+  const sheetKey = g => [ok(), g && lost(g), st.flag && st.flag.key, st.err, st.d && st.d.run].join("|");
+  function sheet(){
+    openSheet({board:true, html:() => {
+      const g = st.gid && S.games[st.gid];
+      if(!g) return `<h3>Gym scoreboard</h3><p>The scoreboard feed is for the game this iPad is scoring at home or on a neutral floor.</p><div class="row"><button class="btn" data-close>Close</button></div>`;
+      ui.sheet.key = sheetKey(g);
+      const c = clock(), d = st.d, f = c && st.flag, k = skew(), quiet = st.got ? Math.round((Date.now() - st.got) / 1000) : 0;
+      const why = st.err ? `This iPad can't read the feed (${esc(st.err)}).` : d && d.bye ? "The relay on the scoreboard Mac was closed." : d && d.stale ? "The scoreboard Mac stopped hearing the board (radio unplugged, or the board is off)." : quiet ? `Nothing from the scoreboard Mac for ${Math.floor(quiet / 60)}:${String(quiet % 60).padStart(2, "0")} (no Wi-Fi at the table, or the Mac went to sleep).` : "Nothing from the scoreboard Mac yet.";
+      let h = `<h3>Gym scoreboard</h3>`;
+      if(c) h += `<p style="margin:0 0 8px"><b>Live.</b> The board reads ${c.q ? esc(perLabel(g, c.q)) + " " : ""}<b id="bsclk">${clockText(c.s)}</b>, ${c.r ? "running" : "stopped"}: ${esc(usName(g))} ${d.home ?? "?"}, ${esc(g.opp)} ${d.vis ?? "?"}${d.hf != null || d.vf != null ? ` (team fouls ${d.hf ?? "?"} and ${d.vf ?? "?"})` : ""}. Every tap gets that clock next to its time of day, and minutes played and lineups come from it.</p>`;
+      else if(lost(g)) h += `<p style="margin:0 0 8px"><b>The scoreboard feed is lost.</b> ${why} Taps get the time of day only until it's back. A play's clock can be set by hand under Plays: tap the clock on it.</p><p class="small" style="margin:0 0 8px">On the scoreboard Mac: is the Start Game Night window still open? Is the radio plugged in? Is the Mac on Wi-Fi?</p>`;
+      else h += `<p style="margin:0 0 8px"><b>No scoreboard feed yet.</b> ${why} Start Game Night on the scoreboard Mac at the table puts the gym clock on every tap. Until then taps get the time of day only, and minutes played need clocks typed under Plays.</p>`;
+      if(f) h += `<div class="flag bad"><span><b>The board says ${f.B.us}-${f.B.them}, the book ${f.K.us}-${f.K.them}</b> (${esc(usName(g))} first), for ${Math.round(f.t / 1000)} seconds. ${f.behind ? "The board may just be behind (with one radio it can trail by up to a minute), or a basket in the book didn't count. " : ""}Check with the official book.</span></div>
+        <div class="row" style="margin-bottom:8px"><button class="btn" data-act="boardok">The book is right</button><button class="btn" data-act="logbox" data-gid="${esc(g.id)}">Fix the book</button></div>`;
+      if(k) h += `<p class="small" style="margin:0 0 8px">The scoreboard Mac's clock is ${(Math.abs(k) / 1000).toFixed(1)} s ${k > 0 ? "behind" : "ahead of"} this iPad's. The game clock allows for it.</p>`;
+      return h + `<div class="row"><button class="btn" data-close>Close</button></div>`; }});
+  }
+  // The scorer checked: the book is right. Quiet until the board or the book changes.
+  function dismiss(){ const g = st.gid && S.games[st.gid]; if(g && st.flag) st.ok[g.id + "/" + st.flag.key] = true; st.flag = null; paint(); closeSheet(); }
+  return {check, stamp, strip, sheet, dismiss, clock, live:ok};
 })();
 
 /* ---------- boot ---------- */
