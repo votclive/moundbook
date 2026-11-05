@@ -614,6 +614,12 @@ button.srow{cursor:pointer}
 .srow .s1 b{font-family:var(--f-display);font-weight:800;text-transform:uppercase}
 .srow .s2 b.w{color:var(--green)}
 .pubjump{gap:6px;flex-wrap:wrap;justify-content:center;margin-top:6px}
+.flow{width:100%;height:auto;display:block}.flow .fq{stroke:var(--line,#ccc);stroke-dasharray:3 4}.flow .fz{stroke:#888;stroke-width:1}.flow .fln{stroke:var(--black,#111);stroke-width:2}
+.flow .fl{font-size:11px;fill:#777;font-weight:600}.flow .fv{font-size:12px;font-weight:800;fill:var(--black,#111)}
+.shf{gap:6px;flex-wrap:wrap;margin:4px 0 8px}.shf select{flex:1 1 140px;min-width:0}.shcourt{max-width:460px;margin:0 auto}.shcourt.sm{max-width:300px}.shsum{margin-top:6px}.shsum>div+div{margin-top:4px;color:#777}
+.pnb{all:unset;cursor:pointer;text-decoration:underline;text-decoration-color:rgba(0,0,0,.25);text-underline-offset:3px}.pnb:focus-visible{outline:2px solid var(--green)}
+.pcl{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center;margin-top:8px;font-size:12px;color:#666}.pcl b{display:block;font-size:22px;color:var(--black,#111);font-family:var(--f-display)}
+.sttab td.on,.sttab .lnk.on{font-weight:800}.sttab .lnk{all:unset;cursor:pointer;font-weight:700}
 .pubsuggest{position:sticky;top:0;z-index:20;padding:6px 0;background:var(--white)}
 .pubsuggest .btn{width:100%}
 /* Fan board on a phone: a long school name shrinks to fit its half instead of being cut off (--n is the longer name). */
@@ -711,7 +717,7 @@ button.lnk{border:0;background:none;padding:0;font:inherit;color:inherit;text-al
    One device scores a game; everyone else signed in follows it live on the Announcer page. Each device's own saved copy is the
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
-const BS_VERSION = "0.10.0";
+const BS_VERSION = "0.11.0";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -3360,7 +3366,7 @@ function boxTable(g, R, tm, fan, pa){
   const ps = sortRoster(roster(g, tm)).filter(p => R.box[tm][p.pid]);
   const tot = sumLines(ps.map(p => R.box[tm][p.pid]).concat([R.team[tm]]));
   return `<div style="${tvars(g, tm)}"><div class="tc-head">${badge(g, tm)}<h3 class="fit" data-min="14">${esc(tmName(g, tm))}</h3><span class="disp" style="font-size:28px;font-weight:900">${R.sc[tm]}</span></div></div><div class="scroll-x"><table><tr><th class="l">Player</th>${cols.map(c => `<th>${c[0]}</th>`).join("")}</tr>
-    ${ps.map(p => { const ln = R.box[tm][p.pid]; return `<tr><td class="l">${fan && g.status === "live" && R.court[tm].has(p.pid) ? '<i class="onfl" title="On the floor"></i>' : ""}<span class="pn">${esc(p.num)} ${esc(p.name)}${ln.tf >= 2 ? ' <span class="tag solid">EJ</span>' : ln.pf >= 5 ? ' <span class="tag solid">FO</span>' : ""}</span></td>${cols.map(c => `<td>${cellOf(ln, c[1], p.pid)}</td>`).join("")}</tr>`; }).join("")}
+    ${ps.map(p => { const ln = R.box[tm][p.pid]; return `<tr><td class="l">${fan && g.status === "live" && R.court[tm].has(p.pid) ? '<i class="onfl" title="On the floor"></i>' : ""}<span class="pn">${PUB && fan ? `<button class="pnb" data-act="pubpl" data-tm="${tm}" data-i="${esc(p.pid.slice(tm.length))}">${esc(p.num)} ${esc(p.name)}</button>` : esc(p.num) + " " + esc(p.name)}${ln.tf >= 2 ? ' <span class="tag solid">EJ</span>' : ln.pf >= 5 ? ' <span class="tag solid">FO</span>' : ""}</span></td>${cols.map(c => `<td>${cellOf(ln, c[1], p.pid)}</td>`).join("")}</tr>`; }).join("")}
     ${!pa && R.team[tm].oreb + R.team[tm].dreb + R.team[tm].to + R.team[tm].tf ? `<tr><td class="l">Team</td>${cols.map(c => `<td>${["oreb","dreb","reb","to"].includes(c[1]) ? cellOf(R.team[tm], c[1]) : ""}</td>`).join("")}</tr>` : ""}
     <tr class="tot"><td class="l">Totals</td>${cols.map(c => `<td>${c[1] === "pm" ? "" : c[1] === "min" ? minSum(M, mq) : cellOf(tot, c[1])}</td>`).join("")}</tr>
     ${pa ? "" : `<tr><td class="l">Shooting</td>${cols.map(c => `<td>${tot.po && ["fg","tp","ft"].includes(c[1]) ? "—" : c[1] === "fg" ? pct(tot.fgm, tot.fga) : c[1] === "tp" ? pct(tot.tpm, tot.tpa) : c[1] === "ft" ? pct(tot.ftm, tot.fta) : ""}</td>`).join("")}</tr>`}</table></div>
@@ -3775,14 +3781,19 @@ function pubSnap(g0){
   const R = replay(g0), o = oppInfo(g0.opp), b = booth(g0.id);
   const mask = tm => roster(g0, tm).map(p => noPub(g0, tm, p) ? {...p, name:""} : p), g = {...g0, us:mask("us"), them:mask("them")};
   const played = (tm, p) => (R.box[tm][p.pid] || {}).gp || R.court[tm].has(p.pid);
+  const lists = {us:sortRoster(roster(g, "us")).filter(p => played("us", p)), them:sortRoster(roster(g, "them")).filter(p => played("them", p))}, bi = {us:{}, them:{}};
+  ["us", "them"].forEach(tm => lists[tm].forEach((p, i) => { bi[tm][p.pid] = i; }));
+  const bix = e => e && e.pid && bi[e.tm] && bi[e.tm][e.pid] != null ? bi[e.tm][e.pid] : -1;
   const line = (tm, p) => { const l = R.box[tm][p.pid] || LINE(); return [p.num, p.name || "", "", "", ""].concat(PUBK.map(k => l[k]), [l.gp ? 1 : 0, R.court[tm].has(p.pid) ? 1 : 0, l.po ? 1 : 0, l.tf || 0]); };
   const all = R.plays.filter(p => !p.void && !["IN","OUT","POSS","NOTE"].includes(p.e.t)), fin = g.status === "final" || gameOver(g0);
-  const plays = (fin ? all : all.slice(-40)).map(p => [p.q, p.sc.us, p.sc.them, playText(g, p.e, {far:true}).replace(/<[^>]+>/g, ""), p.scored ? 1 : 0, p.e.t === "PER" ? "" : p.e.tm, p.e.at || 0, gcText(p.e, g, p.q)]);
+  const plays = (fin ? all : all.slice(-40)).map(p => [p.q, p.sc.us, p.sc.them, playText(g, p.e, {far:true}).replace(/<[^>]+>/g, ""), p.scored ? 1 : 0, p.e.t === "PER" ? "" : p.e.tm, p.e.at || 0, gcText(p.e, g, p.q), bix(p.e)]);
+  // The shot chart: [team, box row, x and y in thousandths of the half court, made, period, points].
+  const sh = R.shots.filter(x => x.e.x != null).map(x => [x.e.tm, bix(x.e), Math.round(x.e.x * 1000), Math.round(x.e.y * 1000), x.e.m ? 1 : 0, x.q, x.e.p === 3 ? 3 : 2]);
   return {v:1, id:g.id, date:g.date, time:g.time || "", team:g.team, usName:usName(g), opp:g.opp, oi:{mascot:o.mascot, girls:o.girls, c1:o.c1, c2:o.c2, abbr:o.abbr},
     ha:g.ha, district:!!g.district, event:g.event || "", quarters:g.quarters || 4, status:g.forfeit || fin ? "final" : g.status, q:R.q, brk:R.brk, sc:pubScore(g0, R), qs:R.qs,
     tf:{us:teamFouls(g, R, "us"), them:teamFouls(g, R, "them")}, bonus:{us:inBonus(g, R, "us"), them:inBonus(g, R, "them")},
     tol:{us:toLeft(g, R, "us"), them:toLeft(g, R, "them")}, poss:R.poss,
-    box:{us:sortRoster(roster(g, "us")).filter(p => played("us", p)).map(p => line("us", p)), them:sortRoster(roster(g, "them")).filter(p => played("them", p)).map(p => line("them", p))},
+    box:{us:lists.us.map(p => line("us", p)), them:lists.them.map(p => line("them", p))}, pk:lists.us.map(p => p.pid), sh, fw:flowPts(g0, R), ql:[periodLen(g0, 1), periodLen(g0, (g0.quarters || 4) + 1)],
     tt:{us:[R.team.us.oreb, R.team.us.dreb, R.team.us.to], them:[R.team.them.oreb, R.team.them.dreb, R.team.them.to]},
     plays, more:all.length > plays.length, fl:flowOf(R), x:extrasOf(g, R), sponsor:((b.info || {}).sponsor || "").trim(), every:S.settings.pubSec || 30,
     brd:Board.pub(g0), bon:S.settings.bonus, rv:fin ? reviewOf(g0) : "", upd:Date.now()};
@@ -3808,7 +3819,21 @@ function seasonRow(g){
   const R = g.ev.length ? replay(g) : null, o = oppInfo(g.opp);
   return {date:g.date, time:g.time || "", team:g.team, usName:usName(g), opp:g.opp, c1:o.c1, c2:o.c2, abbr:o.abbr, ha:g.ha, district:!!g.district, event:g.event || "",
     status:g.forfeit || gameOver(g) ? "final" : g.status, us:R ? pubScore(g, R).us : 0, them:R ? pubScore(g, R).them : 0, per:R ? (gameOver(g) || g.forfeit ? "Final" : nowLabel(g, R)) : "", off:g.off || "", ff:g.forfeit || "",
-    rv:reviewOf(g), nb:g.forfeit && g.status === "pre" ? 1 : "", rec:g.status === "pre" && !g.off && g.date >= pubToday() ? recordOf(g) : "", upd:Date.now()};   // nb: a forfeit nobody played, so there's no box score
+    rv:reviewOf(g), nb:g.forfeit && g.status === "pre" ? 1 : "", rec:g.status === "pre" && !g.off && g.date >= pubToday() ? recordOf(g) : "", lm:g.status === "pre" && !g.off && g.date >= pubToday() ? lastMeeting(g) : "", upd:Date.now()};   // nb: a forfeit nobody played, so there's no box score
+}
+// The season stats page's copy (hoopsPublic/_stats): our players' totals from every final, per team. A row:
+// [pid, num, name, games, pts, reb, ast, stl, blk, to, pf, fgm, fga, tpm, tpa, ftm, fta] (shooting only from games where
+// misses were kept). A kid kept off the public page isn't in it.
+function statsSnap(){
+  const out = {v:1, t:{}};
+  for(const team of ["boys", "girls"]){
+    const gs = seasonGames(team); if(!gs.length) continue;
+    const by = seasonLines(team), ros = (S.teams[team] || {}).roster || [], find = pid => ros.find(x => x.pid === pid) || gs.map(g => player(g, "us", pid)).filter(Boolean).pop();
+    const p = Object.entries(by).map(([pid, a]) => { const k = find(pid); if(!k || noPub({team}, "us", k)) return null;
+      return [pid, String(k.num), k.name || "", a.g, a.pts, a.oreb + a.dreb, a.ast, a.stl, a.blk, a.to, a.pf, a.x.fgm, a.x.fga, a.x.tpm, a.x.tpa, a.x.ftm, a.x.fta]; }).filter(Boolean);
+    out.t[team] = {name:(S.teams[team] || {}).name || (team === "girls" ? "Lady Cats" : "Bobcats"), gp:gs.length, p};
+  }
+  return out;
 }
 // Turns a public copy back into a game and a replay, so the public page draws the same scoreboard and box score.
 function pubGame(sn){
@@ -3820,6 +3845,7 @@ function pubGame(sn){
     sn.box[tm].forEach((a, i) => { const l = LINE(); PUBK.forEach((k, j) => { l[k] = a[5 + j] || 0; }); l.gp = a[19] || 0; l.po = a[21] || 0; l.tf = a[22] || 0; if(l.gp) R.box[tm][tm + i] = l; if(a[20]) R.court[tm].add(tm + i); });
     [R.team[tm].oreb, R.team[tm].dreb, R.team[tm].to] = sn.tt[tm];
   }
+  R.shots = (sn.sh || []).map(a => ({e:{t:"FG", tm:a[0], pid:a[1] >= 0 ? a[0] + a[1] : "", x:a[2] / 1000, y:a[3] / 1000, m:!!a[4], p:a[6]}, q:a[5]}));
   return {g, R};
 }
 
@@ -4157,6 +4183,10 @@ document.addEventListener("click", async ev => {
       if(n && n !== $(".seg")) toUpNext(); else window.scrollTo(0, 0); break; }
     case "pubpick": PubRead.pick(a.dataset.gid); break;
     case "pubtm": ui.pubTm = a.dataset.v; render(); break;
+    case "pubpl": pubPlayerSheet(a.dataset.tm, a.dataset.i); break;
+    case "pubstats": PS.view = a.dataset.v ? "stats" : ""; if(a.dataset.v) ui.pubStT = a.dataset.v; render(); window.scrollTo(0, 0); break;
+    case "pubstt": ui.pubStT = a.dataset.v; render(); break;
+    case "pubsort": ui.pubStK = /^\d+$/.test(a.dataset.v) ? +a.dataset.v : a.dataset.v; render(); break;
     case "pubsched": { const d = document.getElementById("schedule"); if(d){ d.open = true; d.scrollIntoView({behavior:"smooth", block:"start"}); } break; }
     // The plain fan link (it opens on whatever's on now), with which game this is in the message.
     // The link opens the game on screen (live/ passes ?g= along); the page still points to whatever's live when it's opened.
@@ -4548,7 +4578,7 @@ document.addEventListener("change", ev => {
   const t = ev.target;
   if(t.dataset.pf){ ui.pf[t.dataset.pf] = t.value; render(); }
   if(t.dataset.boxq !== undefined){ ui.boxQ = t.value; render(); }
-  if(t.dataset.sel){ ui[t.dataset.sel] = t.value; if(t.dataset.sel === "shotTm") ui.shotPid = ""; if(t.dataset.sel === "gid"){ ui.follow = false; saveUi(); } render(); }
+  if(t.dataset.sel){ ui[t.dataset.sel] = t.value; if(t.dataset.sel === "shotTm") ui.shotPid = ""; if(t.dataset.sel === "pubShTm") ui.pubShP = ""; if(t.dataset.sel === "gid"){ ui.follow = false; saveUi(); } render(); }
   if(t.hasAttribute("data-follow")){ ui.follow = t.checked; render(); }
   if(t.hasAttribute("data-pa")){ ui.pa = t.checked; ui.micSet = true; saveUi(); render(); }
   if(t.hasAttribute("data-saytog")){ ui.say = t.checked; try{ localStorage.setItem(KEY + ".phon", ui.say ? "1" : "0"); }catch(e){} render(); }
@@ -5185,9 +5215,17 @@ const PubRead = (() => {
       due[id] = at; const wait = at - Date.now();
       if(wait > 0) setTimeout(apply, wait); else apply(); }, err);
   }
-  function pick(id){ PS.gid = id; PS.picked = true; PS.suggest = null; watch(); render(); window.scrollTo(0, 0);
+  // The season stats: one read a visit (again after 10 minutes), only when a page needs them.
+  async function stats(){
+    if(!PS.db || PS.statsBusy || (PS.statsAt && Date.now() - PS.statsAt < 600e3)) return;
+    PS.statsBusy = true;
+    try{ const d = await PS.fb.getDoc(PS.fb.doc(PS.db, "hoopsPublic", "_stats")); PS.stats = d.exists() ? JSON.parse(d.data().j) : {t:{}}; PS.statsErr = false; }
+    catch(e){ PS.statsErr = true; }
+    finally{ PS.statsBusy = false; PS.statsAt = Date.now(); render(); }
+  }
+  function pick(id){ PS.gid = id; PS.picked = true; PS.view = ""; PS.suggest = null; watch(); render(); window.scrollTo(0, 0);
     try{ const u = new URL(location.href); u.searchParams.set("g", id); history.replaceState(null, "", u); }catch(e){} }
-  return {start, pick};
+  return {start, pick, stats};
 })();
 /* ---------- the score bug for the stream (?bug, or /hoops/bug/) ----------
    An OBS browser source on Jim's MacBook, 1920x1080. It listens to hoopsPublic/_bug (the scoring device sends it on every
@@ -5288,6 +5326,140 @@ function leadCard(g, R, k, lbl){
     return `<div class="lr" style="${tvars(g, tm)}"><b>${top || "–"}</b><span>${top ? esc(names) : g.status === "final" ? "None" : "Nobody yet"}<small>${esc(tmName(g, tm))}</small></span></div>`; };
   return `<div class="card"><div class="kicker">${lbl}</div>${row(sd.left)}${row(sd.right)}</div>`;
 }
+/* ---------- Gamecast: the fan page's shot chart, game flow, player cards, preview, recap and season stats ---------- */
+// The scoring plays for the flow chart: [period, clock left (-1 with none), us, them], the score after each one.
+function flowPts(g, R){
+  return R.plays.filter(p => !p.void && p.scored).map(p => { const s = gcIn(g, p.e, p.q); return [p.q, s == null ? -1 : Math.round(s * 10) / 10, p.sc.us, p.sc.them]; });
+}
+// Game flow: Greenbrier's lead (up) or deficit (down) over the game clock, each team's biggest lead marked.
+function flowSvg(g, sn){
+  const fw = sn.fw || []; if(fw.length < 2) return "";
+  const Q = g.quarters || 4, ql = (sn.ql || [480, 240])[0], ol = (sn.ql || [480, 240])[1], len = q => q <= Q ? ql : ol;
+  const nq = Math.max(Q, sn.q || 1, ...fw.map(f => f[0])), st = q => { let t = 0; for(let i = 1; i < q; i++) t += len(i); return t; }, T = st(nq + 1);
+  // A period scored without the board's clock spreads its baskets evenly through it.
+  const xs = []; for(let q = 1; q <= nq; q++){ const ps = []; fw.forEach((f, i) => { if(f[0] === q) ps.push(i); }); const clk = ps.every(i => fw[i][1] >= 0);
+    ps.forEach((i, k) => { xs[i] = st(q) + (clk ? Math.max(0, Math.min(len(q), len(q) - fw[i][1])) : len(q) * (k + 1) / (ps.length + 1)); }); }
+  const W = 600, H = 190, top = 14, mid = H / 2, d = fw.map(f => f[2] - f[3]), M = Math.max(5, ...d.map(Math.abs));
+  const X = t => (t / T * W).toFixed(1), Y = v => (mid - v / M * (mid - top)).toFixed(1);
+  const endT = sn.status === "final" ? T : Math.max(xs[xs.length - 1], st(sn.q || 1));
+  let line = `M0 ${mid}`; fw.forEach((f, i) => { line += ` H${X(xs[i])} V${Y(d[i])}`; }); line += ` H${X(endT)}`;
+  const area = line + ` V${mid} Z`, us = teamInk(g, "us"), th = teamInk(g, "them"), ab = (g.oi && g.oi.abbr) || oppInfo(g.opp, g).abbr;
+  const grid = []; for(let q = 1; q <= nq; q++){ const x = X(st(q) + len(q) / 2); if(q > 1) grid.push(`<line x1="${X(st(q))}" y1="0" x2="${X(st(q))}" y2="${H}" class="fq"/>`); grid.push(`<text x="${x}" y="${H - 3}" text-anchor="middle" class="fl">${esc(perLabel(g, q))}</text>`); }
+  const mark = (i, tm) => i < 0 || !d[i] ? "" : `<circle cx="${X(xs[i])}" cy="${Y(d[i])}" r="4.5" fill="${(tm === "us" ? us : th).fill}" stroke="#fff" stroke-width="1.5"/><text x="${Math.min(W - 18, Math.max(18, +X(xs[i])))}" y="${+Y(d[i]) + (tm === "us" ? -8 : 16)}" text-anchor="middle" class="fv">${tm === "us" ? "GHS" : esc(ab)} +${Math.abs(d[i])}</text>`;
+  const hi = d.indexOf(Math.max(...d)), lo = d.indexOf(Math.min(...d));
+  return `<svg class="flow" viewBox="0 0 ${W} ${H}" role="img" aria-label="Game flow: Greenbrier's lead over the game"><defs><clipPath id="fwu"><rect x="0" y="0" width="${W}" height="${mid}"/></clipPath><clipPath id="fwt"><rect x="0" y="${mid}" width="${W}" height="${mid}"/></clipPath></defs>
+    ${grid.join("")}<path d="${area}" fill="${us.fill}" fill-opacity=".35" clip-path="url(#fwu)"/><path d="${area}" fill="${th.fill}" fill-opacity=".35" clip-path="url(#fwt)"/>
+    <line x1="0" y1="${mid}" x2="${W}" y2="${mid}" class="fz"/><path d="${line}" fill="none" class="fln"/>${d[hi] > 0 ? mark(hi, "us") : ""}${d[lo] < 0 ? mark(lo, "them") : ""}
+    <text x="4" y="12" class="fl">GHS ahead</text><text x="4" y="${H - 16}" class="fl">${esc(ab)} ahead</text></svg>`;
+}
+function flowCard(g, R, sn){
+  const s = flowSvg(g, sn); if(!s) return "";
+  const fl = sn.fl || {}, run = fl.run && fl.run.a >= 6 ? `${tmName(g, fl.run.tm)} on a ${fl.run.a}-${fl.run.b} run` : "";
+  return `<div class="card" id="pubflow"><h3 style="font-size:22px;margin-bottom:4px">Game flow</h3>${s}<p class="small" style="margin:4px 0 0">${fl.lc || 0} lead change${fl.lc === 1 ? "" : "s"} · tied ${fl.ties || 0} time${fl.ties === 1 ? "" : "s"}${run ? " · <b>" + esc(run) + "</b>" : ""}</p></div>`;
+}
+// A shot's line for the chart's hover and the player card.
+function shotWords(g, s){ const p = s.e.pid ? player(g, s.e.tm, s.e.pid) : null, who = p ? "#" + p.num + (p.name ? " " + p.name : "") : tmName(g, s.e.tm);
+  return `${who}: ${s.e.m ? "made" : "missed"} ${s.e.p === 3 ? "3" : "2"}${shotFar(s.e)}, ${perLabel(g, s.q)}`; }
+// Shooting from the shots that have a spot: "12-30 (40%) · 3PT 3-10 · Paint 8-12".
+function shotLine(ss){ const m = ss.filter(s => s.e.m), t = ss.filter(s => s.e.p === 3), pt = ss.filter(s => inPaint(s.e));
+  return `${m.length}-${ss.length} (${pct(m.length, ss.length)})${t.length ? ` · 3PT ${t.filter(s => s.e.m).length}-${t.length}` : ""}${pt.length ? ` · Paint ${pt.filter(s => s.e.m).length}-${pt.length}` : ""}`; }
+function pubShots(g, R){
+  const all = R.shots.filter(s => s.e.x != null); if(!all.length) return "";
+  const Q = g.quarters || 4, lq = Math.max(...R.shots.map(s => s.q), R.q || 1), ha = homeAway(g);
+  const fq = ui.pubShQ || "", ftm = ui.pubShTm || "", fp = ui.pubShP || "";
+  const inQ = q => !fq ? true : fq === "h1" ? q <= Q / 2 : fq === "h2" ? q > Q / 2 && q <= Q : fq === "ot" ? q > Q : q === +fq;
+  const pool = all.filter(s => (!ftm || s.e.tm === ftm) && inQ(s.q)), shown = pool.filter(s => !fp || s.e.tm + "|" + s.e.pid === fp);
+  const opt = (v, l, cur) => `<option value="${v}"${v === cur ? " selected" : ""}>${esc(l)}</option>`;
+  const qs = [["", "Whole game"], ["h1", "1st half"], ["h2", "2nd half"]]; for(let q = 1; q <= Math.min(lq, Q); q++) qs.push([String(q), perLabel(g, q)]); if(lq > Q) qs.push(["ot", "Overtime"]);
+  const who = {}; all.filter(s => (!ftm || s.e.tm === ftm) && s.e.pid).forEach(s => { const k = s.e.tm + "|" + s.e.pid; if(!who[k]){ const p = player(g, s.e.tm, s.e.pid); if(p) who[k] = (ftm ? "" : (s.e.tm === "us" ? "GHS" : (g.oi && g.oi.abbr) || oppInfo(g.opp, g).abbr) + " ") + "#" + p.num + (p.name ? " " + p.name : ""); } });
+  const sum = ["us", "them"].filter(tm => !ftm || ftm === tm).map(tm => { const ss = shown.filter(s => s.e.tm === tm); return ss.length ? `<div style="${tvars(g, tm)}"><b style="color:var(--tl,var(--green))">${esc(tmName(g, tm))}</b> ${shotLine(ss)}</div>` : ""; }).join("");
+  return `<div class="card" id="pubshots"><h3 style="font-size:22px;margin-bottom:4px">Shot chart</h3>
+    <div class="row shf"><select data-sel="pubShTm" aria-label="Team">${opt("", "Both teams", ftm)}${opt(ha.home, tmName(g, ha.home), ftm)}${opt(ha.away, tmName(g, ha.away), ftm)}</select><select data-sel="pubShQ" aria-label="Period">${qs.map(([v, l]) => opt(v, l, fq)).join("")}</select><select data-sel="pubShP" aria-label="Player">${opt("", "Every player", fp)}${Object.entries(who).sort((a, b) => a[1].localeCompare(b[1], undefined, {numeric:true})).map(([k, l]) => opt(k, l, fp)).join("")}</select></div>
+    <div class="shcourt">${courtSvg(shown.map(s => ({e:s.e, t:shotWords(g, s)})), "", g, ftm || null)}</div>
+    <div class="small shsum">${sum || "No shots with a spot for this pick."}<div>● made · ✕ missed. Only shots the stat keeper put on the chart.</div></div></div>`;
+}
+// Tap a name in the fan box score: tonight's line, the shots, the plays, and (ours) the season.
+function pubPlayerSheet(tm, i){
+  const sn = PS.snap[PS.gid]; if(!sn) return; const {g, R} = pubGame(sn), pid = tm + i, p = player(g, tm, pid); if(!p) return;
+  const ln = R.box[tm][pid] || LINE(), ss = R.shots.filter(s => s.e.tm === tm && s.e.pid === pid && s.e.x != null);
+  const plays = sn.plays.filter(x => x[5] === tm && x[8] === +i).reverse();
+  const stats = tm === "us" && PS.stats && PS.stats.t && PS.stats.t[g.team], real = tm === "us" && sn.pk ? sn.pk[+i] : null;
+  const sr = stats && real ? stats.p.find(r => r[0] === real) : null, per = (v, n) => n ? (v / n).toFixed(1) : "–";
+  if(tm === "us" && !PS.stats) PubRead.stats();
+  const shoot = ln.po ? `FG ${ln.fgm} made · FT ${ln.ftm} made` : `FG ${ln.fgm}-${ln.fga} · 3PT ${ln.tpm}-${ln.tpa} · FT ${ln.ftm}-${ln.fta}`;
+  openSheet({wide:true, html:() => `<div style="${tvars(g, tm)}"><div class="kicker">${esc(tmName(g, tm))}</div><h3>#${esc(p.num)} ${esc(p.name || "")}</h3></div>
+    <div class="pcl"><div><b>${ln.pts}</b>PTS</div><div><b>${ln.oreb + ln.dreb}</b>REB</div><div><b>${ln.ast}</b>AST</div><div><b>${ln.stl}</b>STL</div><div><b>${ln.blk}</b>BLK</div><div><b>${ln.to}</b>TO</div><div><b>${ln.pf}</b>PF</div></div>
+    <p class="small" style="margin:6px 0">${shoot}</p>
+    ${sr ? `<p style="margin:6px 0"><b>Season (${sr[3]} game${sr[3] === 1 ? "" : "s"}):</b> ${per(sr[4], sr[3])} ppg · ${per(sr[5], sr[3])} rpg · ${per(sr[6], sr[3])} apg</p>` : ""}
+    ${ss.length ? `<div class="shcourt sm">${courtSvg(ss.map(s => ({e:s.e, t:shotWords(g, s)})), "", g, tm)}</div><p class="small" style="margin:2px 0 6px">${shotLine(ss)}</p>` : ""}
+    ${plays.length ? `<h3 style="font-size:18px;margin:8px 0 2px">${sn.more ? "Recent plays" : "Plays"}</h3><ul class="plays">${plays.map(x => `<li class="${x[4] ? "score" : ""}"><span class="pq">${esc(perLabel(g, x[0]))}${x[7] ? `<span class="gcl">${esc(x[7])}</span>` : ""}</span><span class="pt">${x[4] ? "<b>" + esc(unent(x[3])) + "</b>" : esc(unent(x[3]))}</span></li>`).join("")}</ul>` : ""}
+    <div class="row"><button class="btn" data-close>Close</button></div>`});
+}
+// The season list's finals, for records and the preview.
+function pubRec(rows, team, f){ let w = 0, l = 0; rows.forEach(([, r]) => { if(r.team !== team || r.off || r.status !== "final" || (f && !f(r))) return; (r.ff ? r.ff === "W" : r.us > r.them) ? w++ : l++; }); return [w, l]; }
+function pubStreak(rows, team){ const fs = rows.filter(([, r]) => r.team === team && !r.off && r.status === "final").map(([, r]) => r.ff ? r.ff === "W" : r.us > r.them); if(!fs.length) return "";
+  const last = fs[fs.length - 1]; let n = 0; for(let i = fs.length - 1; i >= 0 && fs[i] === last; i--) n++; return n >= 2 ? `${last ? "Won" : "Lost"} ${n} straight` : ""; }
+function pubLeaders(team){
+  const t = PS.stats && PS.stats.t && PS.stats.t[team]; if(!t || !t.p.length) return "";
+  const best = (k, lbl) => { const r = t.p.filter(x => x[3]).sort((a, b) => b[k] / b[3] - a[k] / a[3])[0]; return r && r[k] ? `<div class="lr"><b>${(r[k] / r[3]).toFixed(1)}</b><span>${esc(r[2] || "#" + r[1])}<small>${lbl}</small></span></div>` : ""; };
+  const h = best(4, "points a game") + best(5, "rebounds a game") + best(6, "assists a game");
+  return h ? `<div class="card"><div class="kicker">Season leaders</div>${h}</div>` : "";
+}
+function pubPre(row, rows){
+  if(row.off || row.nb || row.status !== "pre") return "";
+  if(!PS.stats) PubRead.stats();
+  const [w, l] = pubRec(rows, row.team), [hw, hl] = pubRec(rows, row.team, r => r.ha === row.ha), [dw, dl] = pubRec(rows, row.team, r => r.district);
+  const streak = pubStreak(rows, row.team), last = rows.filter(([, r]) => r.team === row.team && r.status === "final" && !r.off && !r.nb).pop();
+  const met = rows.filter(([, r]) => r.team === row.team && r.opp === row.opp && r.status === "final" && !r.off && r.date < row.date).pop();
+  const res = r => `${(r.ff ? r.ff === "W" : r.us > r.them) ? "W" : "L"}${r.us + r.them ? " " + r.us + "-" + r.them : ""}`;
+  let tip = ""; if(row.date === pubToday() && row.time){ const [hh, mm] = row.time.split(":").map(Number), t = new Date(); t.setHours(hh, mm, 0, 0); const m = Math.round((t - Date.now()) / 60000);
+    tip = m > 90 ? `Tip-off in about ${Math.round(m / 60)} hours` : m > 0 ? `Tip-off in ${m} minute${m === 1 ? "" : "s"}` : "Tip-off any minute"; }
+  const facts = [w + l ? `<b>${esc(row.usName || "")} ${w}-${l}</b>${dw + dl ? ` · District ${dw}-${dl}` : ""}${hw + hl ? ` · ${row.ha} ${hw}-${hl}` : ""}` : row.rec ? `<b>${esc(row.usName || "")} ${esc(row.rec)}</b>` : "",
+    streak, last ? `Last time out: ${res(last[1])} ${last[1].ha === "Away" ? "at" : "vs"} ${esc(last[1].opp)}` : "", met ? `Met ${esc(fmtDate(met[1].date))}: ${res(met[1])}` : row.lm ? esc(row.lm) : ""].filter(Boolean);
+  return `<div class="card stack"><div class="kicker">Preview${tip ? " · " + tip : ""}</div>${facts.map(f => `<div>${f}</div>`).join("")}<div><button class="btn sm" data-act="pubstats" data-v="${esc(row.team)}">Season stats ›</button></div></div>${pubLeaders(row.team)}`;
+}
+// At the final: a few sentences written from the numbers.
+function pubRecap(g, R, sn, rows){
+  const sc = sn.sc, won = sc.us > sc.them, W = won ? "us" : "them", L = OTHER(W), nm = tm => tm === "us" ? "Greenbrier" : g.opp, Q = g.quarters || 4;
+  if(sc.us === sc.them) return "";
+  const where = g.ha === "Home" ? " at home" : g.ha === "Away" ? " on the road" : "", day = (() => { try{ return " " + new Date(g.date + "T12:00:00").toLocaleDateString(undefined, {weekday:"long"}); }catch(e){ return ""; } })();
+  const lq = lastQ(R) || 1, ot = lq > Q ? (lq - Q > 1 ? ` in ${lq - Q} overtimes` : " in overtime") : "";
+  const s = [`Greenbrier ${won ? "beat" : "fell to"} ${g.opp} ${Math.max(sc.us, sc.them)}-${Math.min(sc.us, sc.them)}${ot}${where}${day}${g.district ? " in a district game" : ""}.`];
+  // The period the winner pulled away in, if it was a clear one.
+  const qd = []; for(let q = 1; q <= Math.min(lq, Q); q++) qd.push([q, ((R.qs[W] || [])[q - 1] || 0) - ((R.qs[L] || [])[q - 1] || 0)]);
+  const bq = qd.sort((a, b) => b[1] - a[1])[0], fl = sn.fl || {big:{}};
+  if(fl.big && !fl.big[L] && !ot) s.push(`${nm(W)} never trailed and led by as many as ${fl.big[W]}.`);
+  else if(fl.big && fl.big[L] >= 8) s.push(`${nm(W)} came back from ${fl.big[L]} down.`);
+  else if((fl.lc || 0) >= 5) s.push(`The lead changed hands ${fl.lc} times.`);
+  if(bq && bq[1] >= 6) s.push(`The ${["first", "second", "third", "fourth"][bq[0] - 1] || perLabel(g, bq[0])} quarter decided it: ${nm(W)} outscored ${nm(L)} ${(R.qs[W] || [])[bq[0] - 1] || 0}-${(R.qs[L] || [])[bq[0] - 1] || 0}.`);
+  const tops = tm => Object.entries(R.box[tm]).map(([pid, ln]) => [player(g, tm, pid), ln]).filter(([p, ln]) => p && ln.pts).sort((a, b) => b[1].pts - a[1].pts);
+  const who = p => p.name || "No. " + p.num, extra = ln => { const r = ln.oreb + ln.dreb, a = []; if(r >= 5) a.push(r + " rebounds"); if(ln.ast >= 4) a.push(ln.ast + " assists"); if(ln.stl >= 4) a.push(ln.stl + " steals"); return a.length ? " and " + a.join(" and ") : ""; };
+  const tw = tops(W), tl = tops(L);
+  if(tw[0]) s.push(`${who(tw[0][0])} led ${nm(W)} with ${tw[0][1].pts} points${extra(tw[0][1])}${tw[1] && tw[1][1].pts >= 8 ? `, and ${who(tw[1][0])} added ${tw[1][1].pts}` : ""}.`);
+  if(tl[0]) s.push(`${who(tl[0][0])} scored ${tl[0][1].pts} for ${nm(L)}.`);
+  const T = sumLines(Object.values(R.box.us).concat([R.team.us]));
+  if(!T.po && T.fga >= 10) s.push(`Greenbrier shot ${pct(T.fgm, T.fga)} from the field (${T.fgm} of ${T.fga})${T.tpa ? ` and made ${T.tpm} three${T.tpm === 1 ? "" : "s"}` : ""}.`);
+  const [w, l] = pubRec(rows, g.team), [dw, dl] = pubRec(rows, g.team, r => r.district);
+  if(w + l) s.push(`The ${usName(g)} ${won ? "improve" : "fall"} to ${w}-${l}${g.district && dw + dl ? ` (${dw}-${dl} in the district)` : ""}.`);
+  return `<div class="card" id="pubrecap"><div class="kicker">Recap${sn.rv === "review" ? " · numbers still being checked" : ""}</div><p style="margin:4px 0 0;font-size:17px;line-height:1.45">${esc(s.join(" "))}</p></div>`;
+}
+// The season stats page: our players' averages from the finals (hoopsPublic/_stats, read once a visit).
+const STCOLS = [["GP", 3], ["PTS", 4], ["REB", 5], ["AST", 6], ["STL", 7], ["BLK", 8], ["FG%", "fg"], ["3P%", "tp"], ["FT%", "ft"]];
+function viewStats(rows){
+  const s = PS.stats, team = ui.pubStT || (PS.season[PS.gid] || {}).team || "boys";
+  const head = `<div class="row" style="justify-content:space-between;margin-top:8px"><button class="btn sm" data-act="pubstats" data-v="">‹ Back to the game</button><div class="row" style="gap:6px">${["girls", "boys"].map(t => `<button class="btn sm" aria-pressed="${t === team}" data-act="pubstt" data-v="${t}">${t === "girls" ? "Girls" : "Boys"}</button>`).join("")}</div></div>`;
+  if(!s){ PubRead.stats(); return head + `<div class="card" style="margin-top:10px">${PS.statsErr ? "Season stats aren't available right now." : "Loading the season stats…"}</div>`; }
+  const t = s.t && s.t[team]; if(!t || !t.p.length) return head + `<div class="card" style="margin-top:10px">No finished games with stats yet.</div>`;
+  const K = ui.pubStK || 4, val = (r, k) => k === "fg" ? (r[12] ? r[11] / r[12] : -1) : k === "tp" ? (r[14] ? r[13] / r[14] : -1) : k === "ft" ? (r[16] ? r[15] / r[16] : -1) : k === 3 ? r[3] : r[3] ? r[k] / r[3] : 0;
+  const cell = (r, k) => k === "fg" ? pct(r[11], r[12]) : k === "tp" ? pct(r[13], r[14]) : k === "ft" ? pct(r[15], r[16]) : k === 3 ? r[3] : r[3] ? (r[k] / r[3]).toFixed(1) : "–";
+  const ps = t.p.slice().sort((a, b) => val(b, K) - val(a, K) || (parseInt(a[1], 10) || 0) - (parseInt(b[1], 10) || 0));
+  const [w, l] = pubRec(rows, team), fin = rows.filter(([, r]) => r.team === team && r.status === "final" && !r.off && !r.nb && !r.ff), n = fin.length;
+  const ppg = n ? (fin.reduce((a, [, r]) => a + r.us, 0) / n).toFixed(1) : "–", opp = n ? (fin.reduce((a, [, r]) => a + r.them, 0) / n).toFixed(1) : "–";
+  return head + `<div class="card" style="margin-top:10px"><h2>${esc(t.name || (team === "girls" ? "Lady Cats" : "Bobcats"))} season stats</h2><div class="small" style="font-weight:600;margin:2px 0 8px">${w + l ? `${w}-${l} · ` : ""}${ppg} points a game · allowing ${opp}</div>
+    <div class="scroll-x"><table class="sttab"><tr><th class="l">Player</th>${STCOLS.map(([l, k]) => `<th><button class="lnk${k === K ? " on" : ""}" data-act="pubsort" data-v="${k}">${l}</button></th>`).join("")}</tr>
+    ${ps.map(r => `<tr><td class="l">${esc(r[1])} ${esc(r[2] || "")}</td>${STCOLS.map(([, k]) => `<td${k === K ? ' class="on"' : ""}>${cell(r, k)}</td>`).join("")}</tr>`).join("")}</table></div>
+    <p class="small" style="margin:6px 0 0">Per game, from ${t.gp} finished game${t.gp === 1 ? "" : "s"}. Tap a column to sort. Shooting counts only games where misses were kept.</p></div>`;
+}
 function viewPublic(){
   let h = "";
   if(PS.phase === "loading") return `<div class="card" style="margin-top:10px">Connecting to the live stats…</div>`;
@@ -5300,6 +5472,7 @@ function viewPublic(){
     if(!s && r && PS.delay && r.status === "final" && !r.ff && Date.now() - (r.upd || 0) < PS.delay * 1000) return {...r, status:"live"};
     return s && r ? {...r, status:r.ff ? r.status : s.status, us:s.sc.us, them:s.sc.them} : r; };
   const rows = Object.entries(PS.season).filter(([, r]) => r).map(([id, r]) => [id, ov(id, r)]).sort((a, b) => (a[1].date + a[1].time).localeCompare(b[1].date + b[1].time));
+  if(PS.view === "stats") return viewStats(rows);
   const row = ov(PS.gid, PS.season[PS.gid]), night = row ? rows.filter(([, r]) => r.date === row.date) : [];
   if(night.length > 1) h += `<div class="pubgames">${night.map(([id, r]) => `<button class="btn${id === PS.gid ? " primary" : ""}" data-act="pubpick" data-gid="${id}">${pubRowName(r)}${r.off ? ` · <b>${esc((OFF_WORDS[r.off] || "Off").toUpperCase())}</b>` : r.status === "live" ? ` · <b>LIVE</b>` : r.status === "final" ? (r.nb ? " · Forfeit" : ` · Final ${r.us}-${r.them}`) : r.time ? " · " + esc(fmtTime(r.time)) : ""}</button>`).join("")}</div>`;
   const sn = PS.gid && PS.snap[PS.gid];
@@ -5316,7 +5489,7 @@ function viewPublic(){
   else if(!sn){
     h += `<div class="card stack" style="margin-top:10px"><div class="kicker">${esc(fmtDate(row.date))}${row.time ? " · " + esc(fmtTime(row.time)) : ""}${row.event ? " · " + esc(row.event) : ""}</div><h2>${pubRowName(row)}</h2>
       ${row.rec && !row.off ? `<p class="small" style="margin:0;font-weight:600">${esc(row.usName || "")} ${esc(row.rec)} going in</p>` : ""}
-      <p style="margin:0">${row.off ? `<b>${row.off === "ppd" ? "Postponed. New date to come." : "Cancelled."}</b>` : row.nb ? (row.ff === "W" ? "Won by forfeit. No game was played." : "Lost by forfeit. No game was played.") : row.status === "pre" ? "Live stats start at tip-off. This page updates by itself." : PS.delay ? `Holding the stats ${PS.delay} seconds to match the stream…` : "Loading the box score…"}</p></div>`;
+      <p style="margin:0">${row.off ? `<b>${row.off === "ppd" ? "Postponed. New date to come." : "Cancelled."}</b>` : row.nb ? (row.ff === "W" ? "Won by forfeit. No game was played." : "Lost by forfeit. No game was played.") : row.status === "pre" ? "Live stats start at tip-off. This page updates by itself." : PS.delay ? `Holding the stats ${PS.delay} seconds to match the stream…` : "Loading the box score…"}</p></div>${pubPre(row, rows)}`;
   }else{
     const {g, R} = pubGame(sn), ha = homeAway(g), fin = sn.status === "final", review = fin && sn.rv === "review";
     const ov = boardOver(g, R, sn, PS.board && PS.board.view()), Rb = {...R, sc:ov.sc};
@@ -5333,12 +5506,15 @@ function viewPublic(){
       ${old ? `<div class="flag" style="margin:0 0 6px"><b>Last update ${esc(agoWords(sn.upd + PS.delay * 1000))}.</b> Waiting on the scorer: the table may have lost signal.</div>` : ""}
       <div class="pubboard" style="--n:${Math.max(usName(g).length, String(g.opp).length)}">${bug(g, Rb, {big:true, quiet:faded && ov.tag !== "board", name:tm => tm === "us" ? usName(g) : g.opp, sub:tm => tm === "us" ? "Greenbrier" : oppNick(g), meta:fin ? null : meta, per:fin ? "FINAL" : ov.per || nowLabel(g, R).replace(/^END (REG|OT\d*)$/, () => perLabel(g, R.q) + " NEXT")})}</div>
       ${fin ? (tops.length ? `<div class="lastplay">Top scorers: ${tops.join(" · ")}</div>` : "") : last ? `<div class="lastplay">${esc(perLabel(g, last[0]))} · ${last[5] ? esc(last[5] === "us" ? "GHS" : (g.oi && g.oi.abbr) || oppInfo(g.opp, g).abbr) + " · " : ""}${esc(unent(last[3]))}</div>` : ""}</div>
-      <div class="row pubjump"><a class="btn sm" href="#pubbox">Box score</a><a class="btn sm" href="#pubplays">Plays</a><button class="btn sm" data-act="pubsched">Schedule</button><button class="btn sm" data-act="pubshare">Share</button></div>
+      <div class="row pubjump"><a class="btn sm" href="#pubbox">Box score</a>${(sn.sh || []).length ? `<a class="btn sm" href="#pubshots">Shots</a>` : ""}<a class="btn sm" href="#pubplays">Plays</a><button class="btn sm" data-act="pubsched">Schedule</button><button class="btn sm" data-act="pubstats" data-v="${esc(g.team)}">Season stats</button><button class="btn sm" data-act="pubshare">Share</button></div>
+      ${fin ? pubRecap(g, R, sn, rows) : ""}
       <div class="linesc">${lineScore(g, R)}</div>
+      ${flowCard(g, R, sn)}
       <div class="lead">${leadCard(g, R, "pts", "Points")}${leadCard(g, R, "reb", "Rebounds")}${leadCard(g, R, "ast", "Assists")}${leadCard(g, R, "stl", "Steals")}</div>
       ${sn.fl ? teamGlance(g, R, sn) : ""}
       <div class="row only-narrow"><button class="btn sm" aria-pressed="${ui.pubTm !== "away"}" data-act="pubtm" data-v="home">${esc(tmName(g, ha.home))}</button><button class="btn sm" aria-pressed="${ui.pubTm === "away"}" data-act="pubtm" data-v="away">${esc(tmName(g, ha.away))}</button></div>
       <div class="ann-cols" id="pubbox"><div class="card fanbox${ui.pubTm === "away" ? " hide-narrow" : ""}">${boxTable(g, R, ha.home, true)}</div><div class="card fanbox${ui.pubTm !== "away" ? " hide-narrow" : ""}">${boxTable(g, R, ha.away, true)}</div></div>${!fin && (R.court.us.size || R.court.them.size) ? `<p class="small" style="margin:-6px 0 0"><i class="onfl"></i>On the floor now</p>` : ""}
+      ${pubShots(g, R)}
       <div class="card" id="pubplays"><h3 style="font-size:22px;margin-bottom:4px">${sn.more ? "Last " + sn.plays.length + " plays" : "Play-by-play"}</h3>${sn.plays.length ? `<ul class="plays">${sn.plays.slice().reverse().map(p => `<li class="${p[4] ? "score" : ""}" style="${p[5] === "them" ? tvars(g, "them") : ""}"><span class="pq">${esc(perLabel(g, p[0]))}${p[7] ? `<span class="gcl">${esc(p[7])}</span>` : ""}${p[6] ? `<small>${esc(new Date(p[6]).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}))}</small>` : ""}</span><span class="ps">${ha.home === "us" ? p[1] + "-" + p[2] : p[2] + "-" + p[1]}</span><span class="pt">${p[5] ? `<span class="ptm">${esc(p[5] === "us" ? "GHS" : (g.oi && g.oi.abbr) || oppInfo(g.opp, g).abbr)}</span> ` : ""}${p[4] ? "<b>" + esc(unent(p[3])) + "</b>" : esc(unent(p[3]))}</span></li>`).join("")}</ul>` : `<p class="small">Plays show up here once the game starts.</p>`}</div>
       ${sn.sponsor ? `<div class="card" style="text-align:center"><div class="kicker">Tonight's game is brought to you by</div><h2 style="margin-top:4px">${esc(sn.sponsor)}</h2></div>` : ""}
       <p class="pubnote">${review ? "Final score. The stat keeper is checking the box score against the official book, so player numbers may still change." : fin ? "Final box score." : `${ov.tag === "board" ? "The score, clock and team fouls come straight from the gym scoreboard. " : ov.tag === "unofficial" ? "The gym scoreboard's feed is down, so the score is the stat keeper's until it's back. " : ""}${ov.tag === "board" ? "The box score updates" : "Stats update"} about every ${esc(String(sn.every || 30))} seconds, so they can run a little ahead of or behind the video.${PS.delay ? ` This page holds each update ${PS.delay} seconds to match the stream.` : ""}`} Last update ${esc(new Date(sn.upd).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}))}${fin ? "" : ` (${esc(agoWords(sn.upd))})`}.</p></div>`;
@@ -5351,7 +5527,7 @@ function viewPublic(){
     const rec = t => { let w = 0, l = 0; rows.forEach(([, r]) => { if(r.team !== t || r.off || r.status !== "final") return; (r.ff ? r.ff === "W" : r.us > r.them) ? w++ : l++; }); return w + l ? w + "-" + l : ""; };
     const recs = ["girls", "boys"].map(t => { const x = rec(t), r = rows.find(([, y]) => y.team === t); return x && r ? esc(r[1].usName || (t === "girls" ? "Lady Cats" : "Bobcats")) + " " + x : ""; }).filter(Boolean).join(" · ");
     // Two lines a game, no sideways scrolling on a phone; a game with a box score is one big tap target.
-    h += `<details class="card" id="schedule" data-keep="season" style="margin-top:12px"><summary class="disp" style="font-size:22px;cursor:pointer">Season schedule and results</summary>${recs ? `<div class="small" style="margin-top:4px;font-weight:600">${recs}</div>` : ""}<div class="slist">${rows.map(([id, r]) => {
+    h += `<details class="card" id="schedule" data-keep="season" style="margin-top:12px"><summary class="disp" style="font-size:22px;cursor:pointer">Season schedule and results</summary>${recs ? `<div class="small" style="margin-top:4px;font-weight:600">${recs}</div>` : ""}<div class="row" style="gap:6px;margin-top:6px">${["girls", "boys"].filter(t => rows.some(([, r]) => r.team === t)).map(t => `<button class="btn sm" data-act="pubstats" data-v="${t}">${t === "girls" ? "Girls" : "Boys"} season stats ›</button>`).join("")}</div><div class="slist">${rows.map(([id, r]) => {
       const won = r.ff ? r.ff === "W" : r.us > r.them, box = r.status !== "pre" && !r.nb;
       const res = r.off ? `<b>${esc(OFF_WORDS[r.off] || "")}</b>` : r.status === "final" ? `<b class="${won ? "w" : ""}">${won ? "W" : "L"}${r.us + r.them ? " " + r.us + "-" + r.them : ""}${r.ff ? " (forfeit)" : ""}</b>` : r.status === "live" ? `<b>LIVE${PS.snap[id] ? " " + r.us + "-" + r.them : ""}</b>` : r.date < today ? "No live stats" : esc(fmtTime(r.time));
       const inner = `<span class="s1">${esc(fmtDate(r.date))} · ${r.team === "girls" ? "Girls" : "Boys"} · <b>${r.ha === "Away" ? "at" : "vs"} ${esc(r.opp)}</b>${r.district ? ' <span class="tag">District</span>' : ""}</span><span class="s2">${res}${box ? '<span class="small"> · Box score ›</span>' : ""}</span>`;
@@ -5718,7 +5894,7 @@ const Sync = (() => {
       // The results row changes at each period break and the final, and again when a fix after the final moves the score.
       const row = seasonRow(g), rk = row.status + ":" + row.us + "-" + row.them + row.rv;
       const owed = !!(S.pubOwe || {})[id];
-      if((!P.other[id] || owed) && (P.seen[id] !== key || (gameOver(g) && P.rowk[id] !== rk))){ P.seen[id] = key; P.rowk[id] = rk; await fb.setDoc(fb.doc(db, "hoopsPublic", "_season"), {games:{[id]:row}, upd:Date.now()}, {merge:true}); }
+      if((!P.other[id] || owed) && (P.seen[id] !== key || (gameOver(g) && P.rowk[id] !== rk))){ P.seen[id] = key; P.rowk[id] = rk; await fb.setDoc(fb.doc(db, "hoopsPublic", "_season"), {games:{[id]:row}, upd:Date.now()}, {merge:true}); if(row.status === "final") statsSend(); }
       if(owed && S.games[id] && S.games[id].rev === rev){ delete S.pubOwe[id]; save(); paint(); }
     }catch(e){ if(!String((e && e.code) || "").includes("permission")) fail(e); else P.retry[id] = true; }   // refused: another device scores it now, or this one's claim hasn't reached the cloud yet
     finally{ P.busy[id] = false; if(P.again[id]){ P.again[id] = false; pubQueue(id); } else delete P.other[id]; }
@@ -5731,7 +5907,7 @@ const Sync = (() => {
     const {fb, db} = st;
     try{
       const cur = await fb.getDoc(fb.doc(db, "hoopsPublic", "_season")), have = (cur.exists() && cur.data().games) || {}, add = {};
-      const KEYS = ["date","time","team","usName","opp","ha","district","event","off","ff","nb","rec"], diff = (h, r, ks) => ks.some(k => (h[k] ?? "") !== (r[k] ?? "")), has = {};
+      const KEYS = ["date","time","team","usName","opp","ha","district","event","off","ff","nb","rec","lm"], diff = (h, r, ks) => ks.some(k => (h[k] ?? "") !== (r[k] ?? "")), has = {};
       for(const g of Object.values(S.games)){
         if(g.practice) continue;
         const h = have[g.id];
@@ -5750,8 +5926,19 @@ const Sync = (() => {
       for(const [id, [k, rk]] of Object.entries(has)) if(!(id in st.pub.rowk) || id in add){ st.pub.seen[id] = k; st.pub.rowk[id] = rk; }
       // A row that was missing or stale means the game's public copy is too (scored or fixed while sync wasn't up).
       for(const [id, r] of Object.entries(add)) if(r && S.games[id] && S.games[id].status !== "pre") pubQueue(id, true);
-      st.seeded = true;
+      st.seeded = true; statsSend();
     }catch(e){ fail(e); }
+  }
+  // The season stats copy goes out when a final's results row does (and once a session, if the cloud's is different).
+  // Fans read it once a visit, so a write costs nothing until someone opens it.
+  async function statsSend(){
+    if(!live() || !canScore() || S.settings.pub === false || st.statsBusy) return;
+    st.statsBusy = true; const {fb, db} = st;
+    try{
+      if(st.statsJ == null){ const d = await fb.getDoc(fb.doc(db, "hoopsPublic", "_stats")); st.statsJ = d.exists() ? d.data().j : ""; }
+      const j = JSON.stringify(statsSnap()); if(j !== st.statsJ){ await fb.setDoc(fb.doc(db, "hoopsPublic", "_stats"), {j, upd:Date.now()}); st.statsJ = j; }
+    }catch(e){ if(!String((e && e.code) || "").includes("permission")) fail(e); }
+    finally{ st.statsBusy = false; }
   }
   function pubOwed(){ return S.settings.pub !== false && canScore() && Object.keys(S.pubOwe || {}).length > 0; }
   function dirtyTeams(){ st.teamsDirty = true; kick(700); }
