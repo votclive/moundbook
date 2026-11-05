@@ -1190,11 +1190,15 @@ function statLine(ln, noPf){
   return bits.join(" · ");
 }
 
-function playText(g, e){
+// How far out a charted shot was, for the fan page's play-by-play: "from 20 ft", or "at the rim" from under 4 feet. The
+// spot is a fraction of the half court (50 x 47 feet, the basket 5.25 feet in from the baseline).
+function shotFar(e){ if(e.t !== "FG" || e.x == null || e.y == null) return "";
+  const ft = Math.round(Math.hypot(e.x * 50 - 25, e.y * 47 - 5.25)); return ft < 4 ? " at the rim" : ` from ${ft} ft`; }
+function playText(g, e, o = {}){
   // A tap parked on a number (its kid left the book before the tip: paFold) reads as that number.
   const who = esc(!e.pid && e.lw ? "#" + e.lw.slice(e.lw.lastIndexOf("#") + 1) : pLabel(g, e.tm, e.pid)), team = esc(tmName(g, e.tm));
   switch(e.t){
-    case "FG": return e.m ? "<b>" + who + " makes " + e.p + "</b>" : who + " misses " + e.p;
+    case "FG": { const far = o.far ? shotFar(e) : ""; return e.m ? "<b>" + who + " makes " + e.p + far + "</b>" : who + " misses " + e.p + far; }
     case "FT": return e.m ? "<b>" + who + " makes free throw</b>" : who + " misses free throw";
     case "REB": return (e.pid ? who : team + " team") + (e.o ? " offensive" : " defensive") + " rebound";
     case "AST": return who + " assist";
@@ -3773,7 +3777,7 @@ function pubSnap(g0){
   const played = (tm, p) => (R.box[tm][p.pid] || {}).gp || R.court[tm].has(p.pid);
   const line = (tm, p) => { const l = R.box[tm][p.pid] || LINE(); return [p.num, p.name || "", "", "", ""].concat(PUBK.map(k => l[k]), [l.gp ? 1 : 0, R.court[tm].has(p.pid) ? 1 : 0, l.po ? 1 : 0, l.tf || 0]); };
   const all = R.plays.filter(p => !p.void && !["IN","OUT","POSS","NOTE"].includes(p.e.t)), fin = g.status === "final" || gameOver(g0);
-  const plays = (fin ? all : all.slice(-40)).map(p => [p.q, p.sc.us, p.sc.them, playText(g, p.e).replace(/<[^>]+>/g, ""), p.scored ? 1 : 0, p.e.t === "PER" ? "" : p.e.tm, p.e.at || 0, gcText(p.e, g, p.q)]);
+  const plays = (fin ? all : all.slice(-40)).map(p => [p.q, p.sc.us, p.sc.them, playText(g, p.e, {far:true}).replace(/<[^>]+>/g, ""), p.scored ? 1 : 0, p.e.t === "PER" ? "" : p.e.tm, p.e.at || 0, gcText(p.e, g, p.q)]);
   return {v:1, id:g.id, date:g.date, time:g.time || "", team:g.team, usName:usName(g), opp:g.opp, oi:{mascot:o.mascot, girls:o.girls, c1:o.c1, c2:o.c2, abbr:o.abbr},
     ha:g.ha, district:!!g.district, event:g.event || "", quarters:g.quarters || 4, status:g.forfeit || fin ? "final" : g.status, q:R.q, brk:R.brk, sc:pubScore(g0, R), qs:R.qs,
     tf:{us:teamFouls(g, R, "us"), them:teamFouls(g, R, "them")}, bonus:{us:inBonus(g, R, "us"), them:inBonus(g, R, "them")},
