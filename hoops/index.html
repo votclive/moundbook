@@ -1425,6 +1425,13 @@ const linked = (g, t, id) => g.ev.some(x => !x.v && x.t === t && x.ref === id);
 let lastTap = {k:"", at:0};
 // A finger that bounces: the same button again within ms counts once. A real catch-up tap (two free throws) is slower.
 function bounced(key, ms){ const now = Date.now(); if(key === lastTap.k && now - lastTap.at < ms) return true; lastTap = {k:key, at:now}; return false; }
+// Kevin (0.12.0): two baskets for one team inside a second is almost surely a double tap. Both count (the board no longer
+// flags a book that's ahead), so the scorer gets a quiet heads-up to Undo if it was one.
+function dblTap(g, e){
+  if(!e || e.v || !((e.t === "FG" || e.t === "FT") && e.m)) return;
+  const p = g.ev.find(x => x !== e && !x.v && x.tm === e.tm && (x.t === "FG" || x.t === "FT") && x.m && Math.abs((e.at || 0) - (x.at || 0)) < 1000);
+  if(p) toast(`Two ${tmName(g, e.tm)} scores inside a second. Double tap? Undo if so.`, 4000);
+}
 function stat(tm, pid, k){
   const g = cur(); if(!g) return;
   // A finger that bounces on a button scores once. A real second tap after the toast still counts.
@@ -1435,11 +1442,11 @@ function stat(tm, pid, k){
   const R = replay(g), po = S.settings.extra ? {} : {po:1};    // points-only mode: makes are marked, so no fake shooting %
   let e;
   switch(k){
-    case "ft": e = rec({tm, pid, t:"FT", m:true, ...po}); break;
+    case "ft": e = rec({tm, pid, t:"FT", m:true, ...po}); dblTap(g, e); break;
     case "ftx": e = rec({tm, pid, t:"FT", m:false}); if(e && S.settings.extra){ ui.fu = [{k:"reb", miss:tm}]; renderFu(); } break;
     case "2": case "3": case "2x": case "3x": {
       const p = parseInt(k, 10), m = !k.endsWith("x");
-      e = rec({tm, pid, t:"FG", p, m, ...(m ? po : {})}); if(!e) return;
+      e = rec({tm, pid, t:"FG", p, m, ...(m ? po : {})}); if(!e) return; dblTap(g, e);
       if(S.settings.chart) ui.fu.push({k:"loc", id:e.id});
       if(m && S.settings.extra) ui.fu.push({k:"ast", tm, shooter:pid, ref:e.id});
       if(!m && S.settings.extra) ui.fu.push({k:"reb", miss:tm});
