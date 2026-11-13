@@ -274,6 +274,7 @@ body.obs main .wrap{max-width:none;padding:0;margin:0}
 .obug .bon{font-style:normal;background:var(--white);color:var(--black);border-radius:3px;padding:0 5px;font-family:var(--f-display);font-weight:800}
 .obug .sc{margin-left:auto;font-weight:900;font-size:70px;line-height:1;text-shadow:-3px 4px 0 var(--ts,var(--black))}
 .obug .per{display:grid;place-items:center;align-content:center;gap:2px;min-width:132px;padding:0 16px;background:var(--white);color:var(--black);font-weight:900;font-size:38px;line-height:1}
+.obug .per.clk{min-width:200px;font-size:34px;font-variant-numeric:tabular-nums}.obug .per .unof{font-size:13px;letter-spacing:.08em;color:var(--f5)}
 .obug .per small{font-size:22px}
 .ocard{position:absolute;left:50%;top:120px;transform:translateX(-50%);width:1180px;background:var(--white);color:var(--black);border-radius:10px;overflow:hidden;box-shadow:-8px 10px 0 rgba(0,0,0,.55)}
 .ocard .kick{background:var(--black);color:var(--white);font-weight:800;font-size:26px;letter-spacing:.12em;padding:12px 28px}
@@ -307,6 +308,8 @@ body.obs main .wrap{max-width:none;padding:0;margin:0}
 .bchip b{font-family:var(--f-display);font-weight:900;font-size:18px;font-variant-numeric:tabular-nums;margin:0 2px}
 .bchip.on{border-color:var(--green);color:var(--green);box-shadow:inset 0 0 0 1px var(--green)}
 .bchip.lost,.bchip.bad{background:var(--f5);border-color:var(--f5);color:var(--white)}
+.rvt input{width:5.5em;font-size:18px;padding:4px 6px}.rvt td,.rvt th{text-align:center}.rvt .rvbad{color:var(--f5);font-weight:800}
+.rvp{display:inline-block;margin:0 10px 2px 0;white-space:nowrap}
 .plays .pq .gcl{margin-left:4px;font-weight:700;font-variant-numeric:tabular-nums}
 .plays .pq button.gcl{border:1px dashed var(--grey);border-radius:4px;background:none;font:inherit;font-weight:700;padding:0 4px;min-height:24px;cursor:pointer}
 .linesc table{font-size:13px}
@@ -611,6 +614,12 @@ button.srow{cursor:pointer}
 .srow .s1 b{font-family:var(--f-display);font-weight:800;text-transform:uppercase}
 .srow .s2 b.w{color:var(--green)}
 .pubjump{gap:6px;flex-wrap:wrap;justify-content:center;margin-top:6px}
+.flow{width:100%;height:auto;display:block}.flow .fq{stroke:var(--line,#ccc);stroke-dasharray:3 4}.flow .fz{stroke:#888;stroke-width:1}.flow .fln{stroke:var(--black,#111);stroke-width:2}
+.flow .fl{font-size:11px;fill:#777;font-weight:600}.flow .fv{font-size:12px;font-weight:800;fill:var(--black,#111)}
+.shf{gap:6px;flex-wrap:wrap;margin:4px 0 8px}.shf select{flex:1 1 140px;min-width:0}.shcourt{max-width:460px;margin:0 auto}.shcourt.sm{max-width:300px}.shsum{margin-top:6px}.shsum>div+div{margin-top:4px;color:#777}
+.pnb{all:unset;cursor:pointer;text-decoration:underline;text-decoration-color:rgba(0,0,0,.25);text-underline-offset:3px}.pnb:focus-visible{outline:2px solid var(--green)}
+.pcl{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center;margin-top:8px;font-size:12px;color:#666}.pcl b{display:block;font-size:22px;color:var(--black,#111);font-family:var(--f-display)}
+.sttab td.on,.sttab .lnk.on{font-weight:800}.sttab .lnk{all:unset;cursor:pointer;font-weight:700}
 .pubsuggest{position:sticky;top:0;z-index:20;padding:6px 0;background:var(--white)}
 .pubsuggest .btn{width:100%}
 /* Fan board on a phone: a long school name shrinks to fit its half instead of being cut off (--n is the longer name). */
@@ -708,7 +717,7 @@ button.lnk{border:0;background:none;padding:0;font:inherit;color:inherit;text-al
    One device scores a game; everyone else signed in follows it live on the Announcer page. Each device's own saved copy is the
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
-const BS_VERSION = "0.9.0";
+const BS_VERSION = "0.11.0";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -1187,11 +1196,15 @@ function statLine(ln, noPf){
   return bits.join(" · ");
 }
 
-function playText(g, e){
+// How far out a charted shot was, for the fan page's play-by-play: "from 20 ft", or "at the rim" from under 4 feet. The
+// spot is a fraction of the half court (50 x 47 feet, the basket 5.25 feet in from the baseline).
+function shotFar(e){ if(e.t !== "FG" || e.x == null || e.y == null) return "";
+  const ft = Math.round(Math.hypot(e.x * 50 - 25, e.y * 47 - 5.25)); return ft < 4 ? " at the rim" : ` from ${ft} ft`; }
+function playText(g, e, o = {}){
   // A tap parked on a number (its kid left the book before the tip: paFold) reads as that number.
   const who = esc(!e.pid && e.lw ? "#" + e.lw.slice(e.lw.lastIndexOf("#") + 1) : pLabel(g, e.tm, e.pid)), team = esc(tmName(g, e.tm));
   switch(e.t){
-    case "FG": return e.m ? "<b>" + who + " makes " + e.p + "</b>" : who + " misses " + e.p;
+    case "FG": { const far = o.far ? shotFar(e) : ""; return e.m ? "<b>" + who + " makes " + e.p + far + "</b>" : who + " misses " + e.p + far; }
     case "FT": return e.m ? "<b>" + who + " makes free throw</b>" : who + " misses free throw";
     case "REB": return (e.pid ? who : team + " team") + (e.o ? " offensive" : " defensive") + " rebound";
     case "AST": return who + " assist";
@@ -1342,7 +1355,7 @@ function touch(g){ g.rev = (g.rev || 0) + 1; g.upd = Date.now(); save(); Sync.di
 function claim(g){ if(!g.writer){ g.writer = S.dev; g.writerAt = Date.now(); } }
 // The game fields the edit sheet, Final and Reopen change. g.fed keeps when each was last changed, so two devices fixing a
 // game that's over at the same time keep each other's fields (mergeGame). A copy from before stamps counts as 0.
-const GFIELDS = ["date", "time", "opp", "ha", "event", "district", "off", "forfeit", "ppdFrom", "offWas", "status", "quarters", "qlen"];
+const GFIELDS = ["date", "time", "opp", "ha", "event", "district", "off", "forfeit", "ppdFrom", "offWas", "status", "quarters", "qlen", "bfin", "rv"];
 function edField(g, ks){ if(!ks.length) return; const t = Date.now(); g.fed = {...(g.fed || {})}; ks.forEach(k => { g.fed[k] = t; }); }
 // One game from two copies of it: base, plus every change in other that's newer (plays by mergeEv, players by their edit
 // stamp ed, game fields by g.fed, numbers the PA's list put in). Where neither side's change is newer, base's stands.
@@ -1628,7 +1641,7 @@ function viewDesk(){
   else if(!canEdit(g)) h += `<div class="flag bad"><span>Another device is scoring this game. Only one device scores at a time.${S.strand[g.id] ? ` <b>${S.strand[g.id].length} play(s) tapped here never reached the cloud</b> before it took over: taking over puts them back in.` : ""}</span><button class="btn sm" data-act="takeover">Take over scoring here</button></div>`;
   // The first game of a doubleheader is over: the next one tonight is one tap away (the book has about ten minutes).
   if(g.status === "final"){ const nx = g.practice ? null : Object.values(S.games).filter(x => x.id !== g.id && !x.deleted && !x.practice && !x.off && !x.forfeit && x.date === g.date && x.status !== "final").sort((a, b) => (a.time || "").localeCompare(b.time || ""))[0];
-    h += `<div class="flag ok"><b>FINAL.</b> Corrections still work and fix the box score everywhere.${mine(g) ? ` <button class="btn sm" data-act="reopen">Reopen</button>` : ""}${canScore() ? ` <button class="btn sm" data-act="savebk">${bkSaved[g.id] >= (g.upd || 1) ? "Backup saved ✓" : "Save backup"}</button>${driveTag(g)}` : ""}${nx ? `<span style="margin-left:auto">Next: <b>${esc(usName(nx))} ${gameTitle(nx)}</b>${nx.time ? " · " + esc(timeWords(nx.time)) : ""}</span><button class="btn sm" data-act="open" data-gid="${nx.id}">Open</button>` : ""}</div>`; }
+    h += `<div class="flag ok"><b>FINAL${reviewOf(g) ? " · stats under review" : ""}.</b> ${reviewOf(g) && !g.practice ? `<button class="btn sm primary" data-act="recon" ${canEdit(g) ? "" : "disabled"}>Check against the paper book</button> ` : g.rv && g.rv.s === "done" ? `<button class="btn sm" data-act="recon">Signed off ✓</button> ` : ""}Corrections still work and fix the box score everywhere.${mine(g) ? ` <button class="btn sm" data-act="reopen">Reopen</button>` : ""}${canScore() ? ` <button class="btn sm" data-act="savebk">${bkSaved[g.id] >= (g.upd || 1) ? "Backup saved ✓" : "Save backup"}</button>${driveTag(g)}` : ""}${nx ? `<span style="margin-left:auto">Next: <b>${esc(usName(nx))} ${gameTitle(nx)}</b>${nx.time ? " · " + esc(timeWords(nx.time)) : ""}</span><button class="btn sm" data-act="open" data-gid="${nx.id}">Open</button>` : ""}</div>`; }
   const flagged = h.length > 0, pers = []; for(let q = 1; q <= Math.max(Q, R.q); q++) pers.push(q);
   // Decided: the horn ended the fourth (or an overtime) with the score not tied and nothing played since. Only then is
   // "Make it final" the big button; through the fourth it's one confirm from sending FINAL to every fan.
@@ -3353,7 +3366,7 @@ function boxTable(g, R, tm, fan, pa){
   const ps = sortRoster(roster(g, tm)).filter(p => R.box[tm][p.pid]);
   const tot = sumLines(ps.map(p => R.box[tm][p.pid]).concat([R.team[tm]]));
   return `<div style="${tvars(g, tm)}"><div class="tc-head">${badge(g, tm)}<h3 class="fit" data-min="14">${esc(tmName(g, tm))}</h3><span class="disp" style="font-size:28px;font-weight:900">${R.sc[tm]}</span></div></div><div class="scroll-x"><table><tr><th class="l">Player</th>${cols.map(c => `<th>${c[0]}</th>`).join("")}</tr>
-    ${ps.map(p => { const ln = R.box[tm][p.pid]; return `<tr><td class="l">${fan && g.status === "live" && R.court[tm].has(p.pid) ? '<i class="onfl" title="On the floor"></i>' : ""}<span class="pn">${esc(p.num)} ${esc(p.name)}${ln.tf >= 2 ? ' <span class="tag solid">EJ</span>' : ln.pf >= 5 ? ' <span class="tag solid">FO</span>' : ""}</span></td>${cols.map(c => `<td>${cellOf(ln, c[1], p.pid)}</td>`).join("")}</tr>`; }).join("")}
+    ${ps.map(p => { const ln = R.box[tm][p.pid]; return `<tr><td class="l">${fan && g.status === "live" && R.court[tm].has(p.pid) ? '<i class="onfl" title="On the floor"></i>' : ""}<span class="pn">${PUB && fan ? `<button class="pnb" data-act="pubpl" data-tm="${tm}" data-i="${esc(p.pid.slice(tm.length))}">${esc(p.num)} ${esc(p.name)}</button>` : esc(p.num) + " " + esc(p.name)}${ln.tf >= 2 ? ' <span class="tag solid">EJ</span>' : ln.pf >= 5 ? ' <span class="tag solid">FO</span>' : ""}</span></td>${cols.map(c => `<td>${cellOf(ln, c[1], p.pid)}</td>`).join("")}</tr>`; }).join("")}
     ${!pa && R.team[tm].oreb + R.team[tm].dreb + R.team[tm].to + R.team[tm].tf ? `<tr><td class="l">Team</td>${cols.map(c => `<td>${["oreb","dreb","reb","to"].includes(c[1]) ? cellOf(R.team[tm], c[1]) : ""}</td>`).join("")}</tr>` : ""}
     <tr class="tot"><td class="l">Totals</td>${cols.map(c => `<td>${c[1] === "pm" ? "" : c[1] === "min" ? minSum(M, mq) : cellOf(tot, c[1])}</td>`).join("")}</tr>
     ${pa ? "" : `<tr><td class="l">Shooting</td>${cols.map(c => `<td>${tot.po && ["fg","tp","ft"].includes(c[1]) ? "—" : c[1] === "fg" ? pct(tot.fgm, tot.fga) : c[1] === "tp" ? pct(tot.tpm, tot.tpa) : c[1] === "ft" ? pct(tot.ftm, tot.fta) : ""}</td>`).join("")}</tr>`}</table></div>
@@ -3768,29 +3781,59 @@ function pubSnap(g0){
   const R = replay(g0), o = oppInfo(g0.opp), b = booth(g0.id);
   const mask = tm => roster(g0, tm).map(p => noPub(g0, tm, p) ? {...p, name:""} : p), g = {...g0, us:mask("us"), them:mask("them")};
   const played = (tm, p) => (R.box[tm][p.pid] || {}).gp || R.court[tm].has(p.pid);
+  const lists = {us:sortRoster(roster(g, "us")).filter(p => played("us", p)), them:sortRoster(roster(g, "them")).filter(p => played("them", p))}, bi = {us:{}, them:{}};
+  ["us", "them"].forEach(tm => lists[tm].forEach((p, i) => { bi[tm][p.pid] = i; }));
+  const bix = e => e && e.pid && bi[e.tm] && bi[e.tm][e.pid] != null ? bi[e.tm][e.pid] : -1;
   const line = (tm, p) => { const l = R.box[tm][p.pid] || LINE(); return [p.num, p.name || "", "", "", ""].concat(PUBK.map(k => l[k]), [l.gp ? 1 : 0, R.court[tm].has(p.pid) ? 1 : 0, l.po ? 1 : 0, l.tf || 0]); };
   const all = R.plays.filter(p => !p.void && !["IN","OUT","POSS","NOTE"].includes(p.e.t)), fin = g.status === "final" || gameOver(g0);
-  const plays = (fin ? all : all.slice(-40)).map(p => [p.q, p.sc.us, p.sc.them, playText(g, p.e).replace(/<[^>]+>/g, ""), p.scored ? 1 : 0, p.e.t === "PER" ? "" : p.e.tm, p.e.at || 0, gcText(p.e, g, p.q)]);
+  const plays = (fin ? all : all.slice(-40)).map(p => [p.q, p.sc.us, p.sc.them, playText(g, p.e, {far:true}).replace(/<[^>]+>/g, ""), p.scored ? 1 : 0, p.e.t === "PER" ? "" : p.e.tm, p.e.at || 0, gcText(p.e, g, p.q), bix(p.e)]);
+  // The shot chart: [team, box row, x and y in thousandths of the half court, made, period, points].
+  const sh = R.shots.filter(x => x.e.x != null).map(x => [x.e.tm, bix(x.e), Math.round(x.e.x * 1000), Math.round(x.e.y * 1000), x.e.m ? 1 : 0, x.q, x.e.p === 3 ? 3 : 2]);
   return {v:1, id:g.id, date:g.date, time:g.time || "", team:g.team, usName:usName(g), opp:g.opp, oi:{mascot:o.mascot, girls:o.girls, c1:o.c1, c2:o.c2, abbr:o.abbr},
-    ha:g.ha, district:!!g.district, event:g.event || "", quarters:g.quarters || 4, status:g.forfeit || fin ? "final" : g.status, q:R.q, brk:R.brk, sc:R.sc, qs:R.qs,
+    ha:g.ha, district:!!g.district, event:g.event || "", quarters:g.quarters || 4, status:g.forfeit || fin ? "final" : g.status, q:R.q, brk:R.brk, sc:pubScore(g0, R), qs:R.qs,
     tf:{us:teamFouls(g, R, "us"), them:teamFouls(g, R, "them")}, bonus:{us:inBonus(g, R, "us"), them:inBonus(g, R, "them")},
     tol:{us:toLeft(g, R, "us"), them:toLeft(g, R, "them")}, poss:R.poss,
-    box:{us:sortRoster(roster(g, "us")).filter(p => played("us", p)).map(p => line("us", p)), them:sortRoster(roster(g, "them")).filter(p => played("them", p)).map(p => line("them", p))},
+    box:{us:lists.us.map(p => line("us", p)), them:lists.them.map(p => line("them", p))}, pk:lists.us.map(p => p.pid), sh, fw:flowPts(g0, R), ql:[periodLen(g0, 1), periodLen(g0, (g0.quarters || 4) + 1)],
     tt:{us:[R.team.us.oreb, R.team.us.dreb, R.team.us.to], them:[R.team.them.oreb, R.team.them.dreb, R.team.them.to]},
-    plays, more:all.length > plays.length, fl:flowOf(R), x:extrasOf(g, R), sponsor:((b.info || {}).sponsor || "").trim(), every:S.settings.pubSec || 30, upd:Date.now()};
+    plays, more:all.length > plays.length, fl:flowOf(R), x:extrasOf(g, R), sponsor:((b.info || {}).sponsor || "").trim(), every:S.settings.pubSec || 30,
+    brd:Board.pub(g0), bon:S.settings.bonus, rv:fin ? reviewOf(g0) : "", upd:Date.now()};
+}
+// The score the public sees at the final: the official one once a scorer signs off (an accepted difference keeps the paper
+// book's), the board's last score while it's under review (what everyone in the gym saw), otherwise the book's.
+function pubScore(g, R){
+  if(g.status !== "final") return R.sc;
+  const rv = g.rv || {};
+  if(rv.s === "done" && Number.isInteger(rv.us) && Number.isInteger(rv.them)) return {us:rv.us, them:rv.them};
+  if(rv.s === "open" && g.bfin && Number.isInteger(g.bfin.us) && Number.isInteger(g.bfin.them)) return {us:g.bfin.us, them:g.bfin.them};
+  return R.sc;
 }
 // What the score bug needs (hoopsPublic/_bug): the teams, the score, the period, fouls, the bonus, timeouts and the arrow.
 function bugSnap(g){
   const R = replay(g), o = oppInfo(g.opp);
   return {v:1, id:g.id, date:g.date, team:g.team, usName:usName(g), opp:g.opp, oi:{mascot:o.mascot, girls:o.girls, c1:o.c1, c2:o.c2, abbr:o.abbr}, ha:g.ha,
-    quarters:g.quarters || 4, status:g.forfeit || g.status === "final" || gameOver(g) ? "final" : g.status, q:R.q, brk:R.brk, sc:R.sc, poss:R.poss,
-    tf:{us:teamFouls(g, R, "us"), them:teamFouls(g, R, "them")}, bonus:{us:inBonus(g, R, "us"), them:inBonus(g, R, "them")}, tol:{us:toLeft(g, R, "us"), them:toLeft(g, R, "them")}};
+    quarters:g.quarters || 4, status:g.forfeit || g.status === "final" || gameOver(g) ? "final" : g.status, q:R.q, brk:R.brk, sc:pubScore(g, R), poss:R.poss,
+    tf:{us:teamFouls(g, R, "us"), them:teamFouls(g, R, "them")}, bonus:{us:inBonus(g, R, "us"), them:inBonus(g, R, "them")}, tol:{us:toLeft(g, R, "us"), them:toLeft(g, R, "them")},
+    brd:Board.pub(g), bon:S.settings.bonus};
 }
 function seasonRow(g){
   const R = g.ev.length ? replay(g) : null, o = oppInfo(g.opp);
   return {date:g.date, time:g.time || "", team:g.team, usName:usName(g), opp:g.opp, c1:o.c1, c2:o.c2, abbr:o.abbr, ha:g.ha, district:!!g.district, event:g.event || "",
-    status:g.forfeit || gameOver(g) ? "final" : g.status, us:R ? R.sc.us : 0, them:R ? R.sc.them : 0, per:R ? (gameOver(g) || g.forfeit ? "Final" : nowLabel(g, R)) : "", off:g.off || "", ff:g.forfeit || "",
-    nb:g.forfeit && g.status === "pre" ? 1 : "", rec:g.status === "pre" && !g.off && g.date >= pubToday() ? recordOf(g) : "", upd:Date.now()};   // nb: a forfeit nobody played, so there's no box score
+    status:g.forfeit || gameOver(g) ? "final" : g.status, us:R ? pubScore(g, R).us : 0, them:R ? pubScore(g, R).them : 0, per:R ? (gameOver(g) || g.forfeit ? "Final" : nowLabel(g, R)) : "", off:g.off || "", ff:g.forfeit || "",
+    rv:reviewOf(g), nb:g.forfeit && g.status === "pre" ? 1 : "", rec:g.status === "pre" && !g.off && g.date >= pubToday() ? recordOf(g) : "", lm:g.status === "pre" && !g.off && g.date >= pubToday() ? lastMeeting(g) : "", upd:Date.now()};   // nb: a forfeit nobody played, so there's no box score
+}
+// The season stats page's copy (hoopsPublic/_stats): our players' totals from every final, per team. A row:
+// [pid, num, name, games, pts, reb, ast, stl, blk, to, pf, fgm, fga, tpm, tpa, ftm, fta] (shooting only from games where
+// misses were kept). A kid kept off the public page isn't in it.
+function statsSnap(){
+  const out = {v:1, t:{}};
+  for(const team of ["boys", "girls"]){
+    const gs = seasonGames(team); if(!gs.length) continue;
+    const by = seasonLines(team), ros = (S.teams[team] || {}).roster || [], find = pid => ros.find(x => x.pid === pid) || gs.map(g => player(g, "us", pid)).filter(Boolean).pop();
+    const p = Object.entries(by).map(([pid, a]) => { const k = find(pid); if(!k || noPub({team}, "us", k)) return null;
+      return [pid, String(k.num), k.name || "", a.g, a.pts, a.oreb + a.dreb, a.ast, a.stl, a.blk, a.to, a.pf, a.x.fgm, a.x.fga, a.x.tpm, a.x.tpa, a.x.ftm, a.x.fta]; }).filter(Boolean);
+    out.t[team] = {name:(S.teams[team] || {}).name || (team === "girls" ? "Lady Cats" : "Bobcats"), gp:gs.length, p};
+  }
+  return out;
 }
 // Turns a public copy back into a game and a replay, so the public page draws the same scoreboard and box score.
 function pubGame(sn){
@@ -3802,6 +3845,7 @@ function pubGame(sn){
     sn.box[tm].forEach((a, i) => { const l = LINE(); PUBK.forEach((k, j) => { l[k] = a[5 + j] || 0; }); l.gp = a[19] || 0; l.po = a[21] || 0; l.tf = a[22] || 0; if(l.gp) R.box[tm][tm + i] = l; if(a[20]) R.court[tm].add(tm + i); });
     [R.team[tm].oreb, R.team[tm].dreb, R.team[tm].to] = sn.tt[tm];
   }
+  R.shots = (sn.sh || []).map(a => ({e:{t:"FG", tm:a[0], pid:a[1] >= 0 ? a[0] + a[1] : "", x:a[2] / 1000, y:a[3] / 1000, m:!!a[4], p:a[6]}, q:a[5]}));
   return {g, R};
 }
 
@@ -4139,6 +4183,10 @@ document.addEventListener("click", async ev => {
       if(n && n !== $(".seg")) toUpNext(); else window.scrollTo(0, 0); break; }
     case "pubpick": PubRead.pick(a.dataset.gid); break;
     case "pubtm": ui.pubTm = a.dataset.v; render(); break;
+    case "pubpl": pubPlayerSheet(a.dataset.tm, a.dataset.i); break;
+    case "pubstats": PS.view = a.dataset.v ? "stats" : ""; if(a.dataset.v) ui.pubStT = a.dataset.v; render(); window.scrollTo(0, 0); break;
+    case "pubstt": ui.pubStT = a.dataset.v; render(); break;
+    case "pubsort": ui.pubStK = /^\d+$/.test(a.dataset.v) ? +a.dataset.v : a.dataset.v; render(); break;
     case "pubsched": { const d = document.getElementById("schedule"); if(d){ d.open = true; d.scrollIntoView({behavior:"smooth", block:"start"}); } break; }
     // The plain fan link (it opens on whatever's on now), with which game this is in the message.
     // The link opens the game on screen (live/ passes ?g= along); the page still points to whatever's live when it's opened.
@@ -4220,7 +4268,7 @@ document.addEventListener("click", async ev => {
     case "open": { const c = cur();
       // Leaving a decided game in its last period for another one: offer the Final tap scorers forget.
       if(c && c.id !== a.dataset.gid && !c.practice && c.status === "live" && canEdit(c)){ const R = replay(c);
-        if(R.q >= (c.quarters || 4) && R.sc.us !== R.sc.them && confirm(`Is the ${usName(c)} game over? Make it final: ${usName(c)} ${R.sc.us}, ${c.opp} ${R.sc.them}.\n\nCancel if it's still going.`)){ c.status = "final"; edField(c, ["status"]); touch(c); } } }
+        if(R.q >= (c.quarters || 4) && R.sc.us !== R.sc.them && confirm(`Is the ${usName(c)} game over? Make it final: ${usName(c)} ${R.sc.us}, ${c.opp} ${R.sc.them}.\n\nCancel if it's still going.`)){ c.status = "final"; edField(c, ["status"]); openReview(c); touch(c); } } }
       ui.gid = a.dataset.gid; ui.follow = false; ui.tab = ANN_ONLY || !canScore() ? "ann" : "desk"; ui.fu = []; ui.lineup = null; saveUi(); render(); window.scrollTo(0, 0); break;
     case "toggle": { const k = a.dataset.k;
       if(k === "extra" && g && g.status === "live" && g.ev.length && !confirm(S.settings.extra ? "Switch to points only? From here on only makes and fouls get tapped, and shooting percentages show as a dash for anyone scored this way." : "Switch to every stat? Misses, rebounds, assists and the rest get tapped from here on.")) break;
@@ -4335,7 +4383,7 @@ document.addEventListener("click", async ev => {
     case "note": sheetText("Warning / special entry", "What happened", "", txt => { if(txt.trim()) rec({tm:"us", pid:null, t:"NOTE", txt:txt.trim()}); }, 3, "Delay-of-game warning on Greenbrier · Injury timeout · Clock reset to 4:12"); break;
     case "final": { if(!g || !canEdit(g)) break; const R = replay(g);
       if(!confirm(`Make it final: ${usName(g)} ${R.sc.us}, ${g.opp} ${R.sc.them}?`)) break;
-      g.status = "final"; edField(g, ["status"]); touch(g); toast("Final. Send it to Bobcats Scorebook when you're ready."); break; }
+      g.status = "final"; edField(g, ["status"]); openReview(g); touch(g); if(!g.practice) reconSheet(g); else toast("Final. Send it to Bobcats Scorebook when you're ready."); break; }
     case "reopen": if(!g || !canScore() || !mine(g)) break; g.status = "live"; edField(g, ["status"]); touch(g); break;
     case "takeover": if(!g || !confirm("Take over scoring " + usName(g) + " " + gameTitle(g).replace(/<[^>]+>/g, "") + " on this device? The device scoring it now stops: its taps won't count until it takes the game back.")) break;       { const strand = S.strand[g.id] || [], cut = g.writerAt || 0, R0 = replay(g);
         // Both devices scored after the other one took over: the same baskets would count twice. One side's plays for
@@ -4364,6 +4412,8 @@ document.addEventListener("click", async ev => {
     case "boxpdf": if(g) shareBox(g); break;
     case "bkchk": if(g) bookCheck(g); break;
     case "boardinfo": Board.sheet(); break;
+    case "recon": if(g && canEdit(g)) reconSheet(g); break;
+    case "rvagain": { const x = ui.sheet && ui.sheet.rv && S.games[ui.sheet.rv.gid]; if(x && canEdit(x)){ openReview(x); touch(x); reconSheet(x); } break; }
     case "gclk": { const x = g && g.ev.find(e => e.id === a.dataset.id); if(x && canEdit(g)) clockSheet(g, x); break; }
     case "gclkclear": if(ui.sheet && ui.sheet.gc) setClock(ui.sheet.gc, null); break;
     case "boardok": Board.dismiss(); break;
@@ -4528,7 +4578,7 @@ document.addEventListener("change", ev => {
   const t = ev.target;
   if(t.dataset.pf){ ui.pf[t.dataset.pf] = t.value; render(); }
   if(t.dataset.boxq !== undefined){ ui.boxQ = t.value; render(); }
-  if(t.dataset.sel){ ui[t.dataset.sel] = t.value; if(t.dataset.sel === "shotTm") ui.shotPid = ""; if(t.dataset.sel === "gid"){ ui.follow = false; saveUi(); } render(); }
+  if(t.dataset.sel){ ui[t.dataset.sel] = t.value; if(t.dataset.sel === "shotTm") ui.shotPid = ""; if(t.dataset.sel === "pubShTm") ui.pubShP = ""; if(t.dataset.sel === "gid"){ ui.follow = false; saveUi(); } render(); }
   if(t.hasAttribute("data-follow")){ ui.follow = t.checked; render(); }
   if(t.hasAttribute("data-pa")){ ui.pa = t.checked; ui.micSet = true; saveUi(); render(); }
   if(t.hasAttribute("data-saytog")){ ui.say = t.checked; try{ localStorage.setItem(KEY + ".phon", ui.say ? "1" : "0"); }catch(e){} render(); }
@@ -4550,10 +4600,16 @@ document.addEventListener("change", ev => {
   if(t.dataset.set && (t.dataset.set === "pubSec" ? canAdmin() : canCoach())){ const v = parseInt(t.value, 10); if(!isNaN(v)){ S.settings[t.dataset.set] = v; S.teamsRev++; save(); Sync.dirtyTeams(); render(); } }
   if(t.id === "restore-file" && t.files[0]){ const r = new FileReader(); r.onload = () => restore(r.result); r.readAsText(t.files[0]); t.value = ""; }
 });
+// The reconcile sheet's "off by" follows the official final as it's typed.
+document.addEventListener("input", ev => { const f = ev.target && ev.target.form; if(!f || f.id !== "rvform" || !ui.sheet || !ui.sheet.rv) return;
+  const g = S.games[ui.sheet.rv.gid]; if(!g) return; const R = replay(g);
+  for(const tm of ["us", "them"]){ const el = f.querySelector(`[data-gap="${tm}"]`), v = parseInt(new FormData(f).get(tm), 10); if(!el) continue;
+    const d = v >= 0 ? R.sc[tm] - v : 0; el.textContent = d ? (d > 0 ? "+" : "") + d : "✓"; el.classList.toggle("rvbad", !!d); } });
 document.addEventListener("submit", ev => {
   ev.preventDefault();
   const f = ev.target, s = ui.sheet;
   if(f.id === "drvform"){ Drive.saveTest(String(new FormData(f).get("url") || "").trim()); return; }
+  if(f.id === "rvform" && s && s.rv){ const g = S.games[s.rv.gid]; if(g && canEdit(g)) reconSave(g, f, (ev.submitter && ev.submitter.value) || "match"); return; }
   if(f.id === "gcform" && s && s.gc){ const v = parseClock(new FormData(f).get("clk"));
     if(v == null || v > s.gc.L){ toast(v == null ? "Type the clock like 5:49, or 45.3 under a minute." : "That's more than the whole period (" + clockText(s.gc.L) + ")."); return; }
     setClock(s.gc, v); return; }
@@ -4680,6 +4736,36 @@ function parseClock(v){ v = String(v || "").trim(); let m;
   if((m = v.match(/^(\d{1,2})(?:\.(\d))?$/)) && +m[1] < 60) return +m[1] + (m[2] ? +m[2] / 10 : 0);
   if((m = v.match(/^(\d{1,2})(\d{2})$/)) && +m[2] < 60) return +m[1] * 60 + +m[2];
   return null; }
+/* ---------- reconcile at the final (the paper book is official) ----------
+   Making a game final puts it under review (g.rv = {s:"open"}): the fan page says "Final · stats under review" until a
+   scorer checks the book against the official final, the board's last score (g.bfin) or what the paper book says, and
+   signs off, or accepts a difference with a note. Points are always a player's, so the book's team total is its players'
+   points. Games made final before 0.10.0 have no rv and stay plain Final. */
+const reviewOf = g => g && g.status === "final" && g.rv && g.rv.s === "open" ? "review" : "";
+function openReview(g){ if(g.practice) return; g.rv = {s:"open", at:Date.now()}; edField(g, ["rv"]); }
+function reconSheet(g){
+  openSheet({rv:{gid:g.id}, html:() => {
+    const R = replay(g), b = g.bfin, rv = g.rv || {}, done = rv.s === "done", off = done && rv.us != null ? {us:rv.us, them:rv.them} : b ? {us:b.us, them:b.them} : {us:R.sc.us, them:R.sc.them};
+    const gap = tm => R.sc[tm] - off[tm], tms = ["us", "them"];
+    const pts = tm => sortRoster(roster(g, tm)).filter(p => (R.box[tm][p.pid] || {}).pts).map(p => `<span class="rvp">#${esc(p.num)} ${esc(p.name ? pShort(p) : "")} <b>${R.box[tm][p.pid].pts}</b></span>`).join("") || `<span class="small">No points</span>`;
+    return `<h3>Check against the paper book</h3>
+      <p style="margin:0 0 8px">The paper book is official. ${b ? `The gym scoreboard ended at <b>${esc(usName(g))} ${b.us}, ${esc(g.opp)} ${b.them}</b>.` : "There's no scoreboard final for this game (away, or no feed)."} Type the official final if the paper book says something else.</p>
+      <form id="rvform" class="stack"><table class="glance rvt"><tr><th class="l"></th><th>Book (players' points)</th><th>Official final</th><th>Off by</th></tr>
+      ${tms.map(tm => `<tr><td class="l">${esc(tmName(g, tm))}</td><td><b>${R.sc[tm]}</b></td><td><input type="number" name="${tm}" min="0" max="250" inputmode="numeric" value="${off[tm]}" ${done ? "disabled" : ""}></td><td class="${gap(tm) ? "rvbad" : ""}" data-gap="${tm}">${gap(tm) ? (gap(tm) > 0 ? "+" : "") + gap(tm) : "✓"}</td></tr>`).join("")}</table>
+      ${tms.map(tm => `<div class="small"><b>${esc(tmName(g, tm))}:</b> ${pts(tm)}</div>`).join("")}
+      ${done ? `<div class="flag ok"><b>Signed off${rv.how === "accept" ? " with a difference" : ""}</b>${rv.note ? `: ${esc(rv.note)}` : "."} The fan page says Final.</div>
+        <div class="row"><button class="btn" type="button" data-act="rvagain">Check it again</button><button class="btn" type="button" data-close>Close</button></div>`
+      : `<label class="fld"><span>If the book can't be made to match: why (shows only here)</span><input type="text" name="note" maxlength="140" autocomplete="off" placeholder="Paper book has 2 more for #12; we never saw the basket"></label>
+        <div class="row"><button class="btn primary" type="submit" name="how" value="match">Signed off: it matches</button><button class="btn" type="submit" name="how" value="accept">Accept the difference</button><button class="btn" type="button" data-act="logbox" data-gid="${esc(g.id)}">Fix plays</button><button class="btn" type="button" data-close>Later</button></div>`}
+      </form>`; }});
+}
+function reconSave(g, f, how){
+  const d = new FormData(f), R = replay(g), us = parseInt(d.get("us"), 10), them = parseInt(d.get("them"), 10), note = String(d.get("note") || "").trim();
+  if(!(us >= 0) || !(them >= 0)){ toast("Type both official scores."); return; }
+  if(how === "match" && (us !== R.sc.us || them !== R.sc.them)){ toast(`The book has ${R.sc.us}-${R.sc.them}, not ${us}-${them}. Fix plays, or accept the difference with a note.`, 5000); return; }
+  if(how === "accept" && (us !== R.sc.us || them !== R.sc.them) && !note){ toast("Say why in a few words, so it's on record."); return; }
+  g.rv = {s:"done", how:us === R.sc.us && them === R.sc.them ? "match" : "accept", note, us, them, at:Date.now(), by:Sync.uid() || ""}; edField(g, ["rv"]); touch(g); closeSheet(); toast("Signed off. The fan page says Final.");
+}
 function setClock(s, sec){
   const g = S.games[s.gid]; if(!g || !canEdit(g)) return; const e = g.ev.find(x => x.id === s.id); if(!e) return;
   const grp = e.grp && (e.t === "IN" || e.t === "OUT") ? g.ev.filter(x => x.grp === e.grp && (x.t === "IN" || x.t === "OUT")) : [e], ed = Date.now();
@@ -4992,6 +5078,58 @@ function restore(text){
   save(); render(); toast("Restored " + n + " games." + (kept.length ? ` ${kept.length} reset after this backup ${kept.length > 1 ? "keep their resets" : "keeps its reset"}: ${kept.map(([m]) => m.opp).join(", ")}.` : "") + (theirs ? ` ${theirs} unfinished game${theirs > 1 ? "s were" : " was"} being scored on the other device: open it and tap Take over to keep scoring here.` : ""), theirs ? 6000 : 2500);
 }
 
+/* ---------- the gym scoreboard for fans and the stream ----------
+   While the scoring iPad says the board is the game's (brd 1 in its copy), the fan page and the score bug read the
+   relay's hoopsPublic/_board too and show the board's score, team fouls and period, with the game clock counted down on
+   this device from the relay's anchor. The board is what everyone in the gym sees, so it wins over the book. The relay
+   writes only on a change and every 30 seconds while the clock runs: a running clock with no word for 40 seconds, a
+   relay that says the receiver lost the board, or the iPad saying the feed was lost (brd 2), shows the book's score
+   marked unofficial. delay (ms) holds every board change that long, for a page next to the video stream. */
+function boardFeed(fb, db, onDoc){
+  const st = {un:null, list:[], offs:[], D:0, first:true};
+  function want(on, D){
+    st.D = D || 0;
+    if(on && !st.un){ st.first = true; st.list = [];
+      st.un = fb.onSnapshot(fb.doc(db, "hoopsPublic", "_board"), {includeMetadataChanges:true}, snap => {
+        if(snap.metadata.fromCache || !snap.exists()) return;
+        const d = snap.data(), now = Date.now(), last = st.list[st.list.length - 1];
+        if(!d || d.v !== 1 || (last && last.d.n === d.n && last.d.sent === d.sent)) return;
+        let recv = now;
+        // The doc there when this page started listening was written at its at (a clock stopped in a timeout can sit
+        // for minutes, and that's fine; one left running by a relay that died isn't).
+        if(st.first){ const at = d.at && d.at.toMillis ? d.at.toMillis() : 0; if(at) recv = Math.min(now, at); }
+        else if(typeof d.sent === "number"){ st.offs.push(now - d.sent); if(st.offs.length > 30) st.offs.shift(); }
+        st.first = false; st.list.push({recv, at:now, d});
+        while(st.list.length > 2 && st.list[1].at <= now - st.D - 5000) st.list.shift();
+        setTimeout(onDoc, st.D); }, () => {}); }
+    else if(!on && st.un){ st.un(); st.un = null; st.list = []; }
+  }
+  // The board as this page shows it now: null before a word from it.
+  function view(){
+    const t = Date.now() - st.D; let c = null;
+    for(const x of st.list) if(x.at <= t + 1) c = x;
+    if(!c) return null;
+    const d = c.d, m = st.offs.length >= 3 ? Math.min(...st.offs) : 0, k = Math.abs(m) > 1500 ? m : 0;
+    const s = typeof d.cs !== "number" ? null : d.run ? d.cs - (t - k - d.ct) / 1000 : d.cs;
+    return {fresh:!d.stale && !d.bye && s != null && (!d.run || t - c.recv < 40000), q:Number.isInteger(d.q) ? d.q : null,
+      s:s == null ? null : Math.max(0, Math.floor(s * 10 + 1e-6) / 10), run:!!d.run, home:d.home, vis:d.vis, hf:d.hf, vf:d.vf};
+  }
+  return {want, view, on:() => !!st.un};
+}
+// What the fan page shows from the board besides the running clock: a change redraws the page.
+function boardKey(){ const v = PS.board && PS.board.view(); return v ? [v.fresh, v.home, v.vis, v.hf, v.vf, v.q, v.run].join() : ""; }
+// The numbers to show for a public copy sn: the board's while it's live and this game's, else the book's (unofficial
+// once the board was lost). per is the period and clock; tag says where the score came from.
+function boardOver(g, R, sn, v){
+  const book = {sc:R.sc, tf:sn.tf, bonus:sn.bonus, per:null, tag:""};
+  if(!sn || sn.status !== "live" || !sn.brd) return book;
+  if(sn.brd === 2 || (v && !v.fresh)) return {...book, tag:"unofficial"};
+  if(!v) return book;
+  const n = (x, y) => Number.isInteger(x) ? x : y, bon = sn.bon || 5;
+  const sc = {us:n(v.home, R.sc.us), them:n(v.vis, R.sc.them)}, tf = {us:n(v.hf, sn.tf.us), them:n(v.vf, sn.tf.them)};
+  return {sc, tf, bonus:{us:tf.them >= bon, them:tf.us >= bon}, per:R.brk && !v.run ? null : `${perLabel(g, v.q || R.q)} ${clockText(v.s)}`, tag:"board"};
+}
+
 /* ---------- public page (?live, or /hoops/live/) ----------
    For fans following along with the broadcast: no sign-in, nothing to tap but games and teams. It reads only what the
    scoring device publishes to hoopsPublic, and stops listening while the phone is in a pocket (each update a phone
@@ -5023,12 +5161,16 @@ const PubRead = (() => {
     try{
       const fb = await import(new URL("fb.js", document.baseURI).href);
       const app = fb.initializeApp(FB, "brierpublic"), db = fb.initializeFirestore(app, {localCache:fb.memoryLocalCache()});
-      Object.assign(PS, {fb, db}); listen();
+      Object.assign(PS, {fb, db, board:boardFeed(fb, db, render)}); listen();
+      // The board's clock ticks in place; anything else the board changes redraws the page.
+      setInterval(() => { if(!PS.board.on()) return; const k = boardKey(); if(k !== PS.bkey){ PS.bkey = k; render(); return; }
+        const el = document.querySelector(".pubboard .seam .q"), sn = PS.gid && PS.snap[PS.gid]; if(!el || !sn) return;
+        const {g, R} = pubGame(sn), o = boardOver(g, R, sn, PS.board.view()); if(o.per && el.textContent !== o.per) el.textContent = o.per; }, 250);
       document.addEventListener("visibilitychange", () => { if(document.hidden) stop(); else listen(); });
     }catch(e){ PS.phase = "error"; PS.err = "Couldn't reach the live stats. Check your signal and reload."; render(); }
   }
   function err(e){ PS.phase = "error"; PS.err = "Live stats aren't available right now" + ((e && e.code) === "permission-denied" ? " (the public page hasn't been switched on yet)." : ". Pull down to reload."); render(); }
-  function stop(){ if(PS.unS){ PS.unS(); PS.unS = null; } if(PS.unG){ PS.unG(); PS.unG = null; } PS.watching = null; }
+  function stop(){ if(PS.unS){ PS.unS(); PS.unS = null; } if(PS.unG){ PS.unG(); PS.unG = null; } PS.watching = null; if(PS.board) PS.board.want(false); }
   function listen(){
     if(!PS.db || PS.unS) return;
     PS.unS = PS.fb.onSnapshot(PS.fb.doc(PS.db, "hoopsPublic", "_season"), {includeMetadataChanges:true}, d => {
@@ -5056,12 +5198,13 @@ const PubRead = (() => {
     const id = PS.gid, row = PS.season[id];
     if(PS.unG && PS.watching === id) return;
     if(PS.unG){ PS.unG(); PS.unG = null; }
-    PS.watching = null;
+    PS.watching = null; PS.board.want(false);
     if(!id || !row || row.status === "pre" || row.nb) return;
     PS.watching = id;
     PS.unG = PS.fb.onSnapshot(PS.fb.doc(PS.db, "hoopsPublic", id), d => { if(!d.exists()) return; let sn; try{ sn = JSON.parse(d.data().j); }catch(e){ return; }
       if(sn.status === "live" && sn.brk && sn.q > (sn.quarters || 4) && sn.sc.us !== sn.sc.them) sn.status = "final";
-      const apply = () => { if((PS.season[id] || {}).status === "pre") return; PS.snap[id] = sn; render(); };
+      const apply = () => { if((PS.season[id] || {}).status === "pre") return; PS.snap[id] = sn;
+        if(PS.watching === id) PS.board.want(sn.status === "live" && sn.brd === 1, PS.delay * 1000); render(); };
       const D = PS.delay * 1000; if(!D){ apply(); return; }
       // With the stream delay a copy shows when its newest play is as old as the delay: the time the copy waited at the
       // table before it went out comes off (both times are the scorer's clock, so a phone whose clock is off doesn't
@@ -5072,9 +5215,17 @@ const PubRead = (() => {
       due[id] = at; const wait = at - Date.now();
       if(wait > 0) setTimeout(apply, wait); else apply(); }, err);
   }
-  function pick(id){ PS.gid = id; PS.picked = true; PS.suggest = null; watch(); render(); window.scrollTo(0, 0);
+  // The season stats: one read a visit (again after 10 minutes), only when a page needs them.
+  async function stats(){
+    if(!PS.db || PS.statsBusy || (PS.statsAt && Date.now() - PS.statsAt < 600e3)) return;
+    PS.statsBusy = true;
+    try{ const d = await PS.fb.getDoc(PS.fb.doc(PS.db, "hoopsPublic", "_stats")); PS.stats = d.exists() ? JSON.parse(d.data().j) : {t:{}}; PS.statsErr = false; }
+    catch(e){ PS.statsErr = true; }
+    finally{ PS.statsBusy = false; PS.statsAt = Date.now(); render(); }
+  }
+  function pick(id){ PS.gid = id; PS.picked = true; PS.view = ""; PS.suggest = null; watch(); render(); window.scrollTo(0, 0);
     try{ const u = new URL(location.href); u.searchParams.set("g", id); history.replaceState(null, "", u); }catch(e){} }
-  return {start, pick};
+  return {start, pick, stats};
 })();
 /* ---------- the score bug for the stream (?bug, or /hoops/bug/) ----------
    An OBS browser source on Jim's MacBook, 1920x1080. It listens to hoopsPublic/_bug (the scoring device sends it on every
@@ -5089,9 +5240,13 @@ const BugRead = (() => {
     try{
       const fb = await import(new URL("fb.js", document.baseURI).href);
       const app = fb.initializeApp(FB, "brierbug"), db = fb.initializeFirestore(app, {localCache:fb.memoryLocalCache()});
-      Object.assign(BS, {fb, db});
+      Object.assign(BS, {fb, db, board:boardFeed(fb, db, render)});
       fb.onSnapshot(fb.doc(db, "hoopsPublic", "_bug"), d => { let b = null; try{ b = d.exists() ? JSON.parse(d.data().j) : null; }catch(e){}
-        BS.bug = b; BS.phase = "live"; full(); render(); }, () => { BS.phase = "error"; render(); });
+        BS.bug = b; BS.phase = "live"; BS.board.want(!!b && b.status === "live" && b.brd === 1, 0); full(); render(); }, () => { BS.phase = "error"; render(); });
+      // The board's clock ticks in place; anything else the board changes redraws the bug.
+      setInterval(() => { if(!BS.board.on()) return; const v = BS.board.view(), k = v ? [v.fresh, v.home, v.vis, v.hf, v.vf, v.q, v.run].join() : "";
+        if(k !== BS.bkey){ BS.bkey = k; render(); return; } const el = document.querySelector(".obug .per .pl"), o = bugOver();
+        if(el && o && o.per && el.textContent !== o.per) el.textContent = o.per; }, 250);
       // A game that's long over goes away by itself.
       setInterval(render, 60000);
     }catch(e){ BS.phase = "error"; render(); }
@@ -5139,6 +5294,9 @@ function bugCard(sn){
       ${order.map(tm => `<tr><td class="l">${esc(tm === "us" ? "GHS" : oppInfo(g.opp, g).abbr)}</td>${per.map(q => `<td>${(R.qs[tm] || [])[q - 1] || 0}</td>`).join("")}<td><b>${R.sc[tm]}</b></td>${st.map(s => `<td>${s[1](T[tm])}</td>`).join("")}</tr>`).join("")}</table>
     <div class="two">${order.map(tm => `<div class="ld"><h4>${esc(tmName(g, tm))} leaders</h4><div>Points: ${bugLead(g, R, tm, "pts")}</div><div>Rebounds: ${bugLead(g, R, tm, "reb")}</div><div>Assists: ${bugLead(g, R, tm, "ast")}</div></div>`).join("")}</div></div>`;
 }
+function bugOver(){ const b = BS.bug; if(!b || !b.sc) return null;
+  const g = {id:b.id, date:b.date, team:b.team, usName:b.usName, opp:b.opp, oi:b.oi, ha:b.ha, quarters:b.quarters, status:b.status};
+  return boardOver(g, {q:b.q, brk:!!b.brk, sc:b.sc, poss:b.poss}, b, BS.board && BS.board.view()); }
 function viewBug(){
   const k = Math.min(innerWidth / 1920, innerHeight / 1080), wrap = h => `<div class="ostage${BS.q.has("top") ? " top" : ""}" style="transform:scale(${k})">${h}</div>`;
   const b = BS.bug; if(!b || !b.sc || (BS.gone && BS.gid === b.id)) return wrap("");
@@ -5150,11 +5308,13 @@ function viewBug(){
   const half = !fin && b.brk && nowLabel(g, R) === "HALFTIME", sn = BS.full;
   if((fin || half) && BS.q.get("card") !== "off" && sn && sn.id === b.id && sn.box && (fin ? sn.status === "final" || (sn.brk && sn.q > Q && sn.sc.us !== sn.sc.them) : sn.brk && sn.q === b.q))
     return wrap(bugCard(fin ? {...sn, status:"final"} : sn));
-  const ha = homeAway(g), lbl = fin ? "FINAL" : nowLabel(g, R).replace("HALFTIME", "HALF");
+  // The gym scoreboard's score, fouls and running clock while it's this game's; the book's (unofficial) when its feed is lost.
+  const ov = fin ? {sc:b.sc, tf:b.tf, bonus:b.bonus, per:null, tag:""} : bugOver();
+  const ha = homeAway(g), lbl = fin ? "FINAL" : ov.per || nowLabel(g, R).replace("HALFTIME", "HALF");
   const tm = t => { const n = (b.tol[t] || {})[60] + (b.tol[t] || {})[30] || 0;
-    return `<div class="tm" style="${tvars(g, t)}"><div class="nm"><b class="ab">${esc(t === "us" ? "GHS" : oppInfo(g.opp, g).abbr)}</b>${fin ? "" : `<span class="sub"><span class="dots" title="Timeouts left">${"<i></i>".repeat(Math.max(0, Math.min(6, n)))}</span>${b.tf[t]} FOULS${b.bonus[t] ? ` <i class="bon">BONUS</i>` : ""}</span>`}</div><b class="sc">${b.sc[t]}</b></div>`; };
+    return `<div class="tm" style="${tvars(g, t)}"><div class="nm"><b class="ab">${esc(t === "us" ? "GHS" : oppInfo(g.opp, g).abbr)}</b>${fin ? "" : `<span class="sub"><span class="dots" title="Timeouts left">${"<i></i>".repeat(Math.max(0, Math.min(6, n)))}</span>${ov.tf[t]} FOULS${ov.bonus[t] ? ` <i class="bon">BONUS</i>` : ""}</span>`}</div><b class="sc">${ov.sc[t]}</b></div>`; };
   const arrow = fin || !b.poss ? "" : b.poss === ha.away ? "◀" : "▶";
-  return wrap(`<div class="obug">${tm(ha.away)}<div class="per">${esc(lbl)}${arrow ? `<small>${arrow}</small>` : ""}</div>${tm(ha.home)}</div>`);
+  return wrap(`<div class="obug">${tm(ha.away)}<div class="per${ov.per ? " clk" : ""}"><span class="pl">${esc(lbl)}</span>${ov.tag === "unofficial" ? `<small class="unof">UNOFFICIAL</small>` : arrow ? `<small>${arrow}</small>` : ""}</div>${tm(ha.home)}</div>`);
 }
 function pubRowName(r){ return `${esc(r.usName || (r.team === "girls" ? "Lady Cats" : "Bobcats"))} ${r.ha === "Away" ? "at" : "vs"} ${esc(r.opp)}`; }
 // Each team's leader in one stat, ties named ("Wing, Post 12").
@@ -5165,6 +5325,140 @@ function leadCard(g, R, k, lbl){
     const names = who.slice(0, 3).map(p => p.name ? pShort(p) : "#" + p.num).join(", ") + (who.length > 3 ? " +" + (who.length - 3) : "");
     return `<div class="lr" style="${tvars(g, tm)}"><b>${top || "–"}</b><span>${top ? esc(names) : g.status === "final" ? "None" : "Nobody yet"}<small>${esc(tmName(g, tm))}</small></span></div>`; };
   return `<div class="card"><div class="kicker">${lbl}</div>${row(sd.left)}${row(sd.right)}</div>`;
+}
+/* ---------- Gamecast: the fan page's shot chart, game flow, player cards, preview, recap and season stats ---------- */
+// The scoring plays for the flow chart: [period, clock left (-1 with none), us, them], the score after each one.
+function flowPts(g, R){
+  return R.plays.filter(p => !p.void && p.scored).map(p => { const s = gcIn(g, p.e, p.q); return [p.q, s == null ? -1 : Math.round(s * 10) / 10, p.sc.us, p.sc.them]; });
+}
+// Game flow: Greenbrier's lead (up) or deficit (down) over the game clock, each team's biggest lead marked.
+function flowSvg(g, sn){
+  const fw = sn.fw || []; if(fw.length < 2) return "";
+  const Q = g.quarters || 4, ql = (sn.ql || [480, 240])[0], ol = (sn.ql || [480, 240])[1], len = q => q <= Q ? ql : ol;
+  const nq = Math.max(Q, sn.q || 1, ...fw.map(f => f[0])), st = q => { let t = 0; for(let i = 1; i < q; i++) t += len(i); return t; }, T = st(nq + 1);
+  // A period scored without the board's clock spreads its baskets evenly through it.
+  const xs = []; for(let q = 1; q <= nq; q++){ const ps = []; fw.forEach((f, i) => { if(f[0] === q) ps.push(i); }); const clk = ps.every(i => fw[i][1] >= 0);
+    ps.forEach((i, k) => { xs[i] = st(q) + (clk ? Math.max(0, Math.min(len(q), len(q) - fw[i][1])) : len(q) * (k + 1) / (ps.length + 1)); }); }
+  const W = 600, H = 190, top = 14, mid = H / 2, d = fw.map(f => f[2] - f[3]), M = Math.max(5, ...d.map(Math.abs));
+  const X = t => (t / T * W).toFixed(1), Y = v => (mid - v / M * (mid - top)).toFixed(1);
+  const endT = sn.status === "final" ? T : Math.max(xs[xs.length - 1], st(sn.q || 1));
+  let line = `M0 ${mid}`; fw.forEach((f, i) => { line += ` H${X(xs[i])} V${Y(d[i])}`; }); line += ` H${X(endT)}`;
+  const area = line + ` V${mid} Z`, us = teamInk(g, "us"), th = teamInk(g, "them"), ab = (g.oi && g.oi.abbr) || oppInfo(g.opp, g).abbr;
+  const grid = []; for(let q = 1; q <= nq; q++){ const x = X(st(q) + len(q) / 2); if(q > 1) grid.push(`<line x1="${X(st(q))}" y1="0" x2="${X(st(q))}" y2="${H}" class="fq"/>`); grid.push(`<text x="${x}" y="${H - 3}" text-anchor="middle" class="fl">${esc(perLabel(g, q))}</text>`); }
+  const mark = (i, tm) => i < 0 || !d[i] ? "" : `<circle cx="${X(xs[i])}" cy="${Y(d[i])}" r="4.5" fill="${(tm === "us" ? us : th).fill}" stroke="#fff" stroke-width="1.5"/><text x="${Math.min(W - 18, Math.max(18, +X(xs[i])))}" y="${+Y(d[i]) + (tm === "us" ? -8 : 16)}" text-anchor="middle" class="fv">${tm === "us" ? "GHS" : esc(ab)} +${Math.abs(d[i])}</text>`;
+  const hi = d.indexOf(Math.max(...d)), lo = d.indexOf(Math.min(...d));
+  return `<svg class="flow" viewBox="0 0 ${W} ${H}" role="img" aria-label="Game flow: Greenbrier's lead over the game"><defs><clipPath id="fwu"><rect x="0" y="0" width="${W}" height="${mid}"/></clipPath><clipPath id="fwt"><rect x="0" y="${mid}" width="${W}" height="${mid}"/></clipPath></defs>
+    ${grid.join("")}<path d="${area}" fill="${us.fill}" fill-opacity=".35" clip-path="url(#fwu)"/><path d="${area}" fill="${th.fill}" fill-opacity=".35" clip-path="url(#fwt)"/>
+    <line x1="0" y1="${mid}" x2="${W}" y2="${mid}" class="fz"/><path d="${line}" fill="none" class="fln"/>${d[hi] > 0 ? mark(hi, "us") : ""}${d[lo] < 0 ? mark(lo, "them") : ""}
+    <text x="4" y="12" class="fl">GHS ahead</text><text x="4" y="${H - 16}" class="fl">${esc(ab)} ahead</text></svg>`;
+}
+function flowCard(g, R, sn){
+  const s = flowSvg(g, sn); if(!s) return "";
+  const fl = sn.fl || {}, run = fl.run && fl.run.a >= 6 ? `${tmName(g, fl.run.tm)} on a ${fl.run.a}-${fl.run.b} run` : "";
+  return `<div class="card" id="pubflow"><h3 style="font-size:22px;margin-bottom:4px">Game flow</h3>${s}<p class="small" style="margin:4px 0 0">${fl.lc || 0} lead change${fl.lc === 1 ? "" : "s"} · tied ${fl.ties || 0} time${fl.ties === 1 ? "" : "s"}${run ? " · <b>" + esc(run) + "</b>" : ""}</p></div>`;
+}
+// A shot's line for the chart's hover and the player card.
+function shotWords(g, s){ const p = s.e.pid ? player(g, s.e.tm, s.e.pid) : null, who = p ? "#" + p.num + (p.name ? " " + p.name : "") : tmName(g, s.e.tm);
+  return `${who}: ${s.e.m ? "made" : "missed"} ${s.e.p === 3 ? "3" : "2"}${shotFar(s.e)}, ${perLabel(g, s.q)}`; }
+// Shooting from the shots that have a spot: "12-30 (40%) · 3PT 3-10 · Paint 8-12".
+function shotLine(ss){ const m = ss.filter(s => s.e.m), t = ss.filter(s => s.e.p === 3), pt = ss.filter(s => inPaint(s.e));
+  return `${m.length}-${ss.length} (${pct(m.length, ss.length)})${t.length ? ` · 3PT ${t.filter(s => s.e.m).length}-${t.length}` : ""}${pt.length ? ` · Paint ${pt.filter(s => s.e.m).length}-${pt.length}` : ""}`; }
+function pubShots(g, R){
+  const all = R.shots.filter(s => s.e.x != null); if(!all.length) return "";
+  const Q = g.quarters || 4, lq = Math.max(...R.shots.map(s => s.q), R.q || 1), ha = homeAway(g);
+  const fq = ui.pubShQ || "", ftm = ui.pubShTm || "", fp = ui.pubShP || "";
+  const inQ = q => !fq ? true : fq === "h1" ? q <= Q / 2 : fq === "h2" ? q > Q / 2 && q <= Q : fq === "ot" ? q > Q : q === +fq;
+  const pool = all.filter(s => (!ftm || s.e.tm === ftm) && inQ(s.q)), shown = pool.filter(s => !fp || s.e.tm + "|" + s.e.pid === fp);
+  const opt = (v, l, cur) => `<option value="${v}"${v === cur ? " selected" : ""}>${esc(l)}</option>`;
+  const qs = [["", "Whole game"], ["h1", "1st half"], ["h2", "2nd half"]]; for(let q = 1; q <= Math.min(lq, Q); q++) qs.push([String(q), perLabel(g, q)]); if(lq > Q) qs.push(["ot", "Overtime"]);
+  const who = {}; all.filter(s => (!ftm || s.e.tm === ftm) && s.e.pid).forEach(s => { const k = s.e.tm + "|" + s.e.pid; if(!who[k]){ const p = player(g, s.e.tm, s.e.pid); if(p) who[k] = (ftm ? "" : (s.e.tm === "us" ? "GHS" : (g.oi && g.oi.abbr) || oppInfo(g.opp, g).abbr) + " ") + "#" + p.num + (p.name ? " " + p.name : ""); } });
+  const sum = ["us", "them"].filter(tm => !ftm || ftm === tm).map(tm => { const ss = shown.filter(s => s.e.tm === tm); return ss.length ? `<div style="${tvars(g, tm)}"><b style="color:var(--tl,var(--green))">${esc(tmName(g, tm))}</b> ${shotLine(ss)}</div>` : ""; }).join("");
+  return `<div class="card" id="pubshots"><h3 style="font-size:22px;margin-bottom:4px">Shot chart</h3>
+    <div class="row shf"><select data-sel="pubShTm" aria-label="Team">${opt("", "Both teams", ftm)}${opt(ha.home, tmName(g, ha.home), ftm)}${opt(ha.away, tmName(g, ha.away), ftm)}</select><select data-sel="pubShQ" aria-label="Period">${qs.map(([v, l]) => opt(v, l, fq)).join("")}</select><select data-sel="pubShP" aria-label="Player">${opt("", "Every player", fp)}${Object.entries(who).sort((a, b) => a[1].localeCompare(b[1], undefined, {numeric:true})).map(([k, l]) => opt(k, l, fp)).join("")}</select></div>
+    <div class="shcourt">${courtSvg(shown.map(s => ({e:s.e, t:shotWords(g, s)})), "", g, ftm || null)}</div>
+    <div class="small shsum">${sum || "No shots with a spot for this pick."}<div>● made · ✕ missed. Only shots the stat keeper put on the chart.</div></div></div>`;
+}
+// Tap a name in the fan box score: tonight's line, the shots, the plays, and (ours) the season.
+function pubPlayerSheet(tm, i){
+  const sn = PS.snap[PS.gid]; if(!sn) return; const {g, R} = pubGame(sn), pid = tm + i, p = player(g, tm, pid); if(!p) return;
+  const ln = R.box[tm][pid] || LINE(), ss = R.shots.filter(s => s.e.tm === tm && s.e.pid === pid && s.e.x != null);
+  const plays = sn.plays.filter(x => x[5] === tm && x[8] === +i).reverse();
+  const stats = tm === "us" && PS.stats && PS.stats.t && PS.stats.t[g.team], real = tm === "us" && sn.pk ? sn.pk[+i] : null;
+  const sr = stats && real ? stats.p.find(r => r[0] === real) : null, per = (v, n) => n ? (v / n).toFixed(1) : "–";
+  if(tm === "us" && !PS.stats) PubRead.stats();
+  const shoot = ln.po ? `FG ${ln.fgm} made · FT ${ln.ftm} made` : `FG ${ln.fgm}-${ln.fga} · 3PT ${ln.tpm}-${ln.tpa} · FT ${ln.ftm}-${ln.fta}`;
+  openSheet({wide:true, html:() => `<div style="${tvars(g, tm)}"><div class="kicker">${esc(tmName(g, tm))}</div><h3>#${esc(p.num)} ${esc(p.name || "")}</h3></div>
+    <div class="pcl"><div><b>${ln.pts}</b>PTS</div><div><b>${ln.oreb + ln.dreb}</b>REB</div><div><b>${ln.ast}</b>AST</div><div><b>${ln.stl}</b>STL</div><div><b>${ln.blk}</b>BLK</div><div><b>${ln.to}</b>TO</div><div><b>${ln.pf}</b>PF</div></div>
+    <p class="small" style="margin:6px 0">${shoot}</p>
+    ${sr ? `<p style="margin:6px 0"><b>Season (${sr[3]} game${sr[3] === 1 ? "" : "s"}):</b> ${per(sr[4], sr[3])} ppg · ${per(sr[5], sr[3])} rpg · ${per(sr[6], sr[3])} apg</p>` : ""}
+    ${ss.length ? `<div class="shcourt sm">${courtSvg(ss.map(s => ({e:s.e, t:shotWords(g, s)})), "", g, tm)}</div><p class="small" style="margin:2px 0 6px">${shotLine(ss)}</p>` : ""}
+    ${plays.length ? `<h3 style="font-size:18px;margin:8px 0 2px">${sn.more ? "Recent plays" : "Plays"}</h3><ul class="plays">${plays.map(x => `<li class="${x[4] ? "score" : ""}"><span class="pq">${esc(perLabel(g, x[0]))}${x[7] ? `<span class="gcl">${esc(x[7])}</span>` : ""}</span><span class="pt">${x[4] ? "<b>" + esc(unent(x[3])) + "</b>" : esc(unent(x[3]))}</span></li>`).join("")}</ul>` : ""}
+    <div class="row"><button class="btn" data-close>Close</button></div>`});
+}
+// The season list's finals, for records and the preview.
+function pubRec(rows, team, f){ let w = 0, l = 0; rows.forEach(([, r]) => { if(r.team !== team || r.off || r.status !== "final" || (f && !f(r))) return; (r.ff ? r.ff === "W" : r.us > r.them) ? w++ : l++; }); return [w, l]; }
+function pubStreak(rows, team){ const fs = rows.filter(([, r]) => r.team === team && !r.off && r.status === "final").map(([, r]) => r.ff ? r.ff === "W" : r.us > r.them); if(!fs.length) return "";
+  const last = fs[fs.length - 1]; let n = 0; for(let i = fs.length - 1; i >= 0 && fs[i] === last; i--) n++; return n >= 2 ? `${last ? "Won" : "Lost"} ${n} straight` : ""; }
+function pubLeaders(team){
+  const t = PS.stats && PS.stats.t && PS.stats.t[team]; if(!t || !t.p.length) return "";
+  const best = (k, lbl) => { const r = t.p.filter(x => x[3]).sort((a, b) => b[k] / b[3] - a[k] / a[3])[0]; return r && r[k] ? `<div class="lr"><b>${(r[k] / r[3]).toFixed(1)}</b><span>${esc(r[2] || "#" + r[1])}<small>${lbl}</small></span></div>` : ""; };
+  const h = best(4, "points a game") + best(5, "rebounds a game") + best(6, "assists a game");
+  return h ? `<div class="card"><div class="kicker">Season leaders</div>${h}</div>` : "";
+}
+function pubPre(row, rows){
+  if(row.off || row.nb || row.status !== "pre") return "";
+  if(!PS.stats) PubRead.stats();
+  const [w, l] = pubRec(rows, row.team), [hw, hl] = pubRec(rows, row.team, r => r.ha === row.ha), [dw, dl] = pubRec(rows, row.team, r => r.district);
+  const streak = pubStreak(rows, row.team), last = rows.filter(([, r]) => r.team === row.team && r.status === "final" && !r.off && !r.nb).pop();
+  const met = rows.filter(([, r]) => r.team === row.team && r.opp === row.opp && r.status === "final" && !r.off && r.date < row.date).pop();
+  const res = r => `${(r.ff ? r.ff === "W" : r.us > r.them) ? "W" : "L"}${r.us + r.them ? " " + r.us + "-" + r.them : ""}`;
+  let tip = ""; if(row.date === pubToday() && row.time){ const [hh, mm] = row.time.split(":").map(Number), t = new Date(); t.setHours(hh, mm, 0, 0); const m = Math.round((t - Date.now()) / 60000);
+    tip = m > 90 ? `Tip-off in about ${Math.round(m / 60)} hours` : m > 0 ? `Tip-off in ${m} minute${m === 1 ? "" : "s"}` : "Tip-off any minute"; }
+  const facts = [w + l ? `<b>${esc(row.usName || "")} ${w}-${l}</b>${dw + dl ? ` · District ${dw}-${dl}` : ""}${hw + hl ? ` · ${row.ha} ${hw}-${hl}` : ""}` : row.rec ? `<b>${esc(row.usName || "")} ${esc(row.rec)}</b>` : "",
+    streak, last ? `Last time out: ${res(last[1])} ${last[1].ha === "Away" ? "at" : "vs"} ${esc(last[1].opp)}` : "", met ? `Met ${esc(fmtDate(met[1].date))}: ${res(met[1])}` : row.lm ? esc(row.lm) : ""].filter(Boolean);
+  return `<div class="card stack"><div class="kicker">Preview${tip ? " · " + tip : ""}</div>${facts.map(f => `<div>${f}</div>`).join("")}<div><button class="btn sm" data-act="pubstats" data-v="${esc(row.team)}">Season stats ›</button></div></div>${pubLeaders(row.team)}`;
+}
+// At the final: a few sentences written from the numbers.
+function pubRecap(g, R, sn, rows){
+  const sc = sn.sc, won = sc.us > sc.them, W = won ? "us" : "them", L = OTHER(W), nm = tm => tm === "us" ? "Greenbrier" : g.opp, Q = g.quarters || 4;
+  if(sc.us === sc.them) return "";
+  const where = g.ha === "Home" ? " at home" : g.ha === "Away" ? " on the road" : "", day = (() => { try{ return " " + new Date(g.date + "T12:00:00").toLocaleDateString(undefined, {weekday:"long"}); }catch(e){ return ""; } })();
+  const lq = lastQ(R) || 1, ot = lq > Q ? (lq - Q > 1 ? ` in ${lq - Q} overtimes` : " in overtime") : "";
+  const s = [`Greenbrier ${won ? "beat" : "fell to"} ${g.opp} ${Math.max(sc.us, sc.them)}-${Math.min(sc.us, sc.them)}${ot}${where}${day}${g.district ? " in a district game" : ""}.`];
+  // The period the winner pulled away in, if it was a clear one.
+  const qd = []; for(let q = 1; q <= Math.min(lq, Q); q++) qd.push([q, ((R.qs[W] || [])[q - 1] || 0) - ((R.qs[L] || [])[q - 1] || 0)]);
+  const bq = qd.sort((a, b) => b[1] - a[1])[0], fl = sn.fl || {big:{}};
+  if(fl.big && !fl.big[L] && !ot) s.push(`${nm(W)} never trailed and led by as many as ${fl.big[W]}.`);
+  else if(fl.big && fl.big[L] >= 8) s.push(`${nm(W)} came back from ${fl.big[L]} down.`);
+  else if((fl.lc || 0) >= 5) s.push(`The lead changed hands ${fl.lc} times.`);
+  if(bq && bq[1] >= 6) s.push(`The ${["first", "second", "third", "fourth"][bq[0] - 1] || perLabel(g, bq[0])} quarter decided it: ${nm(W)} outscored ${nm(L)} ${(R.qs[W] || [])[bq[0] - 1] || 0}-${(R.qs[L] || [])[bq[0] - 1] || 0}.`);
+  const tops = tm => Object.entries(R.box[tm]).map(([pid, ln]) => [player(g, tm, pid), ln]).filter(([p, ln]) => p && ln.pts).sort((a, b) => b[1].pts - a[1].pts);
+  const who = p => p.name || "No. " + p.num, extra = ln => { const r = ln.oreb + ln.dreb, a = []; if(r >= 5) a.push(r + " rebounds"); if(ln.ast >= 4) a.push(ln.ast + " assists"); if(ln.stl >= 4) a.push(ln.stl + " steals"); return a.length ? " and " + a.join(" and ") : ""; };
+  const tw = tops(W), tl = tops(L);
+  if(tw[0]) s.push(`${who(tw[0][0])} led ${nm(W)} with ${tw[0][1].pts} points${extra(tw[0][1])}${tw[1] && tw[1][1].pts >= 8 ? `, and ${who(tw[1][0])} added ${tw[1][1].pts}` : ""}.`);
+  if(tl[0]) s.push(`${who(tl[0][0])} scored ${tl[0][1].pts} for ${nm(L)}.`);
+  const T = sumLines(Object.values(R.box.us).concat([R.team.us]));
+  if(!T.po && T.fga >= 10) s.push(`Greenbrier shot ${pct(T.fgm, T.fga)} from the field (${T.fgm} of ${T.fga})${T.tpa ? ` and made ${T.tpm} three${T.tpm === 1 ? "" : "s"}` : ""}.`);
+  const [w, l] = pubRec(rows, g.team), [dw, dl] = pubRec(rows, g.team, r => r.district);
+  if(w + l) s.push(`The ${usName(g)} ${won ? "improve" : "fall"} to ${w}-${l}${g.district && dw + dl ? ` (${dw}-${dl} in the district)` : ""}.`);
+  return `<div class="card" id="pubrecap"><div class="kicker">Recap${sn.rv === "review" ? " · numbers still being checked" : ""}</div><p style="margin:4px 0 0;font-size:17px;line-height:1.45">${esc(s.join(" "))}</p></div>`;
+}
+// The season stats page: our players' averages from the finals (hoopsPublic/_stats, read once a visit).
+const STCOLS = [["GP", 3], ["PTS", 4], ["REB", 5], ["AST", 6], ["STL", 7], ["BLK", 8], ["FG%", "fg"], ["3P%", "tp"], ["FT%", "ft"]];
+function viewStats(rows){
+  const s = PS.stats, team = ui.pubStT || (PS.season[PS.gid] || {}).team || "boys";
+  const head = `<div class="row" style="justify-content:space-between;margin-top:8px"><button class="btn sm" data-act="pubstats" data-v="">‹ Back to the game</button><div class="row" style="gap:6px">${["girls", "boys"].map(t => `<button class="btn sm" aria-pressed="${t === team}" data-act="pubstt" data-v="${t}">${t === "girls" ? "Girls" : "Boys"}</button>`).join("")}</div></div>`;
+  if(!s){ PubRead.stats(); return head + `<div class="card" style="margin-top:10px">${PS.statsErr ? "Season stats aren't available right now." : "Loading the season stats…"}</div>`; }
+  const t = s.t && s.t[team]; if(!t || !t.p.length) return head + `<div class="card" style="margin-top:10px">No finished games with stats yet.</div>`;
+  const K = ui.pubStK || 4, val = (r, k) => k === "fg" ? (r[12] ? r[11] / r[12] : -1) : k === "tp" ? (r[14] ? r[13] / r[14] : -1) : k === "ft" ? (r[16] ? r[15] / r[16] : -1) : k === 3 ? r[3] : r[3] ? r[k] / r[3] : 0;
+  const cell = (r, k) => k === "fg" ? pct(r[11], r[12]) : k === "tp" ? pct(r[13], r[14]) : k === "ft" ? pct(r[15], r[16]) : k === 3 ? r[3] : r[3] ? (r[k] / r[3]).toFixed(1) : "–";
+  const ps = t.p.slice().sort((a, b) => val(b, K) - val(a, K) || (parseInt(a[1], 10) || 0) - (parseInt(b[1], 10) || 0));
+  const [w, l] = pubRec(rows, team), fin = rows.filter(([, r]) => r.team === team && r.status === "final" && !r.off && !r.nb && !r.ff), n = fin.length;
+  const ppg = n ? (fin.reduce((a, [, r]) => a + r.us, 0) / n).toFixed(1) : "–", opp = n ? (fin.reduce((a, [, r]) => a + r.them, 0) / n).toFixed(1) : "–";
+  return head + `<div class="card" style="margin-top:10px"><h2>${esc(t.name || (team === "girls" ? "Lady Cats" : "Bobcats"))} season stats</h2><div class="small" style="font-weight:600;margin:2px 0 8px">${w + l ? `${w}-${l} · ` : ""}${ppg} points a game · allowing ${opp}</div>
+    <div class="scroll-x"><table class="sttab"><tr><th class="l">Player</th>${STCOLS.map(([l, k]) => `<th><button class="lnk${k === K ? " on" : ""}" data-act="pubsort" data-v="${k}">${l}</button></th>`).join("")}</tr>
+    ${ps.map(r => `<tr><td class="l">${esc(r[1])} ${esc(r[2] || "")}</td>${STCOLS.map(([, k]) => `<td${k === K ? ' class="on"' : ""}>${cell(r, k)}</td>`).join("")}</tr>`).join("")}</table></div>
+    <p class="small" style="margin:6px 0 0">Per game, from ${t.gp} finished game${t.gp === 1 ? "" : "s"}. Tap a column to sort. Shooting counts only games where misses were kept.</p></div>`;
 }
 function viewPublic(){
   let h = "";
@@ -5178,6 +5472,7 @@ function viewPublic(){
     if(!s && r && PS.delay && r.status === "final" && !r.ff && Date.now() - (r.upd || 0) < PS.delay * 1000) return {...r, status:"live"};
     return s && r ? {...r, status:r.ff ? r.status : s.status, us:s.sc.us, them:s.sc.them} : r; };
   const rows = Object.entries(PS.season).filter(([, r]) => r).map(([id, r]) => [id, ov(id, r)]).sort((a, b) => (a[1].date + a[1].time).localeCompare(b[1].date + b[1].time));
+  if(PS.view === "stats") return viewStats(rows);
   const row = ov(PS.gid, PS.season[PS.gid]), night = row ? rows.filter(([, r]) => r.date === row.date) : [];
   if(night.length > 1) h += `<div class="pubgames">${night.map(([id, r]) => `<button class="btn${id === PS.gid ? " primary" : ""}" data-act="pubpick" data-gid="${id}">${pubRowName(r)}${r.off ? ` · <b>${esc((OFF_WORDS[r.off] || "Off").toUpperCase())}</b>` : r.status === "live" ? ` · <b>LIVE</b>` : r.status === "final" ? (r.nb ? " · Forfeit" : ` · Final ${r.us}-${r.them}`) : r.time ? " · " + esc(fmtTime(r.time)) : ""}</button>`).join("")}</div>`;
   const sn = PS.gid && PS.snap[PS.gid];
@@ -5194,31 +5489,35 @@ function viewPublic(){
   else if(!sn){
     h += `<div class="card stack" style="margin-top:10px"><div class="kicker">${esc(fmtDate(row.date))}${row.time ? " · " + esc(fmtTime(row.time)) : ""}${row.event ? " · " + esc(row.event) : ""}</div><h2>${pubRowName(row)}</h2>
       ${row.rec && !row.off ? `<p class="small" style="margin:0;font-weight:600">${esc(row.usName || "")} ${esc(row.rec)} going in</p>` : ""}
-      <p style="margin:0">${row.off ? `<b>${row.off === "ppd" ? "Postponed. New date to come." : "Cancelled."}</b>` : row.nb ? (row.ff === "W" ? "Won by forfeit. No game was played." : "Lost by forfeit. No game was played.") : row.status === "pre" ? "Live stats start at tip-off. This page updates by itself." : PS.delay ? `Holding the stats ${PS.delay} seconds to match the stream…` : "Loading the box score…"}</p></div>`;
+      <p style="margin:0">${row.off ? `<b>${row.off === "ppd" ? "Postponed. New date to come." : "Cancelled."}</b>` : row.nb ? (row.ff === "W" ? "Won by forfeit. No game was played." : "Lost by forfeit. No game was played.") : row.status === "pre" ? "Live stats start at tip-off. This page updates by itself." : PS.delay ? `Holding the stats ${PS.delay} seconds to match the stream…` : "Loading the box score…"}</p></div>${pubPre(row, rows)}`;
   }else{
-    const {g, R} = pubGame(sn), ha = homeAway(g), fin = sn.status === "final";
+    const {g, R} = pubGame(sn), ha = homeAway(g), fin = sn.status === "final", review = fin && sn.rv === "review";
+    const ov = boardOver(g, R, sn, PS.board && PS.board.view()), Rb = {...R, sc:ov.sc};
     // How old this copy is (the stream delay doesn't count). Mid-period the scorer sends every few seconds of play, so a copy
     // a couple of minutes old means the table's signal (or this phone's) dropped: say so, then fade the score.
     const age = Date.now() - (sn.upd || 0) - PS.delay * 1000, gap = (sn.every || 30) * 1000, old = !fin && !sn.brk && age > 2 * gap + 60000, faded = old && age > 2 * gap + 180000;
     // Under each team: its team fouls in words, the bonus on the team that shoots it, timeouts by length. None of it at the final.
-    const meta = tm => `${sn.tf[tm]} team foul${sn.tf[tm] === 1 ? "" : "s"}<br>Timeouts 60s ${sn.tol[tm][60]} · 30s ${sn.tol[tm][30]}${sn.bonus[tm] ? `<div class="bonus">IN THE BONUS</div>` : ""}`;
+    const meta = tm => `${ov.tf[tm]} team foul${ov.tf[tm] === 1 ? "" : "s"}<br>Timeouts 60s ${sn.tol[tm][60]} · 30s ${sn.tol[tm][30]}${ov.bonus[tm] ? `<div class="bonus">IN THE BONUS</div>` : ""}`;
     // At the final the strip under the board names each team's top scorer instead of the last horn.
     const tops = fin ? [sides(g).left, sides(g).right].map(tm => { const ls = Object.entries(R.box[tm]), m = Math.max(0, ...ls.map(([, l]) => l.pts));
       return m ? ls.filter(([, l]) => l.pts === m).map(([pid]) => player(g, tm, pid)).filter(Boolean).slice(0, 2).map(p => `<b>${esc(p.name ? pShort(p) : "#" + p.num)}</b> ${m}`).join(", ") : ""; }).filter(Boolean) : [];
     const last = sn.plays[sn.plays.length - 1];
-    h += `<div class="ann stack" style="margin-top:8px"><div><div class="bugcap"><span>${esc(fmtDate(g.date))}${g.event ? " · " + esc(g.event) : ""}${g.district ? " · District" : ""}</span></div>
+    h += `<div class="ann stack" style="margin-top:8px"><div><div class="bugcap"><span>${esc(fmtDate(g.date))}${g.event ? " · " + esc(g.event) : ""}${g.district ? " · District" : ""}</span>${ov.tag === "unofficial" ? `<span class="tag solid" title="The gym scoreboard's feed is down: this is the stat keeper's score">Unofficial score</span>` : review ? `<span class="tag">Final · stats under review</span>` : ""}</div>
       ${old ? `<div class="flag" style="margin:0 0 6px"><b>Last update ${esc(agoWords(sn.upd + PS.delay * 1000))}.</b> Waiting on the scorer: the table may have lost signal.</div>` : ""}
-      <div class="pubboard" style="--n:${Math.max(usName(g).length, String(g.opp).length)}">${bug(g, R, {big:true, quiet:faded, name:tm => tm === "us" ? usName(g) : g.opp, sub:tm => tm === "us" ? "Greenbrier" : oppNick(g), meta:fin ? null : meta, per:fin ? "FINAL" : nowLabel(g, R).replace(/^END (REG|OT\d*)$/, () => perLabel(g, R.q) + " NEXT")})}</div>
+      <div class="pubboard" style="--n:${Math.max(usName(g).length, String(g.opp).length)}">${bug(g, Rb, {big:true, quiet:faded && ov.tag !== "board", name:tm => tm === "us" ? usName(g) : g.opp, sub:tm => tm === "us" ? "Greenbrier" : oppNick(g), meta:fin ? null : meta, per:fin ? "FINAL" : ov.per || nowLabel(g, R).replace(/^END (REG|OT\d*)$/, () => perLabel(g, R.q) + " NEXT")})}</div>
       ${fin ? (tops.length ? `<div class="lastplay">Top scorers: ${tops.join(" · ")}</div>` : "") : last ? `<div class="lastplay">${esc(perLabel(g, last[0]))} · ${last[5] ? esc(last[5] === "us" ? "GHS" : (g.oi && g.oi.abbr) || oppInfo(g.opp, g).abbr) + " · " : ""}${esc(unent(last[3]))}</div>` : ""}</div>
-      <div class="row pubjump"><a class="btn sm" href="#pubbox">Box score</a><a class="btn sm" href="#pubplays">Plays</a><button class="btn sm" data-act="pubsched">Schedule</button><button class="btn sm" data-act="pubshare">Share</button></div>
+      <div class="row pubjump"><a class="btn sm" href="#pubbox">Box score</a>${(sn.sh || []).length ? `<a class="btn sm" href="#pubshots">Shots</a>` : ""}<a class="btn sm" href="#pubplays">Plays</a><button class="btn sm" data-act="pubsched">Schedule</button><button class="btn sm" data-act="pubstats" data-v="${esc(g.team)}">Season stats</button><button class="btn sm" data-act="pubshare">Share</button></div>
+      ${fin ? pubRecap(g, R, sn, rows) : ""}
       <div class="linesc">${lineScore(g, R)}</div>
+      ${flowCard(g, R, sn)}
       <div class="lead">${leadCard(g, R, "pts", "Points")}${leadCard(g, R, "reb", "Rebounds")}${leadCard(g, R, "ast", "Assists")}${leadCard(g, R, "stl", "Steals")}</div>
       ${sn.fl ? teamGlance(g, R, sn) : ""}
       <div class="row only-narrow"><button class="btn sm" aria-pressed="${ui.pubTm !== "away"}" data-act="pubtm" data-v="home">${esc(tmName(g, ha.home))}</button><button class="btn sm" aria-pressed="${ui.pubTm === "away"}" data-act="pubtm" data-v="away">${esc(tmName(g, ha.away))}</button></div>
       <div class="ann-cols" id="pubbox"><div class="card fanbox${ui.pubTm === "away" ? " hide-narrow" : ""}">${boxTable(g, R, ha.home, true)}</div><div class="card fanbox${ui.pubTm !== "away" ? " hide-narrow" : ""}">${boxTable(g, R, ha.away, true)}</div></div>${!fin && (R.court.us.size || R.court.them.size) ? `<p class="small" style="margin:-6px 0 0"><i class="onfl"></i>On the floor now</p>` : ""}
+      ${pubShots(g, R)}
       <div class="card" id="pubplays"><h3 style="font-size:22px;margin-bottom:4px">${sn.more ? "Last " + sn.plays.length + " plays" : "Play-by-play"}</h3>${sn.plays.length ? `<ul class="plays">${sn.plays.slice().reverse().map(p => `<li class="${p[4] ? "score" : ""}" style="${p[5] === "them" ? tvars(g, "them") : ""}"><span class="pq">${esc(perLabel(g, p[0]))}${p[7] ? `<span class="gcl">${esc(p[7])}</span>` : ""}${p[6] ? `<small>${esc(new Date(p[6]).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}))}</small>` : ""}</span><span class="ps">${ha.home === "us" ? p[1] + "-" + p[2] : p[2] + "-" + p[1]}</span><span class="pt">${p[5] ? `<span class="ptm">${esc(p[5] === "us" ? "GHS" : (g.oi && g.oi.abbr) || oppInfo(g.opp, g).abbr)}</span> ` : ""}${p[4] ? "<b>" + esc(unent(p[3])) + "</b>" : esc(unent(p[3]))}</span></li>`).join("")}</ul>` : `<p class="small">Plays show up here once the game starts.</p>`}</div>
       ${sn.sponsor ? `<div class="card" style="text-align:center"><div class="kicker">Tonight's game is brought to you by</div><h2 style="margin-top:4px">${esc(sn.sponsor)}</h2></div>` : ""}
-      <p class="pubnote">${fin ? "Final box score." : `Stats update about every ${esc(String(sn.every || 30))} seconds, so they can run a little ahead of or behind the video.${PS.delay ? ` This page holds each update ${PS.delay} seconds to match the stream.` : ""}`} Last update ${esc(new Date(sn.upd).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}))}${fin ? "" : ` (${esc(agoWords(sn.upd))})`}.</p></div>`;
+      <p class="pubnote">${review ? "Final score. The stat keeper is checking the box score against the official book, so player numbers may still change." : fin ? "Final box score." : `${ov.tag === "board" ? "The score, clock and team fouls come straight from the gym scoreboard. " : ov.tag === "unofficial" ? "The gym scoreboard's feed is down, so the score is the stat keeper's until it's back. " : ""}${ov.tag === "board" ? "The box score updates" : "Stats update"} about every ${esc(String(sn.every || 30))} seconds, so they can run a little ahead of or behind the video.${PS.delay ? ` This page holds each update ${PS.delay} seconds to match the stream.` : ""}`} Last update ${esc(new Date(sn.upd).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}))}${fin ? "" : ` (${esc(agoWords(sn.upd))})`}.</p></div>`;
   }
   // The season: results and what's next.
   const today = pubToday(), nextHome = rows.find(([, r]) => r.ha === "Home" && r.status === "pre" && !r.off && r.date > (row ? row.date : today));
@@ -5228,7 +5527,7 @@ function viewPublic(){
     const rec = t => { let w = 0, l = 0; rows.forEach(([, r]) => { if(r.team !== t || r.off || r.status !== "final") return; (r.ff ? r.ff === "W" : r.us > r.them) ? w++ : l++; }); return w + l ? w + "-" + l : ""; };
     const recs = ["girls", "boys"].map(t => { const x = rec(t), r = rows.find(([, y]) => y.team === t); return x && r ? esc(r[1].usName || (t === "girls" ? "Lady Cats" : "Bobcats")) + " " + x : ""; }).filter(Boolean).join(" · ");
     // Two lines a game, no sideways scrolling on a phone; a game with a box score is one big tap target.
-    h += `<details class="card" id="schedule" data-keep="season" style="margin-top:12px"><summary class="disp" style="font-size:22px;cursor:pointer">Season schedule and results</summary>${recs ? `<div class="small" style="margin-top:4px;font-weight:600">${recs}</div>` : ""}<div class="slist">${rows.map(([id, r]) => {
+    h += `<details class="card" id="schedule" data-keep="season" style="margin-top:12px"><summary class="disp" style="font-size:22px;cursor:pointer">Season schedule and results</summary>${recs ? `<div class="small" style="margin-top:4px;font-weight:600">${recs}</div>` : ""}<div class="row" style="gap:6px;margin-top:6px">${["girls", "boys"].filter(t => rows.some(([, r]) => r.team === t)).map(t => `<button class="btn sm" data-act="pubstats" data-v="${t}">${t === "girls" ? "Girls" : "Boys"} season stats ›</button>`).join("")}</div><div class="slist">${rows.map(([id, r]) => {
       const won = r.ff ? r.ff === "W" : r.us > r.them, box = r.status !== "pre" && !r.nb;
       const res = r.off ? `<b>${esc(OFF_WORDS[r.off] || "")}</b>` : r.status === "final" ? `<b class="${won ? "w" : ""}">${won ? "W" : "L"}${r.us + r.them ? " " + r.us + "-" + r.them : ""}${r.ff ? " (forfeit)" : ""}</b>` : r.status === "live" ? `<b>LIVE${PS.snap[id] ? " " + r.us + "-" + r.them : ""}</b>` : r.date < today ? "No live stats" : esc(fmtTime(r.time));
       const inner = `<span class="s1">${esc(fmtDate(r.date))} · ${r.team === "girls" ? "Girls" : "Boys"} · <b>${r.ha === "Away" ? "at" : "vs"} ${esc(r.opp)}</b>${r.district ? ' <span class="tag">District</span>' : ""}</span><span class="s2">${res}${box ? '<span class="small"> · Box score ›</span>' : ""}</span>`;
@@ -5549,7 +5848,7 @@ const Sync = (() => {
       copyOnly(g.id); touch(g); pubQueue(g.id, true); } }
   // A name changes only the copy, not the results row: a fresh upd on a live row would pull fans on the plain link over to
   // that game (pubPick). A stale row is healed by seedSeason.
-  function copyOnly(id){ const g = S.games[id]; if(!g || id in st.pub.seen) return; const R = replay(g); st.pub.seen[id] = g.status + ":" + R.q; if(g.status === "final") st.pub.rowk[id] = "final:" + R.sc.us + "-" + R.sc.them; }
+  function copyOnly(id){ const g = S.games[id]; if(!g || id in st.pub.seen) return; const R = replay(g); st.pub.seen[id] = g.status + ":" + R.q; if(g.status === "final") st.pub.rowk[id] = "final:" + R.sc.us + "-" + R.sc.them + reviewOf(g); }
   /* The score bug on the stream (?bug): one small doc, hoopsPublic/_bug, with the score, the period, fouls, timeouts and the
      arrow. It goes out within a second of any change to those, since the only thing listening is the stream's browser
      source. Only the device scoring a game sends it, and only up to that game's final: a fix to a final made later in the
@@ -5593,9 +5892,9 @@ const Sync = (() => {
       await fb.setDoc(fb.doc(db, "hoopsPublic", id), {j:JSON.stringify(snap), upd:snap.upd, w:g.writer || S.dev});
       if((S.games[id] || {}).rz !== rz) return;   // reset while this was on its way: no season row with the old score
       // The results row changes at each period break and the final, and again when a fix after the final moves the score.
-      const row = seasonRow(g), rk = row.status + ":" + row.us + "-" + row.them;
+      const row = seasonRow(g), rk = row.status + ":" + row.us + "-" + row.them + row.rv;
       const owed = !!(S.pubOwe || {})[id];
-      if((!P.other[id] || owed) && (P.seen[id] !== key || (gameOver(g) && P.rowk[id] !== rk))){ P.seen[id] = key; P.rowk[id] = rk; await fb.setDoc(fb.doc(db, "hoopsPublic", "_season"), {games:{[id]:row}, upd:Date.now()}, {merge:true}); }
+      if((!P.other[id] || owed) && (P.seen[id] !== key || (gameOver(g) && P.rowk[id] !== rk))){ P.seen[id] = key; P.rowk[id] = rk; await fb.setDoc(fb.doc(db, "hoopsPublic", "_season"), {games:{[id]:row}, upd:Date.now()}, {merge:true}); if(row.status === "final") statsSend(); }
       if(owed && S.games[id] && S.games[id].rev === rev){ delete S.pubOwe[id]; save(); paint(); }
     }catch(e){ if(!String((e && e.code) || "").includes("permission")) fail(e); else P.retry[id] = true; }   // refused: another device scores it now, or this one's claim hasn't reached the cloud yet
     finally{ P.busy[id] = false; if(P.again[id]){ P.again[id] = false; pubQueue(id); } else delete P.other[id]; }
@@ -5608,7 +5907,7 @@ const Sync = (() => {
     const {fb, db} = st;
     try{
       const cur = await fb.getDoc(fb.doc(db, "hoopsPublic", "_season")), have = (cur.exists() && cur.data().games) || {}, add = {};
-      const KEYS = ["date","time","team","usName","opp","ha","district","event","off","ff","nb","rec"], diff = (h, r, ks) => ks.some(k => (h[k] ?? "") !== (r[k] ?? "")), has = {};
+      const KEYS = ["date","time","team","usName","opp","ha","district","event","off","ff","nb","rec","lm"], diff = (h, r, ks) => ks.some(k => (h[k] ?? "") !== (r[k] ?? "")), has = {};
       for(const g of Object.values(S.games)){
         if(g.practice) continue;
         const h = have[g.id];
@@ -5627,8 +5926,19 @@ const Sync = (() => {
       for(const [id, [k, rk]] of Object.entries(has)) if(!(id in st.pub.rowk) || id in add){ st.pub.seen[id] = k; st.pub.rowk[id] = rk; }
       // A row that was missing or stale means the game's public copy is too (scored or fixed while sync wasn't up).
       for(const [id, r] of Object.entries(add)) if(r && S.games[id] && S.games[id].status !== "pre") pubQueue(id, true);
-      st.seeded = true;
+      st.seeded = true; statsSend();
     }catch(e){ fail(e); }
+  }
+  // The season stats copy goes out when a final's results row does (and once a session, if the cloud's is different).
+  // Fans read it once a visit, so a write costs nothing until someone opens it.
+  async function statsSend(){
+    if(!live() || !canScore() || S.settings.pub === false || st.statsBusy) return;
+    st.statsBusy = true; const {fb, db} = st;
+    try{
+      if(st.statsJ == null){ const d = await fb.getDoc(fb.doc(db, "hoopsPublic", "_stats")); st.statsJ = d.exists() ? d.data().j : ""; }
+      const j = JSON.stringify(statsSnap()); if(j !== st.statsJ){ await fb.setDoc(fb.doc(db, "hoopsPublic", "_stats"), {j, upd:Date.now()}); st.statsJ = j; }
+    }catch(e){ if(!String((e && e.code) || "").includes("permission")) fail(e); }
+    finally{ st.statsBusy = false; }
   }
   function pubOwed(){ return S.settings.pub !== false && canScore() && Object.keys(S.pubOwe || {}).length > 0; }
   function dirtyTeams(){ st.teamsDirty = true; kick(700); }
@@ -5810,7 +6120,11 @@ const Sync = (() => {
   return {start, live, ready, settled, dirty, reset, owePids, dirtyBooth, dirtyTeams, dirtySay, dirtyBc, dirtyLib, dirtyScript, seedSeason, panel, click, submit,
     phase:() => st.phase, role:() => st.role, uid:() => st.uid,
     // One doc to follow (the gym scoreboard's, Board): its unsubscribe, or null with sync off.
-    watch:(c, id, cb, err) => live() ? st.fb.onSnapshot(st.fb.doc(st.db, c, id), cb, err) : null,
+    // With metadata changes: a doc already in this device's cache comes first from the cache and then again once the
+    // server confirms it, even when it hasn't changed.
+    watch:(c, id, cb, err) => live() ? st.fb.onSnapshot(st.fb.doc(st.db, c, id), {includeMetadataChanges:true}, cb, err) : null,
+    // The board feed came or went for this game: its fan page copy and the bug go out now, not at the next turn.
+    pubSoon:id => { if(S.games[id]) pubQueue(id, true); },
     token:() => st.auth && st.auth.currentUser ? st.auth.currentUser.getIdToken() : Promise.reject(new Error("Sign in to Brier Stats first.")),
     stale:() => st.stale, label:() => (ROLE_NAME[st.role] || "Viewer") + (st.stale ? " · not updating" : boss(st.role) && st.reqs.length ? " · " + st.reqs.length + " waiting" : pubOwed() ? " · updating fan page" : " · live")};
 })();
@@ -5819,26 +6133,33 @@ const Sync = (() => {
    The Mac at the table hears the MP-80 scoreboard's radio (Kevin's receiver), and its relay, firestore_relay.py, signed in
    as a Scorer, keeps this one doc up to date: the board's period, clock, both scores and team fouls. The clock is an
    anchor, cs seconds left at the Mac's time ct (ms), that this iPad counts down itself while run is set, so the relay
-   writes only when something changes, plus every 5 seconds to say it's still there. Only the iPad scoring a home or
-   neutral game listens (Greenbrier is HOME on our board; an away gym's board isn't ours), so each write costs one read.
+   writes only when something changes (and every 30 seconds while the clock runs). Fans' phones and the stream's score
+   bug read it too, so it has no heartbeat: that's hoopsPublic/_boardHb, every 5 seconds, which only this iPad listens
+   to. Only the iPad scoring a home or neutral game listens (Greenbrier is HOME on our board; an away gym's board isn't
+   ours). It tells the fan page and the bug whether the board is this game's (brd in their copies: 1 on the board, 2
+   the feed was lost, so they show the book's score as unofficial).
    Every tap then gets the board's period and clock (e.gc) next to its time of day. With no word for 15 seconds, or the
    relay saying the receiver stopped hearing the board, taps get the time of day only and the Scorer page says the feed
    is lost; a play's clock can be typed in later under Plays. Possession and the board's bonus lamps aren't used: the
    bonus comes from the book's team fouls. */
 const Board = (() => {
   const STALE = 15000;
-  const st = {un:null, gid:null, d:null, got:0, offs:[], err:"", heard:{}, hist:[], since:{us:0, them:0}, was:null, lag:[], mm:null, flag:null, ok:{}, R:null, Rg:null, rev:-1, html:""};
+  const st = {un:null, unH:null, gid:null, d:null, hb:null, got:0, offs:[], err:"", heard:{}, hist:[], since:{us:0, them:0}, was:null, lag:[], mm:null, flag:null, ok:{}, R:null, Rg:null, rev:-1, html:"", pub:0};
   // The game this iPad follows the board for: the one it's scoring, at home or neutral, not over. Before anyone has
   // claimed it (every scorer's iPad opens tonight's game), only while its Scorer page is up.
   const wanted = g => !!g && !g.deleted && g.ha !== "Away" && g.status !== "final" && Sync.live() && canScore() && (g.writer === S.dev || (!g.writer && ui.tab === "desk"));
   function check(){
     const g = PUB || OBS ? null : cur(), gid = wanted(g) ? g.id : null;
     if(gid === st.gid) return;
-    if(st.un){ try{ st.un(); }catch(e){} }
-    Object.assign(st, {un:null, gid, d:null, got:0, offs:[], err:"", hist:[], since:{us:0, them:0}, was:null, mm:null, flag:null, R:null, Rg:null, rev:-1});
-    if(gid) st.un = Sync.watch("hoopsPublic", "_board", heard, e => { st.err = (e && (e.code || e.message)) || "error"; st.d = null; paint(); });
+    // The game just went final with the board still live: its final score is the board's last word.
+    const was = st.gid && S.games[st.gid], d0 = ok() ? st.d : null;
+    if(was && was.status === "final" && d0) setTimeout(() => final(was, d0), 0);
+    for(const k of ["un", "unH"]) if(st[k]){ try{ st[k](); }catch(e){} }
+    Object.assign(st, {un:null, unH:null, gid, d:null, hb:null, got:0, offs:[], err:"", hist:[], since:{us:0, them:0}, was:null, mm:null, flag:null, R:null, Rg:null, rev:-1, pub:0});
+    if(gid){ const err = e => { st.err = (e && (e.code || e.message)) || "error"; st.d = null; paint(); };
+      st.un = Sync.watch("hoopsPublic", "_board", heard, err); st.unH = Sync.watch("hoopsPublic", "_boardHb", beat, err); }
   }
-  const ok = () => { const d = st.d; return !!d && !d.stale && !d.bye && typeof d.cs === "number" && st.got > 0 && Date.now() - st.got < STALE; };
+  const ok = () => { const d = st.d; return !!d && !d.stale && !d.bye && !(st.hb && st.hb.bye) && typeof d.cs === "number" && st.got > 0 && Date.now() - st.got < STALE; };
   // The Mac's clock less this iPad's, once they're far enough apart to matter: the smallest gap between the relay sending
   // and this iPad hearing it (the trip itself is a few tenths, and both normally keep Apple's time).
   const skew = () => { if(st.offs.length < 5) return 0; const m = Math.min(...st.offs); return Math.abs(m) > 1500 ? m : 0; };
@@ -5850,13 +6171,37 @@ const Board = (() => {
     const d = snap.data(), now = Date.now();
     if(!d || d.v !== 1 || (st.d && d.n === st.d.n && d.sent === st.d.sent)) return;
     const prev = st.d; st.d = d; st.err = "";
-    // The doc as it stood when this iPad started listening counts only if it's fresh: a relay that died without saying
-    // goodbye (the Mac lost power) leaves its last write behind. Every one after that is the relay talking now.
-    if(!prev){ const at = d.at && d.at.toMillis ? d.at.toMillis() : 0; st.got = at && Math.abs(now - at) < STALE ? at : 0; }
-    else { st.got = now; if(typeof d.sent === "number"){ st.offs.push(now - d.sent); if(st.offs.length > 30) st.offs.shift(); } }
+    // The doc as it stood when this iPad started listening is the board as it was last written (it can sit for minutes in
+    // a timeout); whether the relay is still there is the heartbeat's to say. Every one after that is the relay now.
+    if(prev) heardAt(now, d.sent);
+    else { const at = d.at && d.at.toMillis ? d.at.toMillis() : 0; if(at && Math.abs(now - at) < STALE) st.got = Math.max(st.got, at); }
+    if(d.bye) st.hb = null;
     if(ok()) st.heard[st.gid] = true;
     if(prev) refit(d, prev);
     paint();
+  }
+  // The heartbeat. The one there when this iPad started listening counts only if it's fresh: a relay that died without
+  // saying goodbye (the Mac lost power) leaves its last one behind.
+  function beat(snap){
+    if(snap.metadata.fromCache || !snap.exists()) return;
+    const h = snap.data(), now = Date.now(); if(!h || h.v !== 1 || (st.hb && h.n === st.hb.n && h.sent === st.hb.sent)) return;
+    const first = !st.hb; st.hb = h;
+    if(first){ const at = h.at && h.at.toMillis ? h.at.toMillis() : 0; if(at && Math.abs(now - at) < STALE) st.got = Math.max(st.got, at); }
+    else heardAt(now, h.sent);
+    if(ok()) st.heard[st.gid] = true;
+    paint();
+  }
+  function heardAt(now, sent){ st.got = now; if(typeof sent === "number"){ st.offs.push(now - sent); if(st.offs.length > 30) st.offs.shift(); } }
+  // What the fan page and the score bug are told about game g: 1 the board is its score and clock, 2 the feed was lost
+  // (they show the book's score, unofficial), 0 no board for this game.
+  const pub = g => !g || g.id !== st.gid || g.status !== "live" ? 0 : ok() ? 1 : lost(g) ? 2 : 0;
+  // The board's score when the game ends (the last horn, or Final tapped with the board still live): the reconcile
+  // checks the book against it. Greenbrier is HOME on the board.
+  function final(g, d0){
+    const d = d0 || (ok() ? st.d : null); if(!g || !d || d.home == null || d.vis == null || g.ha === "Away") return;
+    const b = {us:d.home, them:d.vis, q:Number.isInteger(d.q) ? d.q : null, at:Date.now()};
+    if(g.bfin && g.bfin.us === b.us && g.bfin.them === b.them) return;
+    g.bfin = b; edField(g, ["bfin"]); touch(g);
   }
   // The board's clock right now: its period, seconds left and whether it's running. Null with no live feed.
   function clock(){ if(!ok()) return null; const d = st.d; return {q:Number.isInteger(d.q) ? d.q : null, s:fl(left(d, Date.now())), r:!!d.run}; }
@@ -5923,8 +6268,13 @@ const Board = (() => {
     let h = c ? `<button class="bchip on" data-act="boardinfo" title="The gym scoreboard's clock: every tap gets it">Board <b>${clockText(c.s)}</b>${c.q ? ` ${esc(perLabel(g, c.q))}` : ""}${c.r ? "" : " · stopped"}</button>`
       : lost(g) ? `<button class="bchip lost" data-act="boardinfo" title="Taps get the time of day only until it's back">Scoreboard feed lost</button>`
       : `<button class="bchip" data-act="boardinfo" title="Nothing from the scoreboard Mac yet: taps get the time of day only">No board</button>`;
-    if(f) h += `<button class="bchip bad" data-act="boardinfo">Score check: board ${f.B.us}-${f.B.them}${f.behind ? ", may be behind" : ""}</button>`;
+    if(f) h += `<button class="bchip bad" data-act="boardinfo">${esc(nudge(g, f))}</button>`;
     return h;
+  }
+  // "Board 34, you have 32. Missing a bucket?" for each team the two disagree on.
+  function nudge(g, f){
+    const one = tm => `${tm === "us" ? "GHS" : oppInfo(g.opp, g).abbr}: board ${f.B[tm]}, you have ${f.K[tm]}.${f.behind ? "" : f.K[tm] < f.B[tm] ? " Missing a bucket?" : " Extra one in the book?"}`;
+    return ["us", "them"].filter(tm => f.B[tm] !== f.K[tm]).map(one).join(" ") + (f.behind ? " Board may be behind." : "");
   }
   // Red once the feed has been heard for this game (on this iPad, or in its plays' clocks); grey before.
   const lost = g => !ok() && !!(st.heard[g.id] || g.ev.some(e => e.gc && !e.gc.m && !e.v));
@@ -5935,6 +6285,9 @@ const Board = (() => {
     const g = st.gid && S.games[st.gid]; if(!g) return;
     if(!st.R || st.Rg !== g || st.rev !== g.rev){ st.R = replay(g); st.Rg = g; st.rev = g.rev; }
     st.flag = xcheck(g, st.R); paint();
+    const p = pub(g); if(p !== st.pub){ st.pub = p; Sync.pubSoon(g.id); }
+    // The last horn: the board at 0:00 in the last period (or an overtime), the book's score settled or not.
+    const c = clock(); if(c && !c.r && c.s === 0 && c.q >= (g.quarters || 4) && g.status === "live") final(g);
     // The sheet about the feed redraws when what it says changes; its clock moves in place.
     if(ui.sheet && ui.sheet.board){ if(ui.sheet.key !== sheetKey(g)) renderSheet(); else { const c = clock(), el = document.getElementById("bsclk"); if(c && el) el.textContent = clockText(c.s); } }
   }, 500);
@@ -5957,7 +6310,7 @@ const Board = (() => {
   }
   // The scorer checked: the book is right. Quiet until the board or the book changes.
   function dismiss(){ const g = st.gid && S.games[st.gid]; if(g && st.flag) st.ok[g.id + "/" + st.flag.key] = true; st.flag = null; paint(); closeSheet(); }
-  return {check, stamp, strip, sheet, dismiss, clock, live:ok};
+  return {check, stamp, strip, sheet, dismiss, clock, live:ok, pub};
 })();
 
 /* ---------- boot ---------- */
