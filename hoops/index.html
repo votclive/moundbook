@@ -5126,9 +5126,12 @@ function boardOver(g, R, sn, v){
   if(!sn || sn.status !== "live" || !sn.brd) return book;
   if(sn.brd === 2 || (v && !v.fresh)) return {...book, tag:"unofficial"};
   if(!v) return book;
-  const n = (x, y) => Number.isInteger(x) ? x : y, bon = sn.bon || 5;
-  const sc = {us:n(v.home, R.sc.us), them:n(v.vis, R.sc.them)}, tf = {us:n(v.hf, sn.tf.us), them:n(v.vf, sn.tf.them)};
-  return {sc, tf, bonus:{us:tf.them >= bon, them:tf.us >= bon}, per:R.brk && !v.run ? null : `${perLabel(g, v.q || R.q)} ${clockText(v.s)}`, tag:"board"};
+  // Kevin (0.12.0): each team's score is the higher of the board's and the book's (a board that's behind never takes a
+  // basket back from the fans; one that's ahead is the scorer's to check: Board.xcheck). Team fouls, the bonus and
+  // timeouts are always the book's.
+  const n = (x, y) => Number.isInteger(x) ? Math.max(x, y) : y;
+  const sc = {us:n(v.home, R.sc.us), them:n(v.vis, R.sc.them)};
+  return {sc, tf:sn.tf, bonus:sn.bonus, per:R.brk && !v.run ? null : `${perLabel(g, v.q || R.q)} ${clockText(v.s)}`, tag:"board"};
 }
 
 /* ---------- public page (?live, or /hoops/live/) ----------
@@ -6253,7 +6256,9 @@ const Board = (() => {
     // A team's board score reaching the book's after trailing it: how long the board took.
     for(const tm of ["us", "them"]) if(st.was && st.was[tm] < K[tm] && B[tm] === K[tm] && st.since[tm] && now - st.since[tm] < 120000){ st.lag.push(now - st.since[tm]); if(st.lag.length > 8) st.lag.shift(); }
     st.was = B;
-    if(B.us === K.us && B.them === K.them){ st.mm = null; return null; }
+    // Kevin (0.12.0): only a board that's ahead of the book is flagged (the book missed a basket); a board behind the
+    // book is the board catching up, and fans see the book's score meanwhile (boardOver).
+    if(!(B.us > K.us || B.them > K.them)){ st.mm = null; return null; }
     const key = `${B.us}-${B.them}/${K.us}-${K.them}`;
     if(!st.mm || st.mm.key !== key) st.mm = {key, at:now};
     if(st.ok[g.id + "/" + key]) return null;
