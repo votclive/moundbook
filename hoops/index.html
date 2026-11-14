@@ -5,7 +5,7 @@
 <!-- The page's lock: the only script that may run is the one in this file (named by the SHA-256 of its text) and files
      from this folder (fb.js). Text that turns up in the page from a roster, a game or the cloud can never run as code.
      After ANY edit to the script, run "python3 hoops/stamp.py hoops": with a stale hash the browser runs nothing. -->
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-Gag6a19jyOqIcw4EB/f93SB7zKL/CxGOTHPbba7adaA='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-aLLBrULQXCkcxCzJzB7KxJioMEY+ob05W4upirXmO3g='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#094A28">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -737,6 +737,34 @@ table.rect tr.sub td{background:transparent;padding-top:10px}
   .board,.board *{background:#fff!important;color:#000!important;text-shadow:none!important;border-color:#000!important}
   main{padding:0} .card{border:0;padding:0}
 }
+/* headshots: a round photo beside a player's name (see Faces). Sized in em, so it follows the words it sits next to. */
+.face{display:inline-block;flex:none;width:1.7em;height:1.7em;border-radius:50%;background:#DDE2DD center/cover no-repeat;vertical-align:middle;margin:-.35em .4em -.3em 0;box-shadow:0 0 0 1px rgba(0,0,0,.2);-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.face.none{background:radial-gradient(circle at 50% 38%,#A9B2AC 0 19%,transparent 20%),radial-gradient(ellipse 40% 30% at 50% 100%,#A9B2AC 0 99%,transparent 100%),#E6EAE6;box-shadow:0 0 0 1px rgba(0,0,0,.1)}
+.face.md{width:40px;height:40px;margin:0 10px 0 0}
+.face.lg{width:56px;height:56px;margin:0 12px 0 0}
+.face.xl{width:76px;height:76px;margin:0}
+.pline .face{align-self:center;width:20px;height:20px;margin:0 -3px 0 0}
+.chip .face{width:22px;height:22px;margin:-3px 5px -3px -3px}
+.bench.pk .chip .face{width:20px;height:20px;margin:0 0 0 -2px}
+.plays .face{width:22px;height:22px;margin:-4px 5px -3px 0}
+td .face{width:24px;height:24px;margin:-5px 7px -4px 0}
+.bcname .face{width:26px;height:26px;margin:-4px 7px -3px 0}
+.lead .lr .face{width:24px;height:24px;margin:-4px 5px -3px 0}
+.ldr .face,.lnk .face{width:22px;height:22px;margin:-4px 6px -3px 0}
+.floor td.nm .face{width:30px;height:30px;margin:-6px 8px -5px 0}
+.fu .chip .face{width:26px;height:26px;margin:-4px 4px -4px -4px}
+.ocard .face{width:1.5em;height:1.5em;margin:-.3em .3em -.25em 0}
+.fnw{white-space:nowrap}
+.fhead{display:flex;align-items:center;gap:14px;min-width:0}.fhead>div{min-width:0}
+.fgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;margin-top:12px}
+.fkid{display:grid;grid-template-columns:76px minmax(0,1fr);gap:12px;align-items:center;border:1px solid var(--grey);border-radius:8px;padding:8px}
+.fkid.new{border-color:var(--green);box-shadow:inset 0 0 0 1px var(--green)}
+.fkid b{font-family:var(--f-display);font-weight:800;font-size:18px;line-height:1.1;text-transform:uppercase;overflow-wrap:anywhere}
+.fmeta{display:flex;gap:6px;flex-wrap:wrap;align-items:center;min-height:20px;margin-top:2px}
+.fpic{all:unset;cursor:pointer;border-radius:50%;line-height:0}.fpic:focus-visible{outline:3px solid var(--green);outline-offset:2px}.fpic[disabled]{cursor:default}
+.flost{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px}.flost select{width:auto;max-width:100%}
+.fadj{max-width:420px;margin:0 auto}.fadj canvas{display:block;width:100%;height:auto;border-radius:8px;touch-action:none;cursor:grab;background:#fff}
+.seg{display:flex;gap:4px}
 #nostart{visibility:hidden;animation:nostart 0s linear 5s forwards;margin:24px;font:600 18px/1.4 system-ui,sans-serif}
 @keyframes nostart{to{visibility:visible}}
 </style>
@@ -762,7 +790,7 @@ table.rect tr.sub td{background:transparent;padding-top:10px}
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
 { const n = document.getElementById("nostart"); if(n) n.remove(); }   // the script is running: see #nostart
-const BS_VERSION = "0.16.13";
+const BS_VERSION = "0.17.0";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -863,7 +891,7 @@ function load(){
   }
   else if(mainHasGames) save();   // move an older book to one key per game now, while nothing else is going on
 }
-const LOCAL_SET = ["extra", "chart", "flip"];
+const LOCAL_SET = ["extra", "chart", "flip", "faces"];
 const ADMIN_SET = ["drive", "pub", "pubSec"];   // settings only an Admin changes (the rules check them)
 function cloudSettings(s){ const o = {...s}; LOCAL_SET.forEach(k => delete o[k]); return o; }
 function save(){
@@ -1779,7 +1807,7 @@ function teamCol(g, R, tm, side, hideNarrow){
     return h + `<div class="card stack">${lk ? `<button class="btn primary" data-act="libuse" data-book="1" data-gid="${g.id}">Use the saved ${esc(g.opp)} roster (${lk})</button>` : ""}${prev ? `<button class="btn${lk ? "" : " primary"}" data-act="copythem" data-from="${prev.id}">Use ${esc(g.opp)}'s roster from ${esc(fmtDate(prev.date))} (${prev.them.length})</button>` : ""}<span>No players yet. Tap <b>+</b>${tm === "us" ? ", or paste the roster under Rosters." : " and type their numbers. Several at once works: 2 3 4 12 14. Names are optional."}</span>${tm === "them" && edit ? `<button class="btn" data-act="pastethem">Paste their roster</button>` : ""}</div></section>`; }
   if(lineupMode){
     const pa = ((booth(g.id).start || {})[tm] || []).filter(pid => player(g, tm, pid) && !court.has(pid));
-    return h + `<div class="flag small">Tap players to put them on the floor or take them off. ${court.size} of 5 on.${pa.length && court.size < 5 ? ` <button class="btn sm primary" data-act="lineuppa" data-tm="${tm}">Use the PA's starters: ${pa.map(pid => "#" + esc(player(g, tm, pid).num)).join(" ")}</button>` : ""}</div><div class="bench">${list.map(p => `<button class="chip${court.has(p.pid) ? " at" : ""}" data-act="lineuptap" data-tm="${tm}" data-pid="${p.pid}"><b>${esc(p.num)}</b><span class="nm">${esc(pShort(p))}</span></button>`).join("")}</div></section>`;
+    return h + `<div class="flag small">Tap players to put them on the floor or take them off. ${court.size} of 5 on.${pa.length && court.size < 5 ? ` <button class="btn sm primary" data-act="lineuppa" data-tm="${tm}">Use the PA's starters: ${pa.map(pid => "#" + esc(player(g, tm, pid).num)).join(" ")}</button>` : ""}</div><div class="bench">${list.map(p => `<button class="chip${court.has(p.pid) ? " at" : ""}" data-act="lineuptap" data-tm="${tm}" data-pid="${p.pid}">${face(p)}<b>${esc(p.num)}</b><span class="nm">${esc(pShort(p))}</span></button>`).join("")}</div></section>`;
   }
   if(!court.size){
     if(edit) h += `<div class="flag small no-print">Tap <b>Starters</b> to put the five on the floor. Then this column shows just them, with the bench below.</div>`;
@@ -1791,10 +1819,10 @@ function teamCol(g, R, tm, side, hideNarrow){
   // Where they came from goes under the cards, so both columns' cards start level. "Goes back" only when it does (libFlowOk).
   if(edit && !court.size && tm === "them" && (S.booth[g.id] || {}).lib && list.some(p => p.byPA && libIs(g, p.pid))) h += `<p class="small libnote no-print">These came from the saved ${esc(g.opp)} roster${libFlowOk(g) ? ": a fix goes back into it" : ""}.</p>`;
   if(bench.length) h += `<div class="bench no-print"><span class="kicker">Bench · tap for the table</span>${bench.map(p => { const ln = R.box[tm][p.pid] || LINE(), at = table.includes(p.pid);
-    return `<button class="chip${at ? " at" : ""}${ln.pf >= 5 || ln.tf >= 2 ? " dark" : ""}${fcls(ln)}" data-act="bench" data-tm="${tm}" data-pid="${p.pid}"><b>${esc(p.num)}</b><span class="nm">${esc(pShort(p))}${ln.pts ? " · " + ln.pts : ""}${ln.pf ? " · " + ln.pf + "F" : ""}</span></button>`; }).join("")}</div>`;
+    return `<button class="chip${at ? " at" : ""}${ln.pf >= 5 || ln.tf >= 2 ? " dark" : ""}${fcls(ln)}" data-act="bench" data-tm="${tm}" data-pid="${p.pid}">${face(p)}<b>${esc(p.num)}</b><span class="nm">${esc(pShort(p))}${ln.pts ? " · " + ln.pts : ""}${ln.pf ? " · " + ln.pf + "F" : ""}</span></button>`; }).join("")}</div>`;
   // Subs waiting at the table sit under the bench: a sub reporting never moves the five cards above under the book's finger.
   // Each shows her whole name and her foul color; a full bar packs the bench tighter (benchFit), never past the screen.
-  if(table.length) h += `<div class="table-bar"><span class="kicker">At the table</span><div class="tbl">${table.map(pid => { const p = player(g, tm, pid); return `<button class="chip at${fcls(R.box[tm][pid])}" data-act="tablein" data-tm="${tm}" data-pid="${pid}" ${edit ? "" : "disabled"} title="Check in at the next stoppage"><b>${esc(p.num)}</b>${p.name ? `<span class="nm">${esc(pShort(p))}</span>` : ""}<span class="go">▸ IN</span></button>`; }).join("")}</div><button class="chip skip" data-act="tableclear" data-tm="${tm}">Clear</button></div>`;
+  if(table.length) h += `<div class="table-bar"><span class="kicker">At the table</span><div class="tbl">${table.map(pid => { const p = player(g, tm, pid); return `<button class="chip at${fcls(R.box[tm][pid])}" data-act="tablein" data-tm="${tm}" data-pid="${pid}" ${edit ? "" : "disabled"} title="Check in at the next stoppage">${face(p)}<b>${esc(p.num)}</b>${p.name ? `<span class="nm">${esc(pShort(p))}</span>` : ""}<span class="go">▸ IN</span></button>`; }).join("")}</div><button class="chip skip" data-act="tableclear" data-tm="${tm}">Clear</button></div>`;
   return h + `</section>`;
 }
 // Foul trouble, Kevin's way, the same for the scorer, the PA and Jim (never the fan page): 3 fouls yellow, 4 orange, 5 red.
@@ -1811,7 +1839,7 @@ function pcard(g, R, tm, p, edit, onFloor){
   const ln = R.box[tm][p.pid] || LINE(), fo = ln.pf >= 5 || ln.tf >= 2, dis = edit ? "" : "disabled";
   const B = (k, lbl, cls) => `<button class="${cls || ""}" data-st="${k}" data-tm="${tm}" data-pid="${p.pid}" ${dis}>${lbl}</button>`;
   let h = `<div class="pcard${onFloor ? " on" : ""}${fo ? " fo" : ""}${fcls(ln)}"><button class="pnum" data-act="pmenu" data-tm="${tm}" data-pid="${p.pid}" aria-label="More for #${esc(p.num)}">${esc(p.num)}</button><div>
-    <div class="pline"><b class="fit">${esc(pShort(p) || "#" + p.num)}</b>${foulPill(g, R, ln)}<span>${statLine(ln, true)}</span><span class="pts">${ln.pts}</span></div>`;
+    <div class="pline">${face(p)}<b class="fit">${esc(pShort(p) || "#" + p.num)}</b>${foulPill(g, R, ln)}<span>${statLine(ln, true)}</span><span class="pts">${ln.pts}</span></div>`;
   // Fouled out or ejected and still on the floor: her stat buttons give way to the bench (the ones at the table first), so
   // a missed toast can't put the next plays on her, and one tap brings in the sub. Same height, so no card moves; each sub
   // chip in her foul color, so a sub already at 3 or 4 shows.
@@ -1875,7 +1903,7 @@ function playList(g, R, limit, edit, keep, fix){
   const sd = sides(g);
   return `<ul class="plays">${show.map(p => { const e = p.e;
     const tapFix = limit && fix && !p.void && ["FG","FT","REB","AST","STL","BLK","TO","PF","TF"].includes(e.t);
-    return `<li class="${p.void ? "void" : ""} ${p.scored ? "score" : ""} ${e.t === "NOTE" ? "note" : ""}${tapFix ? " tapfix" : ""}" style="${e.tm === "them" ? tvars(g, "them") : ""}"${tapFix ? ` data-act="fix" data-id="${e.id}" role="button" title="Fix this play"` : ""}><span class="pq">${perLabel(g, p.q)}${playClock(g, e, p, edit && !limit)}${!limit && e.at ? `<small>${esc(new Date(e.at).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}))}</small>` : ""}</span><span class="ps">${p.sc[sd.left]}-${p.sc[sd.right]}</span><span class="pt">${e.tm && e.t !== "PER" && e.t !== "NOTE" ? `<span class="ptm">${esc(e.tm === "us" ? "GHS" : oppInfo(g.opp, g).abbr)}</span> ` : ""}${playText(g, e)}${p.auto ? " (its shot was removed or changed)" : p.void ? " (removed)" : ""}${e.ins ? ' <span class="tag">added later</span>' : ""}</span>
+    return `<li class="${p.void ? "void" : ""} ${p.scored ? "score" : ""} ${e.t === "NOTE" ? "note" : ""}${tapFix ? " tapfix" : ""}" style="${e.tm === "them" ? tvars(g, "them") : ""}"${tapFix ? ` data-act="fix" data-id="${e.id}" role="button" title="Fix this play"` : ""}><span class="pq">${perLabel(g, p.q)}${playClock(g, e, p, edit && !limit)}${!limit && e.at ? `<small>${esc(new Date(e.at).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}))}</small>` : ""}</span><span class="ps">${p.sc[sd.left]}-${p.sc[sd.right]}</span><span class="pt">${e.tm && e.t !== "PER" && e.t !== "NOTE" ? `<span class="ptm">${esc(e.tm === "us" ? "GHS" : oppInfo(g.opp, g).abbr)}</span> ` : ""}${e.tm === "us" && e.pid && e.t !== "NOTE" ? face(e.pid) : ""}${playText(g, e)}${p.auto ? " (its shot was removed or changed)" : p.void ? " (removed)" : ""}${e.ins ? ' <span class="tag">added later</span>' : ""}</span>
       ${edit ? `<span class="row no-print">${!p.void && ["FG","FT","REB","AST","STL","BLK","TO","PF","TF"].includes(e.t) ? `<button class="btn sm" data-act="fix" data-id="${e.id}">Fix</button>` : ""}<button class="btn sm" data-act="voidtog" data-id="${e.id}">${p.void && !p.auto ? "Restore" : "Remove"}</button></span>` : ""}</li>`;
   }).join("")}</ul>`;
 }
@@ -1894,7 +1922,7 @@ function renderFu(){
   const chips = (tm, excl, pool) => {
     const c = R.court[tm], list = sortRoster(roster(g, tm)).filter(p => p.pid !== excl);
     const use = pool || (c.size ? list.filter(p => c.has(p.pid)) : list);
-    return use.map(p => { const out = outNow(tm, p.pid); return `<button class="chip${tm === "them" ? " skip" : ""}${out ? " dark" : ""}" style="${tm === "them" ? "border-color:" + teamInk(g, tm).line : ""}" data-fu="pick" data-tm="${tm}" data-pid="${p.pid}"><b>${esc(p.num)}</b><span class="nm">${esc(pShort(p))}${out ? " · OUT" : ""}</span></button>`; }).join("");
+    return use.map(p => { const out = outNow(tm, p.pid); return `<button class="chip${tm === "them" ? " skip" : ""}${out ? " dark" : ""}" style="${tm === "them" ? "border-color:" + teamInk(g, tm).line : ""}" data-fu="pick" data-tm="${tm}" data-pid="${p.pid}">${face(p)}<b>${esc(p.num)}</b><span class="nm">${esc(pShort(p))}${out ? " · OUT" : ""}</span></button>`; }).join("");
   };
   let h = "";
   // The shot chart takes the whole screen until the spot is tapped: the court as big as the window allows, the shot it's
@@ -2131,7 +2159,7 @@ function playerCard(g, tm, pid){
   const p = paPlayer(g, tm, pid); if(!p) return; const say = sayOf(g, tm, p);
   const R = replay(g), ln = R.box[tm][p.pid] || LINE(), sl = tm === "us" && !g.practice ? seasonLines(g.team)[p.pid] : null;
   const desc = [p.pos, YEAR_WORD[p.grade], htWords(p.ht)].filter(Boolean).join(" · ");
-  openSheet({html:() => `<div style="${tvars(g, tm)}"><div class="kicker">${esc(tmName(g, tm))}</div><h3>#${esc(p.num)} ${esc(p.name || "")}</h3>${desc ? `<div class="small">${esc(desc)}</div>` : ""}</div>
+  openSheet({html:() => `${fhead(p, `<div class="kicker">${esc(tmName(g, tm))}</div><h3>#${esc(p.num)} ${esc(p.name || "")}</h3>${desc ? `<div class="small">${esc(desc)}</div>` : ""}`, ` style="${tvars(g, tm)}"`)}
     ${say ? `<p style="font-size:20px;font-style:italic;margin:8px 0" title="Phonetic spelling">${esc(say)}</p>` : ""}
     <p style="margin:8px 0"><b>Tonight:</b> ${ln.pts} pts · ${ln.pf} foul${ln.pf === 1 ? "" : "s"}${ln.tf ? ` (${ln.tf} technical${ln.tf === 1 ? "" : "s"})` : ""}</p>
     ${sl && sl.g ? `<p style="margin:0 0 8px"><b>Season (${sl.g} games):</b> ${(sl.pts / sl.g).toFixed(1)} ppg</p>` : ""}
@@ -2199,11 +2227,11 @@ function viewAnn(){
     const send = ui.pa && !fin;
     const chipAct = pid => ui.pa ? `data-act="annsaid" data-tm="${tm}" data-pid="${pid}" title="Mark it called once you've announced it (click again to take it back)"` : `data-act="pinfo" data-tm="${tm}" data-pid="${pid}" title="Open the card"`;
     return `<div class="card" style="${tvars(g, tm)}"><div class="tc-head">${badge(g, tm)}<h3>${esc(tmName(g, tm))}${tm === "them" && oppNick(g) ? ` <small>${esc(oppNick(g))}</small>` : ""}</h3><span class="side">${tm === ha.home ? "Home" : "Away"}</span></div>
-      ${table.length ? `<div class="table-bar"><span class="kicker">At the table</span>${ui.pa ? "" : `<span class="small">On the PA mic? Tick the box up top to mark subs called.</span>`}${shown.map(({pid, ids}) => { const p = paPlayer(g, tm, pid), done = ids.some(x => said.includes(x)), say = sayShow(g, tm, p); return `<button class="chip ${done ? "dark" : "at"}${fcls(R.box[tm][pid])}" ${chipAct(ids[0])}><b>${esc(p.num)}</b>${esc(p.name || "")}${done ? " ✓ called" : ""}${say ? `<span class="say">${esc(say)}</span>` : ""}</button>`; }).join("")}</div>` : ""}
+      ${table.length ? `<div class="table-bar"><span class="kicker">At the table</span>${ui.pa ? "" : `<span class="small">On the PA mic? Tick the box up top to mark subs called.</span>`}${shown.map(({pid, ids}) => { const p = paPlayer(g, tm, pid), done = ids.some(x => said.includes(x)), say = sayShow(g, tm, p); return `<button class="chip ${done ? "dark" : "at"}${fcls(R.box[tm][pid])}" ${chipAct(ids[0])}>${face(p)}<b>${esc(p.num)}</b>${esc(p.name || "")}${done ? " ✓ called" : ""}${say ? `<span class="say">${esc(say)}</span>` : ""}</button>`; }).join("")}</div>` : ""}
       ${subs.length ? `<ul class="subs">${subs.map(s => `<li><b>${perLabel(g, s.q)}</b> ${esc(s.txt)}</li>`).join("")}</ul>` : ""}
-      ${floor.length ? `<table class="floor"><tr><th class="l">On the floor</th><th>PTS</th><th>Fouls</th></tr>${floor.map(p => { const ln = R.box[tm][p.pid] || LINE(); return `<tr class="${fcls(ln).trim()}"><td class="nm l" data-act="pinfo" data-tm="${tm}" data-pid="${p.pid}" tabindex="0" role="button" title="Open #${esc(p.num)}'s card">${esc(p.num)} ${esc(p.name || "")}${justIn.has(p.pid) ? ' <span class="tag green">Just in</span>' : ""}${sayShow(g, tm, p) ? `<div class="say">${esc(sayShow(g, tm, p))}</div>` : ""}</td><td>${ln.pts}</td><td>${foulPill(g, R, ln)}</td></tr>`; }).join("")}</table>` : `<p class="small" style="margin:6px 0">The scorer hasn't set a lineup yet.</p>`}
+      ${floor.length ? `<table class="floor"><tr><th class="l">On the floor</th><th>PTS</th><th>Fouls</th></tr>${floor.map(p => { const ln = R.box[tm][p.pid] || LINE(); return `<tr class="${fcls(ln).trim()}"><td class="nm l" data-act="pinfo" data-tm="${tm}" data-pid="${p.pid}" tabindex="0" role="button" title="Open #${esc(p.num)}'s card">${face(p)}${esc(p.num)} ${esc(p.name || "")}${justIn.has(p.pid) ? ' <span class="tag green">Just in</span>' : ""}${sayShow(g, tm, p) ? `<div class="say">${esc(sayShow(g, tm, p))}</div>` : ""}</td><td>${ln.pts}</td><td>${foulPill(g, R, ln)}</td></tr>`; }).join("")}</table>` : `<p class="small" style="margin:6px 0">The scorer hasn't set a lineup yet.</p>`}
       <div class="bench no-print"><span class="kicker full">${send ? `Bench · click a name to send to the table, again to take back · <span style="text-transform:none">ⓘ</span> opens the card` : "Bench · a name opens the card"}</span>${list.filter(p => !c.has(p.pid)).map(p => { const ln = R.box[tm][p.pid] || LINE(), at = table.includes(p.pid), who = "#" + esc(p.num) + (p.name ? " " + esc(p.name) : "");
-        return `<span class="bk"><button class="chip${at ? " at" : ""}${fcls(ln)}" ${send ? `data-act="patable" data-gid="${g.id}" data-tm="${tm}" data-pid="${p.pid}" aria-pressed="${at}" title="${at ? `${who} is at the table. Click to take off` : `Click to send ${who} to the table`}"` : `data-act="pinfo" data-tm="${tm}" data-pid="${p.pid}" title="Open ${who}'s card"`}><b>${esc(p.num)}</b>${esc(pShort(p))}${ln.pts ? " · " + ln.pts : ""}${ln.pf ? " · " + ln.pf + "F" : ""}${sayShow(g, tm, p) ? `<span class="say">${esc(sayShow(g, tm, p))}</span>` : ""}</button><button class="binfo" data-act="pinfo" data-tm="${tm}" data-pid="${p.pid}" title="Open ${who}'s card" aria-label="Open ${who}'s card">ⓘ</button></span>`; }).join("")}</div>
+        return `<span class="bk"><button class="chip${at ? " at" : ""}${fcls(ln)}" ${send ? `data-act="patable" data-gid="${g.id}" data-tm="${tm}" data-pid="${p.pid}" aria-pressed="${at}" title="${at ? `${who} is at the table. Click to take off` : `Click to send ${who} to the table`}"` : `data-act="pinfo" data-tm="${tm}" data-pid="${p.pid}" title="Open ${who}'s card"`}>${face(p)}<b>${esc(p.num)}</b>${esc(pShort(p))}${ln.pts ? " · " + ln.pts : ""}${ln.pf ? " · " + ln.pf + "F" : ""}${sayShow(g, tm, p) ? `<span class="say">${esc(sayShow(g, tm, p))}</span>` : ""}</button><button class="binfo" data-act="pinfo" data-tm="${tm}" data-pid="${p.pid}" title="Open ${who}'s card" aria-label="Open ${who}'s card">ⓘ</button></span>`; }).join("")}</div>
       <div class="row no-print" style="margin-top:6px"><button class="btn sm" data-act="saypick" data-gid="${g.id}" data-tm="${tm}" title="Phonetic spellings for ${esc(tmName(g, tm))}">Phonetics</button></div></div>`;
   };
   const b = booth(g.id);
@@ -2259,7 +2287,7 @@ function bcRow(g, R, tm, p, on, sl, lm){
   const stats = [[ln.oreb + ln.dreb, "reb"], [ln.ast, "ast"], [ln.stl, "stl"], [ln.blk, "blk"], [ln.to, "to"]].filter(x => x[0]).map(x => x.join(" ")).join(" · ");
   const shots = ln.fga || ln.fta || ln.fgm || ln.ftm ? [`FG ${shoot(ln, "fgm", "fga")}`, ln.tpa || ln.tpm ? `3P ${shoot(ln, "tpm", "tpa")}` : "", ln.fta || ln.ftm ? `FT ${shoot(ln, "ftm", "fta")}` : ""].filter(Boolean).join(" · ") : "";
   return `<button class="bcrow${on ? " on" : ""}${ft === "out" ? " fo" : ""}${fcls(ln)}" data-act="bcp" data-tm="${tm}" data-pid="${esc(p.pid)}" title="Notes on #${esc(p.num)}"><span class="pnum">${esc(p.num)}</span>
-    <span class="bcwho">${p.name ? `<span class="bcname">${esc(p.name)}</span>` : ""}${desc ? `<span class="bcdesc">${esc(desc)}</span>` : ""}${say.v ? `<span class="say" title="${say.by === "yours" ? "Your phonetic spelling (only on your page)" : "The PA's phonetic spelling"}">${esc(say.v)}<span class="sayby">${say.by === "yours" ? "Yours" : "PA's"}</span></span>` : ""}${note ? `<span class="bcnote">${esc(note)}</span>` : ""}${stats || shots ? `<span class="bcline">${[stats, shots].filter(Boolean).join(" · ")}</span>` : ""}${s && s.g ? `<span class="bcline">Season: ${[(s.pts / s.g).toFixed(1) + " ppg", s.oreb + s.dreb ? ((s.oreb + s.dreb) / s.g).toFixed(1) + " rpg" : "", s.ast ? (s.ast / s.g).toFixed(1) + " apg" : ""].filter(Boolean).join(" · ")} (${s.g} g)</span>` : ""}${was ? `<span class="bcline">${esc(fmtDate(lm.date))}: ${was.pts} pts${was.oreb + was.dreb ? `, ${was.oreb + was.dreb} reb` : ""}${was.tpm ? `, ${was.tpm} three${was.tpm === 1 ? "" : "s"}` : ""}${was.pf >= 5 ? ", fouled out" : ""}</span>` : ""}</span>
+    <span class="bcwho">${p.name ? `<span class="bcname">${face(p)}${esc(p.name)}</span>` : ""}${desc ? `<span class="bcdesc">${esc(desc)}</span>` : ""}${say.v ? `<span class="say" title="${say.by === "yours" ? "Your phonetic spelling (only on your page)" : "The PA's phonetic spelling"}">${esc(say.v)}<span class="sayby">${say.by === "yours" ? "Yours" : "PA's"}</span></span>` : ""}${note ? `<span class="bcnote">${esc(note)}</span>` : ""}${stats || shots ? `<span class="bcline">${[stats, shots].filter(Boolean).join(" · ")}</span>` : ""}${s && s.g ? `<span class="bcline">Season: ${[(s.pts / s.g).toFixed(1) + " ppg", s.oreb + s.dreb ? ((s.oreb + s.dreb) / s.g).toFixed(1) + " rpg" : "", s.ast ? (s.ast / s.g).toFixed(1) + " apg" : ""].filter(Boolean).join(" · ")} (${s.g} g)</span>` : ""}${was ? `<span class="bcline">${esc(fmtDate(lm.date))}: ${was.pts} pts${was.oreb + was.dreb ? `, ${was.oreb + was.dreb} reb` : ""}${was.tpm ? `, ${was.tpm} three${was.tpm === 1 ? "" : "s"}` : ""}${was.pf >= 5 ? ", fouled out" : ""}</span>` : ""}</span>
     <span class="bcnum">${ln.gp || ln.pts || ln.pf || ln.tf ? `<span class="bcpts">${ln.pts}</span>${ft === "out" ? `<i class="pfp f5" title="${ln.tf >= 2 ? "Ejected" : "Fouled out"}">${ln.tf >= 2 ? "EJ" : "OUT"}</i>` : `<i class="pfp${fcls(ln)}" title="${ln.pf} personal foul${ln.pf === 1 ? "" : "s"}">${ln.pf}F${ln.tf ? " · T" : ""}</i>`}` : ""}</span></button>`;
 }
 // One team's spotting board: the five on the floor first, then the bench, each by number.
@@ -2427,7 +2455,7 @@ function bcBox(g, R, tm){
   const ps = sortRoster(paRoster(g, tm)).filter(p => R.box[tm][p.pid]), tot = sumLines(ps.map(p => R.box[tm][p.pid]).concat([R.team[tm]]));
   const cell = (ln, k, pid) => k === "min" ? (pid ? minCell(M, pid) : minSum(M)) : k === "pf" && foulLvl(ln) ? `<i class="pfp${fcls(ln)}">${ln.pf}</i>` : cellOf(ln, k), live = g.status === "live";
   const row = p => { const ln = R.box[tm][p.pid];
-    return `<tr class="${fcls(ln).trim()}"><td class="l">${live && R.court[tm].has(p.pid) ? '<i class="onf" title="On the floor"></i>' : ""}<span class="pn">${esc(p.num)} ${esc(p.name || "")}</span>${ln.tf >= 2 ? ' <span class="tag solid">EJ</span>' : ln.pf >= 5 ? ' <span class="tag solid">FO</span>' : ""}</td>${cols.map(c => `<td>${cell(ln, c[1], p.pid)}</td>`).join("")}</tr>`; };
+    return `<tr class="${fcls(ln).trim()}"><td class="l">${live && R.court[tm].has(p.pid) ? '<i class="onf" title="On the floor"></i>' : ""}<span class="pn">${face(p, "", tm === "us")}${esc(p.num)} ${esc(p.name || "")}</span>${ln.tf >= 2 ? ' <span class="tag solid">EJ</span>' : ln.pf >= 5 ? ' <span class="tag solid">FO</span>' : ""}</td>${cols.map(c => `<td>${cell(ln, c[1], p.pid)}</td>`).join("")}</tr>`; };
   const t = R.team[tm], pc = k => tot.po ? "–" : k === "fg" ? pct(tot.fgm, tot.fga) : k === "tp" ? pct(tot.tpm, tot.tpa) : k === "ft" ? pct(tot.ftm, tot.fta) : "";
   return `<section class="card bcbox" style="${tvars(g, tm)}"><div class="tc-head">${badge(g, tm)}<h3 class="fit" data-min="14">${esc(tmName(g, tm))}</h3><span class="disp" style="font-size:28px;font-weight:900">${R.sc[tm]}</span></div>
     ${ps.length ? `<div class="scroll-x"><table><tr><th class="l">Player</th>${cols.map(c => `<th${c[1] === "tf" ? ' title="Technical fouls. A player\'s also count in PF; the bench\'s are on the Team row."' : ""}>${c[0]}</th>`).join("")}</tr>${ps.map(row).join("")}
@@ -2441,7 +2469,7 @@ function bcPlayer(g, tm, p){
   const R = replay(g), ln = R.box[tm][p.pid] || LINE(), k = bcKey(g, tm, p), sl = tm === "us" && !g.practice ? seasonLines(g.team)[p.pid] : null;
   const desc = [p.pos, YEAR_WORD[p.grade], htWords(p.ht)].filter(Boolean).join(" · ");
   const say = sayOf(g, tm, p), mine = bcNote(bcSayKey(g, tm, p));
-  openSheet({bc:{k, pid:p.pid, num:p.num}, html:() => `<div style="${tvars(g, tm)}"><div class="kicker">${esc(tmName(g, tm))}</div><h3>#${esc(p.num)} ${esc(p.name || "")}</h3>${desc ? `<div class="small">${esc(desc)}</div>` : ""}</div>
+  openSheet({bc:{k, pid:p.pid, num:p.num}, html:() => `${fhead(p, `<div class="kicker">${esc(tmName(g, tm))}</div><h3>#${esc(p.num)} ${esc(p.name || "")}</h3>${desc ? `<div class="small">${esc(desc)}</div>` : ""}`, ` style="${tvars(g, tm)}"`)}
     <p style="margin:8px 0"><b>Tonight:</b> ${ln.pts} pts${statLine(ln) ? " · " + esc(statLine(ln)) : ""}</p>
     ${sl && sl.g ? `<p style="margin:0 0 8px"><b>Season (${sl.g} games):</b> ${(sl.pts / sl.g).toFixed(1)} ppg · ${((sl.oreb + sl.dreb) / sl.g).toFixed(1)} rpg · ${(sl.ast / sl.g).toFixed(1)} apg · FG ${pct(sl.x.fgm, sl.x.fga)} · 3P ${pct(sl.x.tpm, sl.x.tpa)} · FT ${pct(sl.x.ftm, sl.x.fta)}</p>` : ""}
     <form id="bcpform" class="stack"><label class="fld"><span>Your note${tm === "them" ? ` (stays all season on ${esc(g.opp)}'s #${esc(p.num)})` : " (stays all season)"}</span><textarea name="note" rows="4" placeholder="Committed to Belmont. Goes left every time. 6 away from 1,000 career points.">${esc(bcNote(k))}</textarea></label>
@@ -3420,7 +3448,7 @@ function viewScript(){
     const tile = tm => `<span class="tm" style="${tvars(g, tm)}"><span class="nm fit" data-min="13">${esc(tmName(g, tm))}</span><b>${R.sc[tm]}</b></span>`;
     const fouls = tm => { const n = teamFouls(g, R, tm), on = inBonus(g, R, tm); return `<span class="tfm${on ? " bonus" : ""}" style="${tvars(g, tm)}" title="${esc(tmName(g, tm))}: ${n} team foul${n === 1 ? "" : "s"}${on ? ", in the bonus" : ""}"><i></i>${n}${on ? "<b>BONUS</b>" : ""}</span>`; };
     const table = ["us","them"].flatMap(tm => tableShown(g, tm, R).map(({pid, ids}) => { const p = paPlayer(g, tm, pid), done = ids.some(x => said.includes(x)), say = sayShow(g, tm, p);
-      return `<button class="chip ${done ? "dark" : "at"}${fcls(R.box[tm][pid])}" style="${tvars(g, tm)}" data-act="annsaid" data-gid="${g.id}" data-tm="${tm}" data-pid="${ids[0]}" title="${done ? "Called. Click to take it back" : "Mark it called once you've announced it"}"><b>${esc(p.num)}</b>${esc(p.name || tmName(g, tm))}${done ? " ✓" : " ▸ in"}${say ? `<span class="say">${esc(say)}</span>` : ""}</button>`; }));
+      return `<button class="chip ${done ? "dark" : "at"}${fcls(R.box[tm][pid])}" style="${tvars(g, tm)}" data-act="annsaid" data-gid="${g.id}" data-tm="${tm}" data-pid="${ids[0]}" title="${done ? "Called. Click to take it back" : "Mark it called once you've announced it"}">${face(p)}<b>${esc(p.num)}</b>${esc(p.name || tmName(g, tm))}${done ? " ✓" : " ▸ in"}${say ? `<span class="say">${esc(say)}</span>` : ""}</button>`; }));
     return `<div class="ls-game"><span class="ls-sc">${tile(sd.left)}${tile(sd.right)}</span><span class="tag ${g.status === "live" ? "green" : g.status === "final" ? "solid" : ""}">${g.status === "final" ? "Final" : g.status === "live" ? nowLabel(g, R) : esc(timeWords(g.time) || "Pregame")}</span>
       ${g.status === "live" ? `<span class="lsfl"><span class="kicker">Team fouls</span>${fouls(sd.left)}${fouls(sd.right)}</span>` : ""}${table.length ? `<span class="kicker">At the table</span>${table.join("")}` : ""}</div>`; }).join("")}`;
   h += "\u0001strip\u0001";
@@ -3434,7 +3462,7 @@ function viewScript(){
     const i = infoOf(g), fld = (k, l, ph) => `<label class="fld"><span>${l}</span><input type="text" data-info="${g.id}:${k}" value="${esc(i[k] || "")}" placeholder="${esc(ph)}"></label>`;
     // The scorer's book has a different starting five than the PA picked: say so before the PA introduces the wrong kid.
     const pick = tm => { const st = startersOf(g, tm), bk = bookFive(g, tm), mine = ((booth(g.id).start || {})[tm] || []).map(pid => (paPlayer(g, tm, pid) || {}).pid).filter(Boolean), off = mine.length > 0 && bk.length === 5 && (mine.length !== 5 || bk.some(p => !mine.includes(p)));
-      return `<div style="${tvars(g, tm)}"><div class="row between" style="margin:6px 0 4px"><span class="kicker">${esc(tmName(g, tm))} starters · ${st.length} of 5</span><button class="btn sm" data-act="saypick" data-gid="${g.id}" data-tm="${tm}" title="Phonetic spellings for ${esc(tmName(g, tm))}">Phonetics</button></div>${off ? `<div class="flag" style="margin-bottom:6px"><span>The scorer's book starts ${bk.map(p => "#" + esc((player(g, tm, p) || {}).num)).join(" ")}, so the intro reads those five, not your picks.</span><button class="btn sm primary" data-act="usebook" data-gid="${g.id}" data-tm="${tm}">Use the book's five</button></div>` : ""}<div class="bench" style="margin:0">${sortRoster(paRoster(g, tm)).map(p => `<button class="chip${st.includes(p.pid) ? " at" : ""}" data-act="starter" data-gid="${g.id}" data-tm="${tm}" data-pid="${p.pid}" title="${st.includes(p.pid) ? "Starting. Click to take off" : "Click to start"} #${esc(p.num)}" aria-pressed="${st.includes(p.pid)}"><b>${esc(p.num)}</b>${esc(pShort(p))}</button>`).join("") || `<span class="small">No roster yet${tm === "them" ? ": add their players above, or the scorer adds them on the Scorer screen" : ""}.</span>`}</div></div>`; };
+      return `<div style="${tvars(g, tm)}"><div class="row between" style="margin:6px 0 4px"><span class="kicker">${esc(tmName(g, tm))} starters · ${st.length} of 5</span><button class="btn sm" data-act="saypick" data-gid="${g.id}" data-tm="${tm}" title="Phonetic spellings for ${esc(tmName(g, tm))}">Phonetics</button></div>${off ? `<div class="flag" style="margin-bottom:6px"><span>The scorer's book starts ${bk.map(p => "#" + esc((player(g, tm, p) || {}).num)).join(" ")}, so the intro reads those five, not your picks.</span><button class="btn sm primary" data-act="usebook" data-gid="${g.id}" data-tm="${tm}">Use the book's five</button></div>` : ""}<div class="bench" style="margin:0">${sortRoster(paRoster(g, tm)).map(p => `<button class="chip${st.includes(p.pid) ? " at" : ""}" data-act="starter" data-gid="${g.id}" data-tm="${tm}" data-pid="${p.pid}" title="${st.includes(p.pid) ? "Starting. Click to take off" : "Click to start"} #${esc(p.num)}" aria-pressed="${st.includes(p.pid)}">${face(p)}<b>${esc(p.num)}</b>${esc(pShort(p))}</button>`).join("") || `<span class="small">No roster yet${tm === "them" ? ": add their players above, or the scorer adds them on the Scorer screen" : ""}.</span>`}</div></div>`; };
     return `<div style="border-top:2px solid var(--black);padding-top:8px"><h3 style="font-size:20px">${esc(usName(g))} ${gameTitle(g)}${g.time ? " · " + esc(fmtTime(g.time)) : ""}</h3>
       <div class="infogrid" style="margin-top:6px">${fld("usCoach", "Our head coach (name only)", "Dana Jones")}${fld("oppCoach", "Their head coach (name only)", "Pat Smith")}${fld("usAssistants", "Our assistant coaches", "Sam Lee and Jo Park")}${fld("oppAssistants", "Their assistant coaches", "Chris Day and Lee Fox")}${fld("officials", "Officials", "Bob Lee, Tim Ray and Ann Cole")}${fld("sponsor", "Sponsor", "Greenbrier Pharmacy")}${fld("anthem", "Anthem sung by", "the GHS Chorus")}${fld("record", "Our record before tonight", "12-5, 3-1 district")}</div>
       <label class="fld" style="margin-top:6px"><span>Halftime recognition (read word for word)</span><textarea rows="2" data-info="${g.id}:honors" placeholder="Please welcome our seniors and their families to center court…">${esc(i.honors || "")}</textarea></label>
@@ -3584,7 +3612,7 @@ function boxTable(g, R, tm, fan, pa){
   const ps = sortRoster(roster(g, tm)).filter(p => R.box[tm][p.pid]);
   const tot = sumLines(ps.map(p => R.box[tm][p.pid]).concat([R.team[tm]]));
   return `<div style="${tvars(g, tm)}"><div class="tc-head">${badge(g, tm)}<h3 class="fit" data-min="14">${esc(tmName(g, tm))}</h3><span class="disp" style="font-size:28px;font-weight:900">${R.sc[tm]}</span></div></div><div class="scroll-x"><table><tr><th class="l">Player</th>${cols.map(c => `<th>${c[0]}</th>`).join("")}</tr>
-    ${ps.map(p => { const ln = R.box[tm][p.pid]; return `<tr><td class="l">${fan && g.status === "live" && R.court[tm].has(p.pid) ? '<i class="onfl" title="On the floor"></i>' : ""}<span class="pn">${PUB && fan ? `<button class="pnb" data-act="pubpl" data-tm="${tm}" data-i="${esc(p.pid.slice(tm.length))}">${esc(p.num)} ${esc(p.name)}</button>` : esc(p.num) + " " + esc(p.name)}${ln.tf >= 2 ? ' <span class="tag solid">EJ</span>' : ln.pf >= 5 ? ' <span class="tag solid">FO</span>' : ""}</span></td>${cols.map(c => `<td>${cellOf(ln, c[1], p.pid)}</td>`).join("")}</tr>`; }).join("")}
+    ${ps.map(p => { const ln = R.box[tm][p.pid]; return `<tr><td class="l">${fan && g.status === "live" && R.court[tm].has(p.pid) ? '<i class="onfl" title="On the floor"></i>' : ""}<span class="pn">${face(p, "", tm === "us")}${PUB && fan ? `<button class="pnb" data-act="pubpl" data-tm="${tm}" data-i="${esc(p.pid.slice(tm.length))}">${esc(p.num)} ${esc(p.name)}</button>` : esc(p.num) + " " + esc(p.name)}${ln.tf >= 2 ? ' <span class="tag solid">EJ</span>' : ln.pf >= 5 ? ' <span class="tag solid">FO</span>' : ""}</span></td>${cols.map(c => `<td>${cellOf(ln, c[1], p.pid)}</td>`).join("")}</tr>`; }).join("")}
     ${!pa && R.team[tm].oreb + R.team[tm].dreb + R.team[tm].to + R.team[tm].tf ? `<tr><td class="l">Team</td>${cols.map(c => `<td>${["oreb","dreb","reb","to"].includes(c[1]) ? cellOf(R.team[tm], c[1]) : ""}</td>`).join("")}</tr>` : ""}
     <tr class="tot"><td class="l">Totals</td>${cols.map(c => `<td>${c[1] === "pm" ? "" : c[1] === "min" ? minSum(M, mq) : cellOf(tot, c[1])}</td>`).join("")}</tr>
     ${pa ? "" : `<tr><td class="l">Shooting</td>${cols.map(c => `<td>${tot.po && ["fg","tp","ft"].includes(c[1]) ? "—" : c[1] === "fg" ? pct(tot.fgm, tot.fga) : c[1] === "tp" ? pct(tot.tpm, tot.tpa) : c[1] === "ft" ? pct(tot.ftm, tot.fta) : ""}</td>`).join("")}</tr>`}</table></div>
@@ -3734,7 +3762,7 @@ function shotsByPlayer(g, pool, cols){
   if(!rows.length) return "";
   return `<div class="scroll-x" style="margin-top:12px"><table class="pin shpl" style="max-width:640px"><tr><th class="l">By player</th><th>FG</th><th>3PT</th><th>Paint</th><th>Mid</th><th>Three</th></tr>
     ${rows.map(({tm, p, ss}) => { const pl = ss.filter(s => s.e.x != null), on = ui.shotPid === p.pid;
-      return `<tr${on ? ' class="on"' : ""} style="${tvars(g, tm)}"><td class="l"><button class="lnk" data-act="shotpl" data-tm="${tm}" data-pid="${on ? "" : p.pid}" aria-pressed="${on}"><b style="color:var(--tl,var(--green))">${tm === "us" ? "" : esc(oppInfo(g.opp, g).abbr) + " "}#${esc(p.num)}</b> ${esc(p.name || "")}</button></td><td>${ma(ss)}</td><td>${ma(ss.filter(s => s.e.p === 3))}</td><td>${ma(pl.filter(s => inPaint(s.e)))}</td><td>${ma(pl.filter(s => !inPaint(s.e) && !isThree(s.e.x, s.e.y)))}</td><td>${ma(pl.filter(s => isThree(s.e.x, s.e.y)))}</td></tr>`; }).join("")}</table></div>`;
+      return `<tr${on ? ' class="on"' : ""} style="${tvars(g, tm)}"><td class="l"><button class="lnk" data-act="shotpl" data-tm="${tm}" data-pid="${on ? "" : p.pid}" aria-pressed="${on}">${face(p)}<b style="color:var(--tl,var(--green))">${tm === "us" ? "" : esc(oppInfo(g.opp, g).abbr) + " "}#${esc(p.num)}</b> ${esc(p.name || "")}</button></td><td>${ma(ss)}</td><td>${ma(ss.filter(s => s.e.p === 3))}</td><td>${ma(pl.filter(s => inPaint(s.e)))}</td><td>${ma(pl.filter(s => !inPaint(s.e) && !isThree(s.e.x, s.e.y)))}</td><td>${ma(pl.filter(s => isThree(s.e.x, s.e.y)))}</td></tr>`; }).join("")}</table></div>`;
 }
 
 /* ---------- games ---------- */
@@ -3842,7 +3870,7 @@ function gameLogHtml(team, p, sh){
       return `<tr${sel ? ' class="on"' : ""}><td class="l"><button class="lnk" data-act="glopp" data-opp="${esc(sel ? "" : o.k)}" aria-pressed="${sel}">${esc(o.name)}</button></td><td>${rs.length}</td><td>${l.pts}</td><td>${(l.pts / rs.length).toFixed(1)}</td><td>${cellOf(l, "fg")}</td><td>${cellOf(l, "tp")}</td><td>${cellOf(l, "ft")}</td><td>${l.oreb + l.dreb}</td><td>${l.ast}</td><td>${l.stl}</td><td>${l.to}</td></tr>`; }).join("")}</table></div>` : "";
   const chart = placed.length ? `<div class="glchart"><div style="flex:1 1 260px;max-width:300px">${courtSvg(placed, "", null, null, {key:"glSel", sel:picked.map(s => s.k)})}</div><div style="flex:1;min-width:200px"><div class="kicker">${on ? "Shot chart vs " + esc(on.name) : "Season shot chart"}</div><p class="small" style="margin:4px 0">${zone("Paint", inPaint)} · ${zone("Mid-range", e => !inPaint(e) && !isThree(e.x, e.y))} · ${zone("Three", e => isThree(e.x, e.y))}</p><p class="small" style="margin:0">${placed.length} of ${shots.length} shots charted. Dots are makes, X's are misses.</p>${shotPanel(picked.map(s => shotInfo(s.r.g, s.r.R, s, true)), placed.length)}</div></div>`
     : shots.length ? `<p class="small" style="margin:10px 0 0">No shot spots charted in these games. Turn on Shot spots on the Scorer screen to chart them.</p>` : "";
-  return `<div class="kicker">${team === "girls" ? "Girls" : "Boys"} varsity · game log${on ? " · vs " + esc(on.name) : ""}</div><h3>#${esc(p.num)} ${esc(p.name || "")}</h3>
+  return `${fhead(p, `<div class="kicker">${team === "girls" ? "Girls" : "Boys"} varsity · game log${on ? " · vs " + esc(on.name) : ""}</div><h3>#${esc(p.num)} ${esc(p.name || "")}</h3>`)}
     <p class="small" style="margin:0 0 8px">${[desc, n ? `${n} game${n === 1 ? "" : "s"} · ${pg(t.pts)} ppg · ${pg(t.oreb + t.dreb)} rpg · ${pg(t.ast)} apg` : ""].filter(Boolean).map(esc).join(" · ")}${on ? ` <button class="btn sm" data-act="glopp" data-opp="">Whole season</button>` : ""}</p>
     ${n ? (canCoach() ? playerMore(team, p, rows) : "") + table + vs + chart + `<p class="small" style="margin:8px 0 0">Newest first. Tap a game for its box score, an opponent for just those games, or a shot to see when it was. Shooting leaves out points-only games.</p>` : `<p style="margin:0">No games yet this season. A game counts here once it's over.</p>`}
     <div class="row" style="margin-top:10px">${n && canCoach() ? `<button class="btn" data-act="plpdf" data-team="${team}" data-pid="${esc(pid)}" data-opp="${esc(sh.opp || "")}">Player PDF</button>` : ""}<button class="btn" data-close>Close</button></div>`;
@@ -4063,7 +4091,7 @@ function linesOf(ds){
 // A player by pid, from the season's roster or from any game that had them.
 function stPlayer(team, pid, ds){ const r = ((S.teams[team] || {}).roster || []).find(x => x.pid === pid); if(r) return r;
   for(let i = ds.length - 1; i >= 0; i--){ const p = player(ds[i].g, "us", pid); if(p) return p; } return {pid, num:"?", name:""}; }
-const pNm = p => `${esc(p.num)} ${esc(p.name || "")}`;
+const pNm = p => `${esc(p.num)} ${esc(p.name || "")}`, pNmF = p => faceNm(p, pNm(p));
 // Hollinger's Game Score: one number for a night's line.
 const gmSc = l => l.pts + .4 * l.fgm - .7 * l.fga - .4 * (l.fta - l.ftm) + .7 * l.oreb + .3 * l.dreb + l.stl + .7 * l.ast + .7 * l.blk - .4 * l.pf - l.to;
 const dbl = l => [l.pts, l.oreb + l.dreb, l.ast, l.stl, l.blk].filter(v => v >= 10).length;
@@ -4143,7 +4171,7 @@ function stLeaders(S0, L){
     ["Threes made", a => a.tpm, v => String(v)], ["FG%", a => a.x.fga >= 2 * a.xg && a.xg ? a.x.fgm / a.x.fga : null, pctS], ["FT%", a => a.x.fta >= a.xg && a.xg ? a.x.ftm / a.x.fta : null, pctS],
     ["Game Score", a => a.games.reduce((s, x) => s + gmSc(x.ln), 0) / a.g, fx1]];
   const cards = cat.map(([l, f, fmt]) => { const top = ps.map(x => ({...x, v:f(x.a)})).filter(x => x.v != null && x.v > 0).sort((a, b) => b.v - a.v).slice(0, 3);
-    return top.length ? `<div class="ldr"><div class="kicker">${l}${/Points|Rebounds|Assists|Steals|Blocks|Game/.test(l) ? " a game" : ""}</div>${top.map((x, i) => `<div class="ldr${i ? "r" : "1"}"><span>${pNm(x.p)}</span><b>${fmt(x.v)}</b></div>`).join("")}</div>` : ""; }).join("");
+    return top.length ? `<div class="ldr"><div class="kicker">${l}${/Points|Rebounds|Assists|Steals|Blocks|Game/.test(l) ? " a game" : ""}</div>${top.map((x, i) => `<div class="ldr${i ? "r" : "1"}"><span>${pNmF(x.p)}</span><b>${fmt(x.v)}</b></div>`).join("")}</div>` : ""; }).join("");
   return cards ? `<div class="ldrs">${cards}</div>` : "";
 }
 // Each game's margin as a bar (wins up in green, losses down), oldest on the left. A bar opens that game's box score.
@@ -4233,7 +4261,7 @@ const pc = (m, a) => pctS(pctN(m, a));
 const ast32 = (v, sec) => sec ? fx1(v * 1920 / sec) : "–";
 // Our players in these games, in jersey order.
 function plist(S0, L){ return sortRoster(Object.keys(L).map(pid => stPlayer(S0.team, pid, S0.ds))); }
-const pBtn = (S0, p) => `<button class="lnk" data-act="glog" data-team="${S0.team}" data-pid="${esc(p.pid)}" data-opp="${esc(S0.f.opp || "")}" title="Game log">${pNm(p)}</button>`;
+const pBtn = (S0, p) => `<button class="lnk" data-act="glog" data-team="${S0.team}" data-pid="${esc(p.pid)}" data-opp="${esc(S0.f.opp || "")}" title="Game log">${face(p, "", true)}${pNm(p)}</button>`;
 function stTable(head, rows, cls = ""){ return `<div class="scroll-x"><table class="pin stt ${cls}"><tr>${head.map((h, i) => { const [l, t] = Array.isArray(h) ? h : [h]; return `<th${i ? "" : ' class="l"'}${t ? ` title="${esc(t)}"` : ""}>${l}</th>`; }).join("")}</tr>
   ${rows.map(r => `<tr${r.cls ? ` class="${r.cls}"` : ""}>${r.map((c, i) => `<td${i ? "" : ' class="l"'}>${c}</td>`).join("")}</tr>`).join("")}</table></div>`; }
 // Points by period: ours a game by player, and both teams' (for and against).
@@ -4409,7 +4437,7 @@ function compareCard(S0, L){
     return `<tr><td class="l">${lbl}</td>${v.map((x, i) => `<td>${i === bt ? "<b>" : ""}${x == null ? "–" : fmt(x)}${i === bt ? "</b>" : ""}</td>`).join("")}</tr>`; };
   const g = k => l => l[k] / l.g, p32 = k => (l, pid) => { const m = M[pid]; return m && m.sec ? (typeof k === "function" ? k(m.ln) : m.ln[k]) * 1920 / m.sec : null; };
   return `<div class="stblk"><div class="kicker">Compare two</div><div class="row shf" style="gap:8px">${sel(0, a)}<span>and</span>${sel(1, b)}</div>
-    <div class="scroll-x"><table class="pin stt"><tr><th class="l"></th><th>${pNm(a)}</th><th>${pNm(b)}</th></tr>
+    <div class="scroll-x"><table class="pin stt"><tr><th class="l"></th><th>${pNmF(a)}</th><th>${pNmF(b)}</th></tr>
     ${row("Games", l => l.g, String)}${row("Points a game", g("pts"))}${row("Rebounds a game", l => (l.oreb + l.dreb) / l.g)}${row("Assists a game", g("ast"))}${row("Steals a game", g("stl"))}${row("Blocks a game", g("blk"))}${row("Turnovers a game", g("to"), fx1, true)}
     ${row("FG%", l => pctN(l.x.fgm, l.x.fga), pctS)}${row("3P%", l => pctN(l.x.tpm, l.x.tpa), pctS)}${row("FT%", l => pctN(l.x.ftm, l.x.fta), pctS)}${row("eFG%", l => pctN(l.x.fgm + .5 * l.x.tpm, l.x.fga), pctS)}${row("True shooting", l => pctN(l.x.pts, 2 * (l.x.fga + .44 * l.x.fta)), pctS)}
     ${row("Assisted baskets", (l, pid) => { const h = H[pid]; return h ? pctN(h.a2 + h.a3, h.m2 + h.m3) : null; }, pctS)}
@@ -4423,9 +4451,9 @@ function assistNet(S0){
     const k = a.pid + ">" + e.e.pid; m.set(k, (m.get(k) || 0) + 1); by[a.pid] = (by[a.pid] || 0) + 1; to[e.e.pid] = (to[e.e.pid] || 0) + 1; }
   if(!m.size) return "";
   const P = pid => stPlayer(S0.team, pid, S0.ds), pas = Object.keys(by).sort((a, b) => by[b] - by[a]).slice(0, 8), sco = Object.keys(to).sort((a, b) => to[b] - to[a]).slice(0, 8), mx = Math.max(...m.values());
-  const pairs = [...m].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, n]) => { const [x, y] = k.split(">"); return `${pNm(P(x))} → ${pNm(P(y))} <b>${n}</b>`; });
+  const pairs = [...m].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, n]) => { const [x, y] = k.split(">"); return `${pNmF(P(x))} → ${pNmF(P(y))} <b>${n}</b>`; });
   return `<div class="stblk"><div class="kicker">Assist network</div><div class="scroll-x"><table class="pin stt anet"><tr><th class="l">Passer ↓ · Scorer →</th>${sco.map(s => `<th title="${esc(P(s).name || "")}">#${esc(P(s).num)}</th>`).join("")}<th>Total</th></tr>
-    ${pas.map(x => `<tr><td class="l">${pNm(P(x))}</td>${sco.map(y => { const n = m.get(x + ">" + y) || 0; return `<td${n ? ` style="background:rgba(9,74,40,${(.12 + .6 * n / mx).toFixed(2)});color:${n / mx > .55 ? "#fff" : "inherit"}"` : ""}>${n || ""}</td>`; }).join("")}<td><b>${by[x]}</b></td></tr>`).join("")}</table></div>
+    ${pas.map(x => `<tr><td class="l">${face(P(x), "", true)}${pNm(P(x))}</td>${sco.map(y => { const n = m.get(x + ">" + y) || 0; return `<td${n ? ` style="background:rgba(9,74,40,${(.12 + .6 * n / mx).toFixed(2)});color:${n / mx > .55 ? "#fff" : "inherit"}"` : ""}>${n || ""}</td>`; }).join("")}<td><b>${by[x]}</b></td></tr>`).join("")}</table></div>
     <p class="small" style="margin:4px 0 0">Top pairs: ${pairs.join(" · ")}. Rows are who passed, columns who scored (top 8 each).</p></div>`;
 }
 /* ---- Shooting ---- */
@@ -4509,7 +4537,7 @@ function rimCard(S0){
   const os = shotsOf(S0.ds, "them").filter(s => s.e.x != null), n = S0.ds.length; if(!n) return "";
   const rim = os.filter(s => zoneOf(s.e) === "rim"), paint = os.filter(s => inPaint(s.e)), bl = shotsOf(S0.ds, "them").filter(s => s.d.blk.has(s.e.id));
   const by = {}; for(const s of bl){ const b = s.d.blk.get(s.e.id); if(b.pid) by[b.pid] = (by[b.pid] || 0) + 1; }
-  const top = Object.entries(by).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([pid, k]) => `${pNm(stPlayer(S0.team, pid, S0.ds))} <b>${k}</b>`);
+  const top = Object.entries(by).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([pid, k]) => `${pNmF(stPlayer(S0.team, pid, S0.ds))} <b>${k}</b>`);
   const twos = shotsOf(S0.ds, "them").filter(s => s.e.p !== 3);
   return `<div class="stblk"><div class="kicker">Rim protection</div><p style="margin:2px 0">Opponents at the rim: <b>${ma(rim)}</b> (${pc(mk(rim), rim.length)}) · in the paint: <b>${ma(paint)}</b> (${pc(mk(paint), paint.length)}) · blocks: <b>${fx1(bl.length / n)}</b> a game, ${pc(bl.length, twos.length)} of their 2s.</p>
     ${top.length ? `<p class="small" style="margin:2px 0 0">Blocks: ${top.join(" · ")}. Pick "Shots we blocked" on the chart for where.</p>` : ""}</div>`;
@@ -4896,9 +4924,9 @@ function viewTeams(){
   return `<div class="stack">` + (edit && S.teamsPrev ? `<div class="flag"><span>This device's rosters were replaced by the shared ones (${esc(new Date(S.teamsPrev.at).toLocaleString([], {month:"short", day:"numeric", hour:"numeric", minute:"2-digit"}))}).</span><button class="btn sm" data-act="teamsundo">Put this device's back</button><button class="btn sm" data-act="teamskeep">Keep the shared ones</button></div>` : "") + ["boys","girls"].map(team => {
     const T = S.teams[team], rs = sortRoster(T.roster);
     return `<div class="card rcard"><div class="row between"><div class="tc-head" style="margin:0"><img src="bobcat-head.png" alt=""><div><div class="kicker">${team === "girls" ? "Girls varsity" : "Boys varsity"}</div><h2>${esc(T.name)}</h2></div></div>
-      ${edit ? `<div class="row"><button class="btn sm" data-act="paste" data-team="${team}">Paste a roster</button><button class="btn sm" data-act="addroster" data-team="${team}">+ Player</button></div>` : ""}</div>
+      ${edit ? `<div class="row"><button class="btn sm" data-act="faces" data-team="${team}">Photos${rs.length && S.settings.faces !== false ? ` · ${rs.filter(p => Faces.has(p.pid)).length} of ${rs.length}` : ""}</button><button class="btn sm" data-act="paste" data-team="${team}">Paste a roster</button><button class="btn sm" data-act="addroster" data-team="${team}">+ Player</button></div>` : ""}</div>
       <div class="scroll-x" style="margin-top:8px"><table class="pin rtab"><tr><th class="l">Player</th><th class="l">Pos</th><th class="l">Yr</th><th class="l">Ht</th>${edit ? "<th></th>" : ""}</tr>
-      ${rs.map(p => `<tr><td class="l"><button class="lnk" data-act="glog" data-team="${team}" data-pid="${p.pid}" title="Game log">${esc(p.num)} ${esc(p.name)}</button>${S.say[p.pid] ? `<div class="small" style="font-style:italic">${esc(S.say[p.pid])}</div>` : ""}</td><td class="l">${esc(p.pos || "")}</td><td class="l">${esc(p.grade || "")}</td><td class="l">${esc(p.ht || "")}</td>${edit ? `<td><button class="btn sm" data-act="editroster" data-team="${team}" data-pid="${p.pid}">Edit</button></td>` : ""}</tr>`).join("") || `<tr><td class="l" colspan="5">No players yet. Paste the roster: one player per line, like <b>12 Jaylen Smith G Sr 6-2</b>.</td></tr>`}</table></div>
+      ${rs.map(p => `<tr><td class="l">${face(p, "", true)}<button class="lnk" data-act="glog" data-team="${team}" data-pid="${p.pid}" title="Game log">${esc(p.num)} ${esc(p.name)}</button>${S.say[p.pid] ? `<div class="small" style="font-style:italic">${esc(S.say[p.pid])}</div>` : ""}</td><td class="l">${esc(p.pos || "")}</td><td class="l">${esc(p.grade || "")}</td><td class="l">${esc(p.ht || "")}</td>${edit ? `<td><button class="btn sm" data-act="editroster" data-team="${team}" data-pid="${p.pid}">Edit</button></td>` : ""}</tr>`).join("") || `<tr><td class="l" colspan="5">No players yet. Paste the roster: one player per line, like <b>12 Jaylen Smith G Sr 6-2</b>.</td></tr>`}</table></div>
       <div class="row" style="margin-top:6px"><p class="small" style="margin:0;flex:1 1 260px">Year and height feed the PA's starting-lineup intros. Tap a player for the game log. ${canCoach() ? `The record, season numbers and CSVs are on <button class="lnk" data-act="go" data-tab="stats">Stats</button>.` : ""}</p></div></div>`;
   }).join("") + viewOpps() + viewLib() + `</div>`;
 }
@@ -4928,7 +4956,9 @@ function viewSetup(){
     ${edit ? `<div class="card stack"><h3 style="font-size:22px">School records</h3><p class="small" style="margin:0">The gym's record boards and the 1,000-point club are built in. Fix or add to them, and type in each player's career totals from before this season, on Stats, Records. The PA and broadcast pages call out a record or milestone when it's close and the moment it falls.</p><div class="row"><button class="btn" data-act="gorec">Open Records</button></div></div>` : ""}
     <div class="card stack"><h3 style="font-size:22px">This device</h3>
       <div class="row"><span>Home team on the</span><button class="btn sm" data-act="flip" data-v="left" aria-pressed="${!st.flip}">Left</button><button class="btn sm" data-act="flip" data-v="right" aria-pressed="${!!st.flip}">Right</button></div>
-      <p class="small" style="margin:0">Left matches our scorer's table. Each screen sets its own: the Scorer screen, the PA page and the broadcast page all have a ⇄ Sides button. The fan page always shows home on the left.</p></div>
+      <p class="small" style="margin:0">Left matches our scorer's table. Each screen sets its own: the Scorer screen, the PA page and the broadcast page all have a ⇄ Sides button. The fan page always shows home on the left.</p>
+      <div class="row"><span>Player photos beside names</span><button class="btn sm" data-act="faceshow" data-v="on" aria-pressed="${st.faces !== false}">On</button><button class="btn sm" data-act="faceshow" data-v="off" aria-pressed="${st.faces === false}">Off</button></div>
+      <p class="small" style="margin:0">Off hides the photos on this device only (a crowded Scorer screen, a slow tablet). Coaches add them on Rosters, Photos.</p></div>
     <div class="card stack"><h3 style="font-size:22px">Public page</h3>
       <p style="margin:0">Fans follow the score, box score and play-by-play at <a href="${esc(pubLink())}" target="_blank" rel="noopener">${esc(pubLink().replace(/^https?:\/\//, ""))}</a> with no sign-in. Put the link in the stream description. It never shows notes, the table or name notes.</p>
       <div class="row"><button class="btn${S.settings.pub !== false ? " primary" : ""}" data-act="pubtoggle" ${adis} aria-pressed="${S.settings.pub !== false}">${S.settings.pub !== false ? "On" : "Off"}</button>
@@ -4950,7 +4980,7 @@ function viewSetup(){
 // moving it then would put their words in the wrong box) or the box can't be typed in (a number that's already set).
 function openSheet(s){ ui.sheet = s; renderSheet(); setTimeout(() => { if($("#sheet").contains(document.activeElement)) return; const f = $("#sheet input[type=text]:not([readonly]), #sheet textarea"); if(f) f.focus(); }, 30); }
 function closeSheet(){ ui.sheet = null; renderSheet(); }
-function renderSheet(){ const el = $("#sheet"), s = ui.sheet; el.innerHTML = s ? `<div class="sheet-wrap" data-close><div class="sheet${s.wide ? " wide" : ""}" role="dialog" aria-modal="true">${s.html()}</div></div>` : ""; lockView(el); }
+function renderSheet(){ const el = $("#sheet"), s = ui.sheet; el.innerHTML = s ? `<div class="sheet-wrap" data-close><div class="sheet${s.wide ? " wide" : ""}" role="dialog" aria-modal="true">${s.html()}</div></div>` : ""; lockView(el); if(s && s.drawn) s.drawn(); }
 function sheetPlayer(opts){
   openSheet({html:() => `<h3>${esc(opts.title)}</h3><form id="pform" class="stack">
     <div class="row"><label class="fld" style="width:90px"><span>Number</span><input type="text" inputmode="numeric" name="num" value="${esc(opts.num || "")}" required></label>
@@ -4968,7 +4998,7 @@ function sheetText(title, label, val, onSave, rows = 1, placeholder = ""){
 }
 function pmenu(g, tm, pid){
   const R = replay(g), p = player(g, tm, pid), on = R.court[tm].has(pid), at = atTable(g, tm).includes(pid), edit = canEdit(g);
-  openSheet({html:() => `<h3>#${esc(p.num)} ${esc(p.name || "")}</h3><p class="small" style="margin:0 0 10px">${esc(tmName(g, tm))} · ${statLine(R.box[tm][pid] || LINE())}</p>
+  openSheet({html:() => `${fhead(p, `<h3>#${esc(p.num)} ${esc(p.name || "")}</h3><p class="small" style="margin:0 0 10px">${esc(tmName(g, tm))} · ${statLine(R.box[tm][pid] || LINE())}</p>`)}
     <div class="row">${edit ? (on ? `<button class="btn" data-act="pm-out">Take out (no sub)</button>` : `<button class="btn primary" data-act="pm-in">Put in</button>`) : ""}
     ${on ? "" : `<button class="btn" data-act="pm-table">${at ? "Off the table" : "Send to the table"}</button>`}
     ${edit ? `<button class="btn dark" data-act="pm-tech">Technical foul</button><button class="btn" data-act="pm-edit">Edit name / number</button>` : ""}
@@ -5036,6 +5066,265 @@ async function copyText(t, ta){
   if(ta){ ta.select(); try{ return document.execCommand("copy"); }catch(e){} }
   return false;
 }
+
+/* ---------- headshots ----------
+   A small round photo beside each of OUR players, wherever a name shows. One tiny JPEG per kid (FACE_PX square, a few
+   KB), kept as text in Firestore: never a link to a picture somewhere else, and nothing in the repo.
+   - hoopsBook/faces {f:{pid:{d:"data:image/jpeg;base64,…", at}}, upd}: every photo, for the people let in. Coaches and
+     Admins write it (the rules for hoopsBook already say so). A photo taken off stays as {d:"", at}.
+   - hoopsPublic/_faces {f:{pid:"data:…"}, upd}: the copy the fan page and the stream's score bug read with no sign-in.
+     A Coach's or an Admin's device makes it from the first: only kids on Rosters, never one whose family chose "number
+     only on the public page", and the whole document goes away while the fan page is off. It is not one of the public
+     documents that stay open with the fan page off.
+   Not in S and not in local storage (about 5 MB, shared with Mound Book): this device's copy sits in IndexedDB, so the
+   photos show with no signal. A photo reaches the page as a CSS rule (.fcN{background-image}), so a redraw costs a few
+   characters per kid and never decodes a picture again. Every photo is checked first (faceOk): a base64 JPEG, short, and
+   small in pixels by its own header. Anything else is left out, whoever wrote it. */
+const FACE_PX = 128, FACE_MAX = 24000, FACE_DOC = 900000;
+function faceOk(s){
+  if(typeof s !== "string" || s.length < 200 || s.length > FACE_MAX || !/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(s)) return false;
+  try{
+    const b = atob(s.slice(23)), at = i => b.charCodeAt(i);
+    if(at(0) !== 0xFF || at(1) !== 0xD8) return false;
+    // Down the JPEG's segments to its frame header: a file of a few KB can claim to be 30,000 pixels a side.
+    for(let i = 2; i + 9 < b.length;){
+      if(at(i) !== 0xFF) return false;
+      const m = at(i + 1); if(m === 0xFF){ i++; continue; }
+      if(m === 0x01 || (m >= 0xD0 && m <= 0xD7)){ i += 2; continue; }
+      const len = at(i + 2) * 256 + at(i + 3); if(len < 2 || m === 0xDA || m === 0xD9) return false;
+      if(m >= 0xC0 && m <= 0xCF && m !== 0xC4 && m !== 0xC8 && m !== 0xCC){ const h = at(i + 5) * 256 + at(i + 6), w = at(i + 7) * 256 + at(i + 8); return w >= 16 && h >= 16 && w <= 512 && h <= 512; }
+      i += 2 + len; }
+  }catch(e){}
+  return false;
+}
+// The round photo beside a name, or nothing for a player with none (every opponent). p is a player or a player id; on the
+// fan page a player carries his season id as fid (pubGame). hold: an empty circle instead, so a column of names lines up.
+function face(p, cls, hold){
+  const id = p && typeof p === "object" ? p.fid || p.pid : p, c = id ? Faces.cls(id) : "";
+  return c ? `<i class="face ${c}${cls ? " " + cls : ""}"></i>` : hold && Faces.any() ? `<i class="face none${cls ? " " + cls : ""}"></i>` : "";
+}
+// A photo file's name: "B_20_Hudson_Savage_Black_StepRepeat.jpg" is boys #20 Hudson Savage, "LC_5_Alysia_Graham.jpg" girls
+// #5. The team letters and the name are optional; the first one- or two-digit number is the jersey.
+// A sheet's or page's heading with the kid's photo to its left. With no photo the heading is exactly what it was.
+function fhead(p, html, attr){ const f = face(p, "xl"); return f ? `<div class="fhead"${attr || ""}>${f}<div>${html}</div></div>` : attr == null ? html : `<div${attr}>${html}</div>`; }
+// A name with its photo, kept on one line together. With no photo: the name alone, as before.
+function faceNm(p, nm){ const f = face(p); return f ? `<span class="fnw">${f}${nm}</span>` : nm; }
+function faceFile(name){
+  const tok = String(name).replace(/\.[a-z0-9]+$/i, "").split(/[\s_.,()-]+/).filter(Boolean), t0 = (tok[0] || "").toLowerCase(); let team = "";
+  if(/^(b|bc|boys?|bobcats?)$/.test(t0)){ team = "boys"; tok.shift(); }
+  else if(/^(lc|g|girls?|ladycats?)$/.test(t0)){ team = "girls"; tok.shift(); }
+  else if(t0 === "lady" && /^cats?$/i.test(tok[1] || "")){ team = "girls"; tok.splice(0, 2); }
+  const i = tok.findIndex(t => /^#?\d{1,2}$/.test(t)); if(i < 0) return {team, num:"", name:""};
+  const rest = tok.slice(i + 1), stop = rest.findIndex(t => /^(black|white|green|gr[ae]y|home|away|step|repeat|steprepeat|headshot|photo|final|copy|edit|\d+)$/i.test(t));
+  return {team, num:tok[i].replace("#", ""), name:(stop < 0 ? rest : rest.slice(0, stop)).join(" ")};
+}
+// Which player a file is: the one wearing its number, unless the name on the file is somebody else on the roster (a kid
+// who changed numbers). check: the number matched but the names don't, so Coach looks before saving.
+function faceMatch(f, team){
+  const t = f.team || team, ros = ((S.teams[t] || {}).roster || []), key = s => String(s || "").toLowerCase().replace(/[^a-z ]/g, "").split(" ").filter(w => w && !/^(jr|sr|ii|iii|iv)$/.test(w));
+  const fn = key(f.name), hit = p => { const pn = key(p.name); return pn.length && fn.length && fn.includes(pn[pn.length - 1]) && (pn.length < 2 || fn.length < 2 || fn.some(w => w[0] === pn[0][0])); };
+  const byNum = f.num === "" ? null : ros.find(p => String(p.num) === f.num) || ros.find(p => /^\d+$/.test(String(p.num)) && parseInt(p.num, 10) === parseInt(f.num, 10));
+  if(byNum && (!fn.length || !key(byNum.name).length || hit(byNum))) return {team:t, pid:byNum.pid};
+  const byName = fn.length ? ros.filter(hit) : [];
+  if(byName.length === 1) return {team:t, pid:byName[0].pid, check:byNum ? 0 : 1};
+  return byNum ? {team:t, pid:byNum.pid, check:1} : {team:t, pid:""};
+}
+// A picture drawn smaller in steps of at most half: Safari only blends neighbouring pixels, and one big step leaves jaggies.
+function drawDown(src, sx, sy, sw, sh, tw, th){
+  let cur = src, x = sx, y = sy, w = sw, h = sh;
+  while(w / tw > 2){ const nw = Math.max(tw, Math.round(w / 2)), nh = Math.max(th, Math.round(h / 2)), c = document.createElement("canvas"); c.width = nw; c.height = nh;
+    const k = c.getContext("2d"); k.imageSmoothingQuality = "high"; k.drawImage(cur, x, y, w, h, 0, 0, nw, nh); cur = c; x = 0; y = 0; w = nw; h = nh; }
+  const o = document.createElement("canvas"); o.width = tw; o.height = th; const k = o.getContext("2d"); k.imageSmoothingQuality = "high";
+  k.fillStyle = "#FFFFFF"; k.fillRect(0, 0, tw, th); k.drawImage(cur, x, y, w, h, 0, 0, tw, th); return o;
+}
+const Faces = (() => {
+  const st = {map:new Map(), idx:new Map(), n:0, el:null, sig:"", heard:false, dbp:null, pubT:null, pubBusy:false, pubAgain:false, pubSig:null, loadAt:0, loadBusy:false, drag:null};
+  const hash = s => { let h = 2166136261; for(let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619); return (h >>> 0).toString(36) + "." + s.length; };
+  const sigOf = o => Object.keys(o).sort().map(k => k + ":" + hash(o[k])).join("|");
+  // Checked photos only, by player id. An id keeps one class name for as long as the page is open.
+  function apply(o){
+    const m = new Map();
+    for(const pid of Object.keys(o || {}).sort()){ if(m.size >= 400) break; if(!idBad(pid) && faceOk(o[pid])) m.set(pid, o[pid]); }
+    const sig = sigOf(Object.fromEntries(m)); if(sig === st.sig) return false;
+    st.sig = sig; st.map = m;
+    for(const pid of m.keys()) if(!st.idx.has(pid)) st.idx.set(pid, ++st.n);
+    if(!st.el){ st.el = document.createElement("style"); st.el.id = "faces-css"; document.head.appendChild(st.el); }
+    st.el.textContent = [...m].map(([pid, d]) => `.fc${st.idx.get(pid)}{background-image:url("${d}")}`).join("\n");
+    return true;
+  }
+  // Photos can be turned off on one device (Setup, This device). The fan page and the bug always show what they're given.
+  const on = () => PUB || OBS || S.settings.faces !== false;
+  const cls = pid => on() && st.map.has(pid) ? "fc" + st.idx.get(pid) : "";
+  const any = () => on() && st.map.size > 0;
+  // This device's copy. No IndexedDB (private browsing, no room): the photos just come from the cloud each time.
+  function idb(){ return st.dbp || (st.dbp = new Promise((res, rej) => { const q = indexedDB.open("brierstats", 1); q.onupgradeneeded = () => q.result.createObjectStore("kv"); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); })); }
+  function kv(mode, f){ return Promise.resolve().then(idb).then(db => new Promise((res, rej) => { const tx = db.transaction("kv", mode), r = f(tx.objectStore("kv")); tx.oncomplete = () => res(r && r.result); tx.onerror = tx.onabort = () => rej(tx.error); })).catch(() => undefined); }
+  function boot(){ kv("readonly", s => s.get("faces")).then(o => { if(o && typeof o === "object" && !st.heard && apply(o)) softRender(); }); }
+  // The cloud's copy, for everyone let in (Sync's listener on hoopsBook/faces).
+  function heard(snap){
+    if(!snap.exists() && snap.metadata && snap.metadata.fromCache) return;   // no signal: nothing heard yet, not "no photos"
+    const f = snap.exists() ? snap.data().f : null, o = {};
+    if(f && typeof f === "object") for(const pid of Object.keys(f)){ const x = f[pid]; if(x && typeof x === "object" && typeof x.d === "string" && x.d) o[pid] = x.d; }
+    st.heard = true;
+    if(apply(o)){ kv("readwrite", s => s.put(Object.fromEntries(st.map), "faces")); softRender(); if(ui.sheet && ui.sheet.faces && ui.sheet.adj < 0) renderSheet(); }
+    pubSoon();
+  }
+  // Photos to save, or "" to take one off: {pid: data URL}. Coaches and Admins, with the cloud in reach.
+  async function put(ch){
+    const c = Sync.cloud(); if(!c || !canCoach()) throw new Error("off");
+    const now = Date.now(), f = {}; for(const pid of Object.keys(ch)) f[pid] = {d:ch[pid], at:now};
+    await c.fb.setDoc(c.fb.doc(c.db, "hoopsBook", "faces"), {v:1, f, upd:now}, {merge:true});
+  }
+  // One document holds them all, and a document tops out at 1 MB.
+  const room = ch => { let n = 0; const all = {...Object.fromEntries(st.map), ...ch}; for(const k of Object.keys(all)) n += k.length + String(all[k]).length + 40; return n < FACE_DOC; };
+  // What the fan page may show right now: kids on Rosters with a photo, never one whose family chose number only, and
+  // nothing at all while the fan page is off.
+  function pubWant(){ const o = {}; if(S.settings.pub === false) return o;
+    for(const t of Object.values(S.teams || {})) for(const p of (t && t.roster) || []) if(p && !p.nopub && st.map.has(p.pid)) o[p.pid] = st.map.get(p.pid);
+    return o; }
+  // The fan page's copy is put right by any Coach's or Admin's device that's live and has heard both the photos and the
+  // rosters: after a photo changes, a family's choice changes, a kid leaves Rosters, or the fan page goes off or on. One
+  // read to see what's there, and a write only if it's wrong.
+  function pubSoon(ms){ if(PUB || OBS) return; clearTimeout(st.pubT); st.pubT = setTimeout(pubSync, ms == null ? 2500 : ms); }
+  async function pubSync(){
+    const c = Sync.cloud(); if(!c || !canCoach() || !st.heard || !Sync.teamsHeard()) return;
+    if(st.pubBusy){ st.pubAgain = true; return; }
+    const want = pubWant(), sig = sigOf(want); if(sig === st.pubSig) return;
+    st.pubBusy = true;
+    try{
+      const ref = c.fb.doc(c.db, "hoopsPublic", "_faces"), d = await c.fb.getDoc(ref), has = d.exists() && d.data().f && typeof d.data().f === "object" ? d.data().f : null;
+      if(!Object.keys(want).length){ if(d.exists()) await c.fb.deleteDoc(ref); }
+      else if(!has || Object.values(has).some(v => typeof v !== "string") || sigOf(has) !== sig) await c.fb.setDoc(ref, {v:1, f:want, upd:Date.now()});
+      st.pubSig = sig;
+    }catch(e){}
+    finally{ st.pubBusy = false; if(st.pubAgain){ st.pubAgain = false; pubSoon(); } }
+  }
+  // The fan page and the score bug: one read, and not again for "every" ms (a fan's phone asks once a visit).
+  async function pubLoad(fb, db, every){
+    if(st.loadBusy || (st.loadAt && Date.now() - st.loadAt < every)) return;
+    st.loadBusy = true; st.loadAt = Date.now();
+    try{ const d = await fb.getDoc(fb.doc(db, "hoopsPublic", "_faces")), f = d.exists() ? d.data().f : null, o = {};
+      if(f && typeof f === "object") for(const pid of Object.keys(f)) if(typeof f[pid] === "string") o[pid] = f[pid];
+      if(apply(o)) render(); }
+    catch(e){ st.loadAt = Date.now() - every + 60000; }   // refused (the fan page is off) or no signal: again in a minute, at the earliest
+    finally{ st.loadBusy = false; }
+  }
+
+  /* The Photos card on Rosters (Coaches and Admins). Files are read one at a time and shrunk at once, so twenty big
+     pictures never sit in memory together. s.items: {name, cv (the picture, 720 px at most), c (the crop: center and
+     side, in cv's pixels), out (the finished photo), team, pid ("" = no player found), check}. */
+  const crop0 = cv => { const w = cv.width, h = cv.height; return {x:w / 2, y:h > w ? h * .42 : h * .46, s:Math.round(.62 * Math.min(w, h * .8))}; };
+  const clampC = (cv, c) => { c.s = Math.max(24, Math.min(c.s, cv.width, cv.height)); c.x = Math.min(cv.width - c.s / 2, Math.max(c.s / 2, c.x)); c.y = Math.min(cv.height - c.s / 2, Math.max(c.s / 2, c.y)); return c; };
+  function cut(cv, c){ const o = drawDown(cv, c.x - c.s / 2, c.y - c.s / 2, c.s, c.s, FACE_PX, FACE_PX); let q = .82, d = o.toDataURL("image/jpeg", q);
+    while(d.length > 9500 && q > .45){ q -= .07; d = o.toDataURL("image/jpeg", q); } return d; }
+  const loadImg = file => new Promise((res, rej) => { const u = URL.createObjectURL(file), im = new Image(); im.onload = () => { URL.revokeObjectURL(u); res(im); }; im.onerror = () => { URL.revokeObjectURL(u); rej(new Error("not a picture")); }; im.src = u; });
+  async function read(file){ const im = await loadImg(file), w = im.naturalWidth, h = im.naturalHeight; if(!w || !h) throw new Error("empty");
+    const k = Math.min(1, 720 / Math.max(w, h)); return drawDown(im, 0, 0, w, h, Math.max(1, Math.round(w * k)), Math.max(1, Math.round(h * k))); }
+  function sheet(team){ if(!canCoach()) return; openSheet({faces:true, wide:true, team:team === "girls" ? "girls" : "boys", items:[], adj:-1, busy:"", html, drawn}); }
+  const tname = t => (S.teams[t] || {}).name || (t === "girls" ? "Lady Cats" : "Bobcats");
+  const pic = (d, cl) => `<i class="face ${cl}" style="background-image:url('${d}')"></i>`;
+  function html(){
+    const s = ui.sheet, it0 = s.adj >= 0 && s.items[s.adj];
+    if(it0){ const p = it0.pid && ((S.teams[it0.team] || {}).roster || []).find(x => x.pid === it0.pid);
+      return `<h3>${p ? "#" + esc(p.num) + " " + esc(p.name || "") : esc(it0.name)}</h3><p class="small" style="margin:0 0 8px">Drag the picture until the face sits in the circle. The slider zooms.</p>
+        <div class="fadj"><canvas id="facecv" width="560" height="560" aria-label="The photo, with the part that's kept inside the circle"></canvas></div>
+        <label class="fld" style="margin:10px 0"><span>Zoom</span><input type="range" id="facezoom" min="0" max="100" step="1" value="${zoomOf(it0)}"></label>
+        <div class="row"><button class="btn primary" data-act="faceadjok">Done</button><button class="btn" data-act="faceadjreset">Start over</button></div>`; }
+    const ros = sortRoster((S.teams[s.team] || {}).roster || []), live = Sync.live(), mine = s.items.filter(it => it.pid), lost = s.items.map((it, i) => [it, i]).filter(([it]) => !it.pid);
+    const kid = p => { const i = s.items.findIndex(it => it.pid === p.pid), it = s.items[i], has = st.map.has(p.pid), out = !!p.nopub;
+      const tag = it ? (it.check ? `<span class="tag solid">Check: file says ${esc(it.says || "?")}</span>` : `<span class="tag green">New</span>`) : has ? "" : `<span class="small">No photo</span>`;
+      return `<div class="fkid${it ? " new" : ""}"><button class="fpic" data-act="${it ? "faceadj" : "facespick"}" data-i="${i}" data-pid="${p.pid}" title="${it ? "Move or zoom this photo" : has ? "Pick a new photo" : "Pick a photo"}" ${it || live ? "" : "disabled"}>${it ? pic(it.out, "xl") : has ? `<i class="face xl fc${st.idx.get(p.pid)}"></i>` : `<i class="face xl none"></i>`}</button>
+        <div><b>${esc(p.num)} ${esc(p.name || "")}</b><div class="fmeta">${tag}${out ? `<span class="small">Family opted out: staff pages only</span>` : ""}</div>
+        <div class="row" style="gap:6px;margin-top:4px">${it ? `<button class="btn sm" data-act="faceadj" data-i="${i}">Adjust</button><button class="btn sm" data-act="facedrop" data-i="${i}">Skip</button>` : has ? `<button class="btn sm" data-act="facedel" data-pid="${p.pid}" ${live ? "" : "disabled"}>Remove</button>` : ""}</div></div></div>`; };
+    const opts = t => sortRoster((S.teams[t] || {}).roster || []).map(p => `<option value="${t}|${p.pid}">${esc(tname(t))} ${esc(p.num)} ${esc(p.name || "")}</option>`).join("");
+    const n = mine.length, cnt = t => s.items.filter(it => it.pid && it.team === t).length;
+    return `<div class="row between"><h3 style="margin:0">Player photos</h3><div class="seg" role="group" aria-label="Team">${["boys", "girls"].map(t => `<button class="btn sm" data-act="facesteam" data-team="${t}" aria-pressed="${s.team === t}">${esc(tname(t))}${cnt(t) ? ` · ${cnt(t)} new` : ""}</button>`).join("")}</div></div>
+      <p class="small" style="margin:8px 0">A small round photo shows beside each player's name on every page: the Scorer, PA and broadcast screens, Stats, the fan page and the stream. A player marked <b>number only on the public page</b> keeps the photo on staff pages only. Pick one picture or the whole folder at once: a file named with the jersey number (B_20_Hudson_Savage.jpg, LC_5_Alysia_Graham.jpg) finds its player by itself.</p>
+      ${live ? "" : `<div class="flag"><span>Photos are saved to the cloud so every device gets them. Turn on live sync and sign in (Setup) to add or remove one.</span></div>`}
+      <div class="row"><button class="btn${n ? "" : " primary"}" data-act="facespick" data-pid="" ${live && !s.busy ? "" : "disabled"}>Add photos</button><input type="file" id="faces-file" accept="image/*" multiple hidden>
+        ${n ? `<button class="btn primary" data-act="facessave" ${s.busy ? "disabled" : ""}>Save ${n} photo${n === 1 ? "" : "s"}</button>` : ""}${s.busy ? `<span class="small" role="status"><b>${esc(s.busy)}</b></span>` : ""}</div>
+      ${lost.length ? `<div class="flag" style="margin-top:10px;display:block"><b>No player found for ${lost.length === 1 ? "this one" : "these " + lost.length}.</b> Pick who it is, or leave it out.
+        ${lost.map(([it, i]) => `<div class="flost">${pic(it.out, "md")}<span class="small">${esc(it.name)}</span><select data-facewho="${i}" aria-label="Who is this"><option value="">Leave it out</option>${opts("boys")}${opts("girls")}</select></div>`).join("")}</div>` : ""}
+      <div class="fgrid">${ros.map(kid).join("") || `<p class="small">No players on this roster yet. Paste the roster first.</p>`}</div>
+      <div class="row" style="margin-top:12px">${n ? `<button class="btn primary" data-act="facessave" ${s.busy ? "disabled" : ""}>Save ${n} photo${n === 1 ? "" : "s"}</button>` : ""}<button class="btn" data-close>${n ? "Cancel" : "Close"}</button></div>`;
+  }
+  // The crop card's picture: what's kept, with everything outside the circle dimmed.
+  const zoomOf = it => { const m = Math.min(it.cv.width, it.cv.height); return Math.round(100 * (m - it.c.s) / (m - 24)); };
+  function drawn(){
+    const s = ui.sheet, it = s && s.faces && s.adj >= 0 && s.items[s.adj], cv = document.getElementById("facecv"); if(!it || !cv) return;
+    const k = cv.getContext("2d"), W = cv.width, c = it.c; k.imageSmoothingQuality = "high"; k.fillStyle = "#FFFFFF"; k.fillRect(0, 0, W, W);
+    // A little of the picture around the circle shows too, so it's plain which way to drag.
+    const pad = .18, side = c.s * (1 + 2 * pad), z = W / side;
+    k.drawImage(it.cv, 0, 0, it.cv.width, it.cv.height, (0 - (c.x - side / 2)) * z, (0 - (c.y - side / 2)) * z, it.cv.width * z, it.cv.height * z);
+    k.fillStyle = "rgba(0,0,0,.55)"; k.beginPath(); k.rect(0, 0, W, W); k.arc(W / 2, W / 2, c.s * z / 2, 0, Math.PI * 2, true); k.fill("evenodd");
+    k.strokeStyle = "#FFFFFF"; k.lineWidth = 3; k.beginPath(); k.arc(W / 2, W / 2, c.s * z / 2, 0, Math.PI * 2); k.stroke();
+  }
+  async function files(list, forPid){
+    const s = ui.sheet; if(!s || !s.faces || !canCoach()) return;
+    const all = [...list].filter(f => /^image\//.test(f.type) || /\.(jpe?g|png|heic|webp)$/i.test(f.name)); let bad = 0;
+    for(let i = 0; i < all.length; i++){
+      if(ui.sheet !== s) return;   // the card was closed while the pictures were being read
+      s.busy = `Reading ${i + 1} of ${all.length}…`; renderSheet();
+      try{
+        const cv = await read(all[i]), c = clampC(cv, crop0(cv)), f = faceFile(all[i].name), who = forPid ? {team:s.team, pid:forPid} : faceMatch(f, s.team);
+        const it = {name:all[i].name, cv, c, out:cut(cv, c), team:who.team, pid:who.pid, check:who.check || 0, says:[f.num && "#" + f.num, f.name].filter(Boolean).join(" ")};
+        if(it.pid) s.items = s.items.filter(x => x.pid !== it.pid);   // a second picture of the same kid replaces the first
+        s.items.push(it);
+      }catch(e){ bad++; }
+    }
+    if(ui.sheet !== s) return;
+    s.busy = ""; const got = s.items.filter(it => it.pid), t = {boys:0, girls:0}; got.forEach(it => { t[it.team]++; });
+    // Opened on one team with every picture for the other: show the team that has them.
+    if(!t[s.team] && (t.boys || t.girls)) s.team = t.boys ? "boys" : "girls";
+    renderSheet();
+    if(all.length) toast([got.length ? `${got.length} photo${got.length === 1 ? "" : "s"} matched${t.boys && t.girls ? ` (${t.boys} ${tname("boys")}, ${t.girls} ${tname("girls")})` : ""}. Look them over, then Save.` : "", s.items.length - got.length ? `${s.items.length - got.length} with no player found.` : "", bad ? `${bad} couldn't be read as a picture.` : ""].filter(Boolean).join(" "), 5000);
+  }
+  // A write the cloud hasn't answered in 20 seconds is still on its way while the app stays open.
+  const within = (p, ms) => Promise.race([p.then(() => "ok"), new Promise(r => setTimeout(() => r("slow"), ms))]);
+  async function saveAll(){
+    const s = ui.sheet; if(!s || !s.faces || s.busy) return; const got = s.items.filter(it => it.pid); if(!got.length) return;
+    const ch = Object.fromEntries(got.map(it => [it.pid, it.out]));
+    if(got.some(it => !faceOk(it.out))){ toast("One of these didn't come out as a photo. Take it out and try that picture again."); return; }
+    if(!room(ch)){ toast("That's more photos than fit. Take off the ones for players who've left first."); return; }
+    s.busy = "Saving…"; renderSheet();
+    try{
+      const r = await within(put(ch), 20000);
+      if(ui.sheet === s){ s.busy = ""; if(r === "ok"){ s.items = s.items.filter(it => !it.pid); renderSheet(); if(!s.items.length) closeSheet(); } else { s.items = s.items.filter(it => !it.pid); renderSheet(); } }
+      render(); toast(r === "ok" ? `${got.length} photo${got.length === 1 ? "" : "s"} saved. Every device gets ${got.length === 1 ? "it" : "them"}.` : "No answer from the cloud yet (weak signal?). The photos go up as soon as it's back: keep Brier Stats open until they do.", 5000);
+    }catch(e){ if(ui.sheet === s){ s.busy = ""; renderSheet(); } toast(/permission/.test((e && e.code) || "") ? "The cloud wouldn't take the photos: only a Coach or an Admin adds them." : "The photos weren't saved (no signal?). Try again.", 5000); }
+  }
+  function act(k, a){
+    const s = ui.sheet && ui.sheet.faces ? ui.sheet : null;
+    if(k === "faces"){ sheet(a.dataset.team); return; }
+    if(k === "faceshow"){ S.settings.faces = a.dataset.v !== "off"; save(); render(); toast(S.settings.faces ? "Player photos are on for this device." : "Player photos are off on this device. Every other device keeps them."); return; }
+    if(!s || !canCoach()) return;
+    const it = s.items[+a.dataset.i];
+    if(k === "facesteam"){ s.team = a.dataset.team === "girls" ? "girls" : "boys"; renderSheet(); }
+    else if(k === "facespick"){ if(!Sync.live() || s.busy) return; s.forPid = a.dataset.pid || ""; const f = $("#faces-file"); if(f){ f.multiple = !s.forPid; f.click(); } }
+    else if(k === "facessave") saveAll();
+    else if(k === "facedrop"){ if(it){ s.items.splice(+a.dataset.i, 1); renderSheet(); } }
+    else if(k === "faceadj"){ if(it){ s.adj = +a.dataset.i; s.was = {...it.c}; renderSheet(); } }
+    else if(k === "faceadjok"){ const x = s.items[s.adj]; if(x) x.out = cut(x.cv, x.c); s.adj = -1; renderSheet(); }
+    else if(k === "faceadjreset"){ const x = s.items[s.adj]; if(x){ x.c = clampC(x.cv, crop0(x.cv)); renderSheet(); } }
+    else if(k === "facedel"){ const pid = a.dataset.pid, p = ["boys", "girls"].flatMap(t => (S.teams[t] || {}).roster || []).find(x => x.pid === pid);
+      if(!st.map.has(pid) || !Sync.live() || !confirm(`Take ${p ? "#" + p.num + " " + (p.name || "") : "this player"}'s photo off every page?`)) return;
+      within(put({[pid]:""}), 20000).then(r => toast(r === "ok" ? "Photo removed." : "No answer from the cloud yet. It comes off as soon as there's signal: keep Brier Stats open.", 4000), () => toast("The photo wasn't removed (no signal?). Try again.", 4000)); }
+  }
+  // The file picker's answer, the "who is this" boxes, and dragging and zooming the crop.
+  document.addEventListener("change", ev => { const t = ev.target, s = ui.sheet && ui.sheet.faces ? ui.sheet : null; if(!s || !t) return;
+    if(t.id === "faces-file"){ const l = [...t.files]; t.value = ""; files(s.forPid ? l.slice(0, 1) : l, s.forPid); s.forPid = ""; }
+    else if(t.dataset && t.dataset.facewho != null){ const it = s.items[+t.dataset.facewho], [team, pid] = t.value.split("|"); if(!it || !pid) return;
+      s.items = s.items.filter(x => x === it || x.pid !== pid); it.team = team; it.pid = pid; it.check = 0; renderSheet(); } });
+  document.addEventListener("input", ev => { const t = ev.target, s = ui.sheet && ui.sheet.faces ? ui.sheet : null, it = s && s.items[s.adj]; if(!it || !t || t.id !== "facezoom") return;
+    const m = Math.min(it.cv.width, it.cv.height); it.c.s = m - (m - 24) * (+t.value / 100); clampC(it.cv, it.c); drawn(); });
+  document.addEventListener("pointerdown", ev => { const t = ev.target, s = ui.sheet && ui.sheet.faces ? ui.sheet : null, it = s && s.items[s.adj]; if(!it || !t || t.id !== "facecv" || ev.button > 0) return;
+    ev.preventDefault(); st.drag = {x:ev.clientX, y:ev.clientY, cx:it.c.x, cy:it.c.y, k:it.c.s * 1.36 / t.getBoundingClientRect().width, it}; try{ t.setPointerCapture(ev.pointerId); }catch(e){} });
+  document.addEventListener("pointermove", ev => { const d = st.drag; if(!d) return; d.it.c.x = d.cx - (ev.clientX - d.x) * d.k; d.it.c.y = d.cy - (ev.clientY - d.y) * d.k; clampC(d.it.cv, d.it.c); drawn(); });
+  ["pointerup", "pointercancel"].forEach(n => document.addEventListener(n, () => { st.drag = null; }));
+  return {cls, any, boot, heard, pubLoad, tick:pubSoon, act, has:pid => st.map.has(pid), count:() => st.map.size,
+    // For the tests: photos straight in, as if the cloud had sent them.
+    set:o => { st.heard = true; const ch = apply(o); return ch; }};
+})();
 
 /* ---------- the public copy of a game (hoopsPublic/{gid}) ----------
    Small on purpose: every fan's phone downloads it on every update. One JSON string, because Firestore can't hold lists
@@ -5113,7 +5402,8 @@ function statsSnap(){
 }
 // Turns a public copy back into a game and a replay, so the public page draws the same scoreboard and box score.
 function pubGame(sn){
-  const mk = tm => sn.box[tm].map((a, i) => ({pid:tm + i, num:a[0], name:a[1], pos:a[2], grade:a[3], ht:a[4]}));
+  // fid: our player's season id (the copy lists them in pk), which is what his photo goes by.
+  const mk = tm => sn.box[tm].map((a, i) => ({pid:tm + i, num:a[0], name:a[1], pos:a[2], grade:a[3], ht:a[4], fid:tm === "us" && Array.isArray(sn.pk) && typeof sn.pk[i] === "string" ? sn.pk[i] : ""}));
   const g = {id:sn.id, date:sn.date, time:sn.time, team:sn.team, usName:sn.usName, opp:sn.opp, oi:sn.oi, ha:sn.ha, district:sn.district, event:sn.event,
     quarters:sn.quarters, status:sn.status, us:mk("us"), them:mk("them"), ev:[], practice:false};
   const R = {q:sn.q, brk:!!sn.brk, sc:sn.sc, qs:sn.qs, poss:sn.poss, box:{us:{}, them:{}}, team:{us:LINE(), them:LINE()}, court:{us:new Set(), them:new Set()}, plays:[], shots:[]};
@@ -5795,6 +6085,7 @@ document.addEventListener("click", async ev => {
     case "drvoff": Drive.off(); break;
     case "drvcopy": { const ta = $("#drvtxt"); if(ta) ta.closest("details").open = true; const ok = await copyText(DRIVE_GS, ta); toast(ok ? "Script copied. Paste it into a new project at script.google.com." : "Open Show the script, select it all and copy it by hand.", 5000); break; }
     case "restore": if(canAdmin()) $("#restore-file").click(); break;
+    case "faces": case "faceshow": case "facesteam": case "facespick": case "facessave": case "facedrop": case "faceadj": case "faceadjok": case "faceadjreset": case "facedel": Faces.act(act, a); break;
     default: Sync.click(act, a);
   }
 });
@@ -6540,6 +6831,7 @@ const PubRead = (() => {
       // same season heard again after a lock: the game on screen gets its listener back (stop() took it), or it freezes.
       const j = JSON.stringify(d.exists() ? d.data() : {}); if(PS.phase === "live" && (j === PS.seasonJ || (off && !d.exists()))){ watch(); return; } PS.seasonJ = j;
       const r = d.exists() ? pubSafe(d.data()) : {}; PS.season = r.games || {}; PS.off = !!r.off; PS.phase = "live"; PS.err = "";
+      if(!PS.off) Faces.pubLoad(PS.fb, PS.db, 6 * 3600e3);   // the players' photos: one read a visit
       // A game back before tip-off (Coach reset it): the copy this phone holds goes, and its listener with it (a new one
       // starts when the game does, and gets the new copy).
       for(const [id, x] of Object.entries(PS.season)) if(x && x.status === "pre"){ delete PS.snap[id]; if(PS.due) delete PS.due[id]; if(PS.watching === id){ PS.unG(); PS.unG = null; PS.watching = null; } }
@@ -6602,7 +6894,8 @@ const BugRead = (() => {
       const app = fb.initializeApp(FB, "brierbug"), db = fb.initializeFirestore(app, {localCache:fb.memoryLocalCache()});
       Object.assign(BS, {fb, db, board:boardFeed(fb, db, render)});
       fb.onSnapshot(fb.doc(db, "hoopsPublic", "_bug"), d => { let b = null; try{ b = d.exists() ? pubSafe(JSON.parse(d.data().j)) : null; }catch(e){}
-        BS.bug = b; BS.phase = "live"; BS.board.want(!!b && b.status === "live" && b.brd === 1, 0); full(); render(); }, () => { BS.phase = "error"; render(); });
+        BS.bug = b; BS.phase = "live"; BS.board.want(!!b && b.status === "live" && b.brd === 1, 0); full(); render();
+        if(b) Faces.pubLoad(fb, db, 600e3); }, () => { BS.phase = "error"; render(); });
       // The board's clock ticks in place; anything else the board changes redraws the bug.
       setInterval(() => { if(!BS.board.on()) return; const v = BS.board.view(), k = v ? [v.fresh, v.home, v.vis, v.hf, v.vf, v.q, v.run].join() : "";
         if(k !== BS.bkey){ BS.bkey = k; render(); return; } const el = document.querySelector(".obug .per .pl"), o = bugOver();
@@ -6639,7 +6932,7 @@ const BugRead = (() => {
 function bugLead(g, R, tm, k){
   const val = l => k === "reb" ? l.oreb + l.dreb : l[k], ls = Object.entries(R.box[tm]), top = Math.max(0, ...ls.map(([, l]) => val(l)));
   if(!top) return "–";
-  return ls.filter(([, l]) => val(l) === top).map(([pid]) => player(g, tm, pid)).filter(Boolean).slice(0, 2).map(p => esc(p.name ? pShort(p) : "#" + p.num)).join(", ") + " " + top;
+  return ls.filter(([, l]) => val(l) === top).map(([pid]) => player(g, tm, pid)).filter(Boolean).slice(0, 2).map(p => faceNm(p, esc(p.name ? pShort(p) : "#" + p.num))).join(", ") + " " + top;
 }
 // Halftime and the final: the score, points by period, each team's leaders and a few team numbers.
 function bugCard(sn){
@@ -6684,8 +6977,8 @@ function leadCard(g, R, k, lbl){
   const sd = sides(g), val = ln => k === "reb" ? ln.oreb + ln.dreb : ln[k];
   const row = tm => { const ls = Object.entries(R.box[tm]), top = Math.max(0, ...ls.map(([, l]) => val(l)));
     const who = top ? ls.filter(([, l]) => val(l) === top).map(([pid]) => player(g, tm, pid)).filter(Boolean) : [];
-    const names = who.slice(0, 3).map(p => p.name ? pShort(p) : "#" + p.num).join(", ") + (who.length > 3 ? " +" + (who.length - 3) : "");
-    return `<div class="lr" style="${tvars(g, tm)}"><b>${top || "–"}</b><span>${top ? esc(names) : g.status === "final" ? "None" : "Nobody yet"}<small>${esc(tmName(g, tm))}</small></span></div>`; };
+    const names = who.slice(0, 3).map(p => faceNm(p, esc(p.name ? pShort(p) : "#" + p.num))).join(", ") + (who.length > 3 ? " +" + (who.length - 3) : "");
+    return `<div class="lr" style="${tvars(g, tm)}"><b>${top || "–"}</b><span>${top ? names : g.status === "final" ? "None" : "Nobody yet"}<small>${esc(tmName(g, tm))}</small></span></div>`; };
   return `<div class="card"><div class="kicker">${lbl}</div>${row(sd.left)}${row(sd.right)}</div>`;
 }
 /* ---------- Gamecast: the fan page's shot chart, game flow, player cards, preview, recap and season stats ---------- */
@@ -6749,7 +7042,7 @@ function pubPlayerSheet(tm, i){
   const sr = stats && real ? stats.p.find(r => r[0] === real) : null, per = (v, n) => n ? (v / n).toFixed(1) : "–";
   if(tm === "us" && !PS.stats) PubRead.stats();
   const shoot = ln.po ? `FG ${ln.fgm} made · FT ${ln.ftm} made` : `FG ${ln.fgm}-${ln.fga} · 3PT ${ln.tpm}-${ln.tpa} · FT ${ln.ftm}-${ln.fta}`;
-  openSheet({wide:true, html:() => `<div style="${tvars(g, tm)}"><div class="kicker">${esc(tmName(g, tm))}</div><h3>#${esc(p.num)} ${esc(p.name || "")}</h3></div>
+  openSheet({wide:true, html:() => `${fhead(p, `<div class="kicker">${esc(tmName(g, tm))}</div><h3>#${esc(p.num)} ${esc(p.name || "")}</h3>`, ` style="${tvars(g, tm)}"`)}
     <div class="pcl"><div><b>${ln.pts}</b>PTS</div><div><b>${ln.oreb + ln.dreb}</b>REB</div><div><b>${ln.ast}</b>AST</div><div><b>${ln.stl}</b>STL</div><div><b>${ln.blk}</b>BLK</div><div><b>${ln.to}</b>TO</div><div><b>${ln.pf}</b>PF</div></div>
     <p class="small" style="margin:6px 0">${shoot}</p>
     ${sr ? `<p style="margin:6px 0"><b>Season (${sr[3]} game${sr[3] === 1 ? "" : "s"}):</b> ${per(sr[4], sr[3])} ppg · ${per(sr[5], sr[3])} rpg · ${per(sr[6], sr[3])} apg</p>` : ""}
@@ -6763,7 +7056,7 @@ function pubStreak(rows, team){ const fs = rows.filter(([, r]) => r.team === tea
   const last = fs[fs.length - 1]; let n = 0; for(let i = fs.length - 1; i >= 0 && fs[i] === last; i--) n++; return n >= 2 ? `${last ? "Won" : "Lost"} ${n} straight` : ""; }
 function pubLeaders(team){
   const t = PS.stats && PS.stats.t && PS.stats.t[team]; if(!t || !t.p.length) return "";
-  const best = (k, lbl) => { const r = t.p.filter(x => x[3]).sort((a, b) => b[k] / b[3] - a[k] / a[3])[0]; return r && r[k] ? `<div class="lr"><b>${(r[k] / r[3]).toFixed(1)}</b><span>${esc(r[2] || "#" + r[1])}<small>${lbl}</small></span></div>` : ""; };
+  const best = (k, lbl) => { const r = t.p.filter(x => x[3]).sort((a, b) => b[k] / b[3] - a[k] / a[3])[0]; return r && r[k] ? `<div class="lr"><b>${(r[k] / r[3]).toFixed(1)}</b><span>${face(r[0])}${esc(r[2] || "#" + r[1])}<small>${lbl}</small></span></div>` : ""; };
   const h = best(4, "points a game") + best(5, "rebounds a game") + best(6, "assists a game");
   return h ? `<div class="card"><div class="kicker">Season leaders</div>${h}</div>` : "";
 }
@@ -6819,7 +7112,7 @@ function viewStats(rows){
   const ppg = n ? (fin.reduce((a, [, r]) => a + r.us, 0) / n).toFixed(1) : "–", opp = n ? (fin.reduce((a, [, r]) => a + r.them, 0) / n).toFixed(1) : "–";
   return head + `<div class="card" style="margin-top:10px"><h2>${esc(t.name || (team === "girls" ? "Lady Cats" : "Bobcats"))} season stats</h2><div class="small" style="font-weight:600;margin:2px 0 8px">${w + l ? `${w}-${l} · ` : ""}${ppg} points a game · allowing ${opp}</div>
     <div class="scroll-x"><table class="sttab"><tr><th class="l">Player</th>${STCOLS.map(([l, k]) => `<th><button class="lnk${k === K ? " on" : ""}" data-act="pubsort" data-v="${k}">${l}</button></th>`).join("")}</tr>
-    ${ps.map(r => `<tr><td class="l">${esc(r[1])} ${esc(r[2] || "")}</td>${STCOLS.map(([, k]) => `<td${k === K ? ' class="on"' : ""}>${cell(r, k)}</td>`).join("")}</tr>`).join("")}</table></div>
+    ${ps.map(r => `<tr><td class="l">${face(r[0], "", true)}${esc(r[1])} ${esc(r[2] || "")}</td>${STCOLS.map(([, k]) => `<td${k === K ? ' class="on"' : ""}>${cell(r, k)}</td>`).join("")}</tr>`).join("")}</table></div>
     <p class="small" style="margin:6px 0 0">Per game, from ${t.gp} finished game${t.gp === 1 ? "" : "s"}. Tap a column to sort. Shooting counts only games where misses were kept.</p></div>`;
 }
 function viewPublic(){
@@ -6862,7 +7155,7 @@ function viewPublic(){
     const meta = tm => `${ov.tf[tm]} team foul${ov.tf[tm] === 1 ? "" : "s"}<br>Timeouts 60s ${sn.tol[tm][60]} · 30s ${sn.tol[tm][30]}${ov.bonus[tm] ? `<div class="bonus">IN THE BONUS</div>` : ""}`;
     // At the final the strip under the board names each team's top scorer instead of the last horn.
     const tops = fin ? [sides(g).left, sides(g).right].map(tm => { const ls = Object.entries(R.box[tm]), m = Math.max(0, ...ls.map(([, l]) => l.pts));
-      return m ? ls.filter(([, l]) => l.pts === m).map(([pid]) => player(g, tm, pid)).filter(Boolean).slice(0, 2).map(p => `<b>${esc(p.name ? pShort(p) : "#" + p.num)}</b> ${m}`).join(", ") : ""; }).filter(Boolean) : [];
+      return m ? ls.filter(([, l]) => l.pts === m).map(([pid]) => player(g, tm, pid)).filter(Boolean).slice(0, 2).map(p => `${faceNm(p, `<b>${esc(p.name ? pShort(p) : "#" + p.num)}</b>`)} ${m}`).join(", ") : ""; }).filter(Boolean) : [];
     const last = sn.plays[sn.plays.length - 1];
     h += `<div class="ann stack" style="margin-top:8px"><div><div class="bugcap"><span>${esc(fmtDate(g.date))}${g.event ? " · " + esc(g.event) : ""}${g.district ? " · District" : ""}</span>${ov.tag === "unofficial" ? `<span class="tag solid" title="The gym scoreboard's feed is down: this is the stat keeper's score">Unofficial score</span>` : review ? `<span class="tag">Final · stats under review</span>` : ""}</div>
       ${old ? `<div class="flag" style="margin:0 0 6px"><b>Last update ${esc(agoWords(sn.upd + PS.delay * 1000))}.</b> Waiting on the scorer: the table may have lost signal.</div>` : ""}
@@ -6877,7 +7170,7 @@ function viewPublic(){
       <div class="row only-narrow"><button class="btn sm" aria-pressed="${ui.pubTm !== "away"}" data-act="pubtm" data-v="home">${esc(tmName(g, ha.home))}</button><button class="btn sm" aria-pressed="${ui.pubTm === "away"}" data-act="pubtm" data-v="away">${esc(tmName(g, ha.away))}</button></div>
       <div class="ann-cols" id="pubbox"><div class="card fanbox${ui.pubTm === "away" ? " hide-narrow" : ""}">${boxTable(g, R, ha.home, true)}</div><div class="card fanbox${ui.pubTm !== "away" ? " hide-narrow" : ""}">${boxTable(g, R, ha.away, true)}</div></div>${!fin && (R.court.us.size || R.court.them.size) ? `<p class="small" style="margin:-6px 0 0"><i class="onfl"></i>On the floor now</p>` : ""}
       ${pubShots(g, R)}
-      <div class="card" id="pubplays"><h3 style="font-size:22px;margin-bottom:4px">${sn.more ? "Last " + sn.plays.length + " plays" : "Play-by-play"}</h3>${sn.plays.length ? `<ul class="plays">${sn.plays.slice().reverse().map(p => `<li class="${p[4] ? "score" : ""}" style="${p[5] === "them" ? tvars(g, "them") : ""}"><span class="pq">${esc(perLabel(g, p[0]))}${p[7] ? `<span class="gcl">${esc(p[7])}</span>` : ""}${p[6] ? `<small>${esc(new Date(p[6]).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}))}</small>` : ""}</span><span class="ps">${ha.home === "us" ? p[1] + "-" + p[2] : p[2] + "-" + p[1]}</span><span class="pt">${p[5] ? `<span class="ptm">${esc(p[5] === "us" ? "GHS" : (g.oi && g.oi.abbr) || oppInfo(g.opp, g).abbr)}</span> ` : ""}${p[4] ? "<b>" + esc(unent(p[3])) + "</b>" : esc(unent(p[3]))}</span></li>`).join("")}</ul>` : `<p class="small">Plays show up here once the game starts.</p>`}</div>
+      <div class="card" id="pubplays"><h3 style="font-size:22px;margin-bottom:4px">${sn.more ? "Last " + sn.plays.length + " plays" : "Play-by-play"}</h3>${sn.plays.length ? `<ul class="plays">${sn.plays.slice().reverse().map(p => `<li class="${p[4] ? "score" : ""}" style="${p[5] === "them" ? tvars(g, "them") : ""}"><span class="pq">${esc(perLabel(g, p[0]))}${p[7] ? `<span class="gcl">${esc(p[7])}</span>` : ""}${p[6] ? `<small>${esc(new Date(p[6]).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}))}</small>` : ""}</span><span class="ps">${ha.home === "us" ? p[1] + "-" + p[2] : p[2] + "-" + p[1]}</span><span class="pt">${p[5] ? `<span class="ptm">${esc(p[5] === "us" ? "GHS" : (g.oi && g.oi.abbr) || oppInfo(g.opp, g).abbr)}</span> ` : ""}${p[5] === "us" ? face(player(g, "us", "us" + p[8])) : ""}${p[4] ? "<b>" + esc(unent(p[3])) + "</b>" : esc(unent(p[3]))}</span></li>`).join("")}</ul>` : `<p class="small">Plays show up here once the game starts.</p>`}</div>
       ${sn.sponsor ? `<div class="card" style="text-align:center"><div class="kicker">Tonight's game is brought to you by</div><h2 style="margin-top:4px">${esc(sn.sponsor)}</h2></div>` : ""}
       <p class="pubnote">${review ? "Final score. The stat keeper is checking the box score against the official book, so player numbers may still change." : fin ? "Final box score." : `${ov.tag === "board" ? "The score, clock and team fouls come straight from the gym scoreboard. " : ov.tag === "unofficial" ? "The gym scoreboard's feed is down, so the score is the stat keeper's until it's back. " : ""}${ov.tag === "board" ? "The box score updates" : "Stats update"} about every ${esc(String(sn.every || 30))} seconds, so they can run a little ahead of or behind the video.${PS.delay ? ` This page holds each update ${PS.delay} seconds to match the stream.` : ""}`} Last update ${esc(new Date(sn.upd).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}))}${fin ? "" : ` (${esc(agoWords(sn.upd))})`}.</p></div>`;
   }
@@ -7103,6 +7396,7 @@ const Sync = (() => {
       // would put them over the cloud's the moment the signal's back.
       if(!snap.exists() && snap.metadata && snap.metadata.fromCache) return;
       st.teamsSeen = true;   // rosters go up only after this device has heard the cloud's copy once
+      Faces.tick();   // a family's choice or the fan page switch may have changed: the fan page's photos follow
       // This device's own save, not the cloud's answer yet: if the cloud refuses it, the cloud's copy comes next.
       if(snap.metadata && snap.metadata.hasPendingWrites) return;
       if(!snap.exists()){ st.adminSet = {}; if(canCoach()){ st.teamsDirty = true; kick(300); } return; }
@@ -7137,6 +7431,8 @@ const Sync = (() => {
         save(); softRender();
       }else if((S.teamsRev || 0) !== rv){ if((S.teamsRev || 0) <= rv) S.teamsRev = rv + 1; st.teamsDirty = true; kick(300); }
     }, dead));
+    // Player photos: everyone let in hears them. A hiccup here never marks the scores as stale.
+    st.unsub.push(fb.onSnapshot(fb.doc(db, "hoopsBook", "faces"), snap => Faces.heard(snap), () => {}));
     if(S.role !== st.role){ S.role = st.role; save(); }
     if(boss(st.role)){
       st.unsub.push(fb.onSnapshot(fb.collection(db, "hoopsRequests"), snap => { st.reqs = snap.docs.map(d => ({uid:d.id, ...d.data()})); paint(); }, fail));
@@ -7314,7 +7610,7 @@ const Sync = (() => {
     finally{ st.statsBusy = false; }
   }
   function pubOwed(){ return S.settings.pub !== false && canScore() && Object.keys(S.pubOwe || {}).length > 0; }
-  function dirtyTeams(){ st.teamsDirty = true; kick(700); }
+  function dirtyTeams(){ st.teamsDirty = true; kick(700); Faces.tick(); }
   // A changed spelling is owed (S.sayOwe, kept on the device: sayPut saves it) until the cloud has it.
   function dirtySay(pids){ if(!(pids || []).length) return; const n = oweStamp(); S.sayOwe = {...(S.sayOwe || {})}; pids.forEach(p => { S.sayOwe[p] = n; }); kick(700); }
   // Clears what a write paid for: a stamp that changed while it was on its way stays owed.
@@ -7507,6 +7803,8 @@ const Sync = (() => {
   }
   return {start, live, ready, settled, dirty, reset, owePids, dirtyBooth, dirtyTeams, dirtySay, dirtyBc, dirtyLib, dirtyScript, dirtyScriptSaves, seedSeason, panel, click, submit,
     phase:() => st.phase, role:() => st.role, uid:() => st.uid,
+    // For the player photos (Faces): the cloud's handles while live, and whether the cloud's rosters have been heard.
+    cloud:() => live() ? {fb:st.fb, db:st.db} : null, teamsHeard:() => st.teamsSeen,
     // One doc to follow (the gym scoreboard's, Board): its unsubscribe, or null with sync off.
     // With metadata changes: a doc already in this device's cache comes first from the cache and then again once the
     // server confirms it, even when it hasn't changed.
@@ -7763,6 +8061,7 @@ if(!ui.gid || !S.games[ui.gid]){
   ui.gid = next ? next.id : "practice";
 }
 render();
+Faces.boot();
 if(S.sync) Sync.start();
 setInterval(() => Drive.tick(), 10000); window.addEventListener("online", () => setTimeout(() => Drive.tick(), 3000));
 if("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});

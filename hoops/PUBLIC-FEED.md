@@ -11,6 +11,7 @@ Each write costs one read for every listener, so listen to one game doc at a tim
 | `_bug` | the score bug's copy: teams, `sc`, `q`, `brk`, `tf`, `bonus`, `tol`, `status`, `brd` | every score, period, foul or timeout change |
 | `_board` | the gym scoreboard from the relay: `home, vis, hf, vf, q, run, cs` (clock seconds at `ct`), `ct, sent, stale, n, src, at, bye` | each board change (at most once a second), starts and stops right away |
 | `_stats` | `{j, upd}`. `j`: `{v, t:{boys|girls:{name, gp, p:[[pid, num, name, games, pts, reb, ast, stl, blk, to, pf, fgm, fga, tpm, tpa, ftm, fta]]}}}`, season totals from finals (shooting only from games where misses were kept) | when a final's results row goes out |
+| `_faces` | `{v, f:{<pid>: "data:image/jpeg;base64,…"}, upd}` (0.17.0). Player photos, 128 by 128 JPEG, keyed by the season player id (a game's `pk` list, a `_stats` row's first item). Only kids on Rosters, never one marked number only, and the doc is deleted while the fan page is off. Read it once a visit, not with a listener. Use a value only if it starts `data:image/jpeg;base64,` and is under 24,000 characters; put it in an image's `src` or a CSS `url()`, never into markup. |
 
 ## A game's `j`
 
