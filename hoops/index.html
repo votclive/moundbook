@@ -595,6 +595,10 @@ body.bcfull .brand b small{font-size:.6em;letter-spacing:.12em;margin-left:6px}
 .sechead h3{font-size:26px}
 .infogrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}
 .segedit{border:1px solid var(--grey);border-radius:8px;padding:8px;display:grid;gap:6px;margin-bottom:8px}
+.seggrip{cursor:grab;font-size:22px;line-height:1;padding:6px 4px;user-select:none;-webkit-user-select:none;touch-action:none;color:var(--grey)}
+.segedit.dragging{opacity:.4}
+.segedit.dropb{box-shadow:0 -4px 0 var(--green)}
+.segedit.dropa{box-shadow:0 4px 0 var(--green)}
 
 /* ---------- Opponents ---------- */
 .olist{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:6px;margin-top:8px}
@@ -748,7 +752,7 @@ table.rect tr.sub td{background:transparent;padding-top:10px}
    One device scores a game; everyone else signed in follows it live on the Announcer page. Each device's own saved copy is the
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
-const BS_VERSION = "0.16.0";
+const BS_VERSION = "0.16.2";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -3419,10 +3423,10 @@ function viewScript(){
 }
 function scriptEditor(){
   const segs = JSON.parse(JSON.stringify(scriptSegs()));
-  openSheet({segs, wide:true, html:() => `<h3>Edit the script</h3><p class="small" style="margin:0 0 8px">Top-of-the-night lines are read once, game lines once for every game, end lines once at the close. Type a {token} to fill something in:</p>
+  openSheet({segs, wide:true, html:() => `<h3>Edit the script</h3><p class="small" style="margin:0 0 8px">Top-of-the-night lines are read once, game lines once for every game, end lines once at the close. Drag a line by its ⠿ to move it. Type a {token} to fill something in:</p>
     <p class="small" style="margin:0 0 10px">${TOKENS.map(t => `<b>{${t[0]}}</b> ${esc(t[1])}`).join(" · ")}. Capitals don't matter: {oppmascot} works too.</p>
     <p class="small" style="margin:0 0 10px">Bold and italics: pick words in a line and tap <b>B</b> or <i>I</i>, or type <b>**two stars**</b> or <i>*one star*</i> around them. ${ui.caps !== false ? "The script shows in ALL CAPS on this device (the switch is on the script page)." : ""}</p>
-    ${ui.sheet.segs.map((x, i) => `<div class="segedit" data-seg="${i}"><div class="row"><select data-sf="at" style="width:auto">${Object.entries(SCRIPT_AT).map(([k, l]) => `<option value="${k}" ${(x.at || "game") === k ? "selected" : ""}>${l}</option>`).join("")}</select>
+    ${ui.sheet.segs.map((x, i) => `<div class="segedit" data-seg="${i}"><div class="row"><span class="seggrip" data-grip title="Drag to move this line" aria-hidden="true">⠿</span><select data-sf="at" style="width:auto">${Object.entries(SCRIPT_AT).map(([k, l]) => `<option value="${k}" ${(x.at || "game") === k ? "selected" : ""}>${l}</option>`).join("")}</select>
       <input type="text" data-sf="title" value="${esc(x.title || "")}" placeholder="Title" style="flex:1;width:auto;min-width:140px"><button type="button" class="btn sm" data-act="segmv" data-i="${i}" data-d="-1" ${i ? "" : "disabled"}>↑</button><button type="button" class="btn sm" data-act="segmv" data-i="${i}" data-d="1" ${i < ui.sheet.segs.length - 1 ? "" : "disabled"}>↓</button><button type="button" class="btn sm dark" data-act="segdel" data-i="${i}">✕</button></div>
       <input type="text" data-sf="cue" value="${esc(x.cue || "")}" placeholder="When to read it">
       <div class="row" style="gap:4px"><button type="button" class="btn sm" data-act="segfmt" data-w="**" title="Bold the words you picked"><b>B</b></button><button type="button" class="btn sm" data-act="segfmt" data-w="*" title="Italicize the words you picked"><i>I</i></button></div>
@@ -3449,6 +3453,30 @@ function segWrap(ta, w){
   if(!ok || ta.value !== v.slice(0, s0) + put + v.slice(s1)) ta.value = v.slice(0, s0) + put + v.slice(s1);
   ta.setSelectionRange(at, at + core.length);
 }
+// Dragging a script line by its grip (⠿) to a new spot in the editor (Kevin: instead of the arrows a hundred times).
+// Pointer events, so a finger on the iPad and a mouse work the same way; only the grip starts a drag, so picking words
+// in a line's boxes still works. Near the top or bottom of the sheet it scrolls while held.
+let segDrag = null;
+function segDropAt(y){ const d = segDrag; let best = null; $$("#sheet [data-seg]").forEach(el => { const r = el.getBoundingClientRect(); if(!best || y > r.top) best = {el, after:y > r.top + r.height / 2}; });
+  $$("#sheet .dropb,#sheet .dropa").forEach(x => x.classList.remove("dropb", "dropa")); if(best) best.el.classList.add(best.after ? "dropa" : "dropb"); d.over = best; }
+function segDragEnd(drop){ const d = segDrag; if(!d) return; segDrag = null; cancelAnimationFrame(d.raf);
+  $$("#sheet [data-seg]").forEach(el => el.classList.remove("dragging", "dropa", "dropb"));
+  if(!drop || !d.over || !ui.sheet || !ui.sheet.segs) return;
+  const sh = $("#sheet .sheet"), top = sh ? sh.scrollTop : 0, from = d.from, to0 = +d.over.el.dataset.seg + (d.over.after ? 1 : 0), to = to0 > from ? to0 - 1 : to0;
+  if(to === from) return;
+  grabSegs(); const L = ui.sheet.segs, [x] = L.splice(from, 1); L.splice(to, 0, x); renderSheet(); const nb = $("#sheet .sheet"); if(nb) nb.scrollTop = top; }
+document.addEventListener("pointerdown", ev => { const g = ev.target.closest && ev.target.closest("#sheet [data-grip]"); if(!g || segDrag || ev.button > 0) return;
+  ev.preventDefault(); const el = g.closest("[data-seg]"); el.classList.add("dragging");
+  segDrag = {from:+el.dataset.seg, y:ev.clientY, id:ev.pointerId, over:null, raf:0};
+  try{ g.setPointerCapture(ev.pointerId); }catch(e){}
+  const tick = () => { const d = segDrag; if(!d) return; const sh = $("#sheet .sheet"); if(sh){ const r = sh.getBoundingClientRect(), edge = 60;
+      const v = d.y < r.top + edge ? -Math.ceil((r.top + edge - d.y) / 4) : d.y > r.bottom - edge ? Math.ceil((d.y - r.bottom + edge) / 4) : 0;
+      if(v){ sh.scrollTop += v; segDropAt(d.y); } }
+    d.raf = requestAnimationFrame(tick); };
+  segDrag.raf = requestAnimationFrame(tick); });
+document.addEventListener("pointermove", ev => { const d = segDrag; if(!d || ev.pointerId !== d.id) return; ev.preventDefault(); d.y = ev.clientY; segDropAt(ev.clientY); });
+document.addEventListener("pointerup", ev => { if(segDrag && ev.pointerId === segDrag.id) segDragEnd(true); });
+document.addEventListener("pointercancel", ev => { if(segDrag && ev.pointerId === segDrag.id) segDragEnd(false); });
 function grabSegs(){ const s = ui.sheet; if(!s || !s.segs) return; $$("[data-seg]").forEach(el => { const x = s.segs[+el.dataset.seg]; if(!x) return; $$("[data-sf]", el).forEach(f => { x[f.dataset.sf] = f.value; }); if(!x.need) delete x.need; }); }
 
 /* ---------- box score ---------- */
