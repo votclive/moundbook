@@ -24,7 +24,7 @@ Each write costs one read for every listener, so listen to one game doc at a tim
 - `fw`: the flow, one per scoring play: `[period, clockLeft (-1 if none), us, them]`
 - `ql [period seconds, OT seconds]`, `fl` (lead changes, ties, biggest leads, current run), `x` (bench, 2nd-chance, off-TO, paint points), `brd` (1 board live, 2 lost), `rv`, `sponsor`, `every`, `upd`
 
-## Reading it safely (0.16.1)
+## Reading it safely (0.16.3)
 
 Any scorer's sign-in (and the scoreboard relay's) can write these documents, so a reader should treat every value as somebody else's writing:
 
