@@ -717,7 +717,7 @@ button.lnk{border:0;background:none;padding:0;font:inherit;color:inherit;text-al
    One device scores a game; everyone else signed in follows it live on the Announcer page. Each device's own saved copy is the
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
-const BS_VERSION = "0.11.0";
+const BS_VERSION = "0.12.0";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -1355,7 +1355,7 @@ function touch(g){ g.rev = (g.rev || 0) + 1; g.upd = Date.now(); save(); Sync.di
 function claim(g){ if(!g.writer){ g.writer = S.dev; g.writerAt = Date.now(); } }
 // The game fields the edit sheet, Final and Reopen change. g.fed keeps when each was last changed, so two devices fixing a
 // game that's over at the same time keep each other's fields (mergeGame). A copy from before stamps counts as 0.
-const GFIELDS = ["date", "time", "opp", "ha", "event", "district", "off", "forfeit", "ppdFrom", "offWas", "status", "quarters", "qlen", "bfin", "rv"];
+const GFIELDS = ["date", "time", "opp", "ha", "event", "district", "off", "forfeit", "ppdFrom", "offWas", "status", "quarters", "qlen", "bfin", "rv", "scrim"];
 function edField(g, ks){ if(!ks.length) return; const t = Date.now(); g.fed = {...(g.fed || {})}; ks.forEach(k => { g.fed[k] = t; }); }
 // One game from two copies of it: base, plus every change in other that's newer (plays by mergeEv, players by their edit
 // stamp ed, game fields by g.fed, numbers the PA's list put in). Where neither side's change is newer, base's stands.
@@ -1425,6 +1425,13 @@ const linked = (g, t, id) => g.ev.some(x => !x.v && x.t === t && x.ref === id);
 let lastTap = {k:"", at:0};
 // A finger that bounces: the same button again within ms counts once. A real catch-up tap (two free throws) is slower.
 function bounced(key, ms){ const now = Date.now(); if(key === lastTap.k && now - lastTap.at < ms) return true; lastTap = {k:key, at:now}; return false; }
+// Kevin (0.12.0): two baskets for one team inside a second is almost surely a double tap. Both count (the board no longer
+// flags a book that's ahead), so the scorer gets a quiet heads-up to Undo if it was one.
+function dblTap(g, e){
+  if(!e || e.v || !((e.t === "FG" || e.t === "FT") && e.m)) return;
+  const p = g.ev.find(x => x !== e && !x.v && x.tm === e.tm && (x.t === "FG" || x.t === "FT") && x.m && Math.abs((e.at || 0) - (x.at || 0)) < 1000);
+  if(p) toast(`Two ${tmName(g, e.tm)} scores inside a second. Double tap? Undo if so.`, 4000);
+}
 function stat(tm, pid, k){
   const g = cur(); if(!g) return;
   // A finger that bounces on a button scores once. A real second tap after the toast still counts.
@@ -1435,11 +1442,11 @@ function stat(tm, pid, k){
   const R = replay(g), po = S.settings.extra ? {} : {po:1};    // points-only mode: makes are marked, so no fake shooting %
   let e;
   switch(k){
-    case "ft": e = rec({tm, pid, t:"FT", m:true, ...po}); break;
+    case "ft": e = rec({tm, pid, t:"FT", m:true, ...po}); dblTap(g, e); break;
     case "ftx": e = rec({tm, pid, t:"FT", m:false}); if(e && S.settings.extra){ ui.fu = [{k:"reb", miss:tm}]; renderFu(); } break;
     case "2": case "3": case "2x": case "3x": {
       const p = parseInt(k, 10), m = !k.endsWith("x");
-      e = rec({tm, pid, t:"FG", p, m, ...(m ? po : {})}); if(!e) return;
+      e = rec({tm, pid, t:"FG", p, m, ...(m ? po : {})}); if(!e) return; dblTap(g, e);
       if(S.settings.chart) ui.fu.push({k:"loc", id:e.id});
       if(m && S.settings.extra) ui.fu.push({k:"ast", tm, shooter:pid, ref:e.id});
       if(!m && S.settings.extra) ui.fu.push({k:"reb", miss:tm});
@@ -1631,7 +1638,7 @@ function needGame(){
     <div class="row"><button class="btn primary" data-act="go" data-tab="games">Games</button><button class="btn" data-act="open" data-gid="practice">Practice game</button></div></div>`;
 }
 function gameTitle(g){ return `${esc(g.ha === "Away" ? "at" : "vs")} ${esc(g.opp)}`; }
-function gameSub(g){ return [g.team === "girls" ? "Girls" : "Boys", fmtDate(g.date), fmtTime(g.time), g.ha, g.district ? "District" : "", g.event].filter(Boolean).map(esc).join(" · "); }
+function gameSub(g){ return [g.team === "girls" ? "Girls" : "Boys", fmtDate(g.date), fmtTime(g.time), g.ha, g.district ? "District" : "", g.scrim ? "Scrimmage" : "", g.event].filter(Boolean).map(esc).join(" · "); }
 
 function viewDesk(){
   const g = cur(); if(!g) return needGame();
@@ -1989,19 +1996,21 @@ function headline(g, R, o = {}){
 function agoWords(at){ if(!at) return ""; const s = Math.max(0, Math.round((Date.now() - at) / 1000)); return s < 60 ? s + " s ago" : Math.round(s / 60) + " min ago"; }
 function lastAtOf(g){ for(let i = g.ev.length - 1; i >= 0; i--) if(!g.ev[i].v) return g.ev[i].at || 0; return 0; }
 // W or L, or "" while undecided. A forfeit ruling wins over the score; player stats still come from the plays.
-function result(g){ if(!g || g.deleted || g.practice) return ""; if(g.forfeit === "W" || g.forfeit === "L") return g.forfeit; if(!gameOver(g)) return ""; const R = replay(g); return R.sc.us > R.sc.them ? "W" : "L"; }
-function resultWords(g){ const r = result(g); if(!r) return ""; if(!g.ev.some(e => !e.v && !PREGAME(e))) return r + " (forfeit)"; const R = replay(g); return r + " " + R.sc.us + "-" + R.sc.them + (g.forfeit ? " (forfeit)" : ""); }
+function result(g){ if(!g || g.deleted || g.practice || g.scrim) return ""; if(g.forfeit === "W" || g.forfeit === "L") return g.forfeit; if(!gameOver(g)) return ""; const R = replay(g); return R.sc.us > R.sc.them ? "W" : "L"; }
+function resultWords(g){ const r = result(g);
+  if(g && g.scrim && !g.deleted && gameOver(g)){ const R = replay(g); return `Scrimmage ${R.sc.us}-${R.sc.them}`; }   // no W or L: it isn't on the record
+  if(!r) return ""; if(!g.ev.some(e => !e.v && !PREGAME(e))) return r + " (forfeit)"; const R = replay(g); return r + " " + R.sc.us + "-" + R.sc.them + (g.forfeit ? " (forfeit)" : ""); }
 const OFF_WORDS = {ppd:"Postponed", cxl:"Cancelled"};
 // Record going into (or out of) this game, and the last time we played them.
 // The record the screens show next to our name, by the same rule as the PA's final read: the record typed under Prep
 // before tonight plus tonight's result once it's over; with none typed, the book's count when every earlier game is in
 // it; else nothing (a count that's missing games is worse than none).
 function recordOf(g){
-  if(g.practice) return "";
+  if(g.practice || g.scrim) return "";
   const wl = x => result(x) || (replay(x).sc.us > replay(x).sc.them ? "W" : "L"), over = gameOver(g) || g.forfeit;
   const typed = (infoOf(g).record || "").match(/(\d+)\s*-\s*(\d+)/);
   if(typed){ let w = +typed[1], l = +typed[2]; if(over) wl(g) === "W" ? w++ : l++; return w + "-" + l; }
-  const before = Object.values(S.games).filter(x => !x.deleted && !x.practice && !x.off && x.team === g.team && x.id !== g.id && (x.date + (x.time || "")) < (g.date + (g.time || "")));
+  const before = Object.values(S.games).filter(x => !x.deleted && !x.practice && !x.scrim && !x.off && x.team === g.team && x.id !== g.id && (x.date + (x.time || "")) < (g.date + (g.time || "")));
   if(before.some(x => !gameOver(x) && !x.forfeit)) return "";
   let w = 0, l = 0; for(const x of over ? before.concat([g]) : before) wl(x) === "W" ? w++ : l++;
   return w + l ? w + "-" + l : "";
@@ -3129,11 +3138,11 @@ function leaderWords(g){
 // "The Lady Cats are now 13 and 5, 4 and 1 in the district." From the PA's "record before tonight" when it's typed in
 // (games this app never scored count too), else from the book, but only when every earlier game is final in the book.
 function recordWords(g){
-  if(!gameOver(g) || g.practice) return "";
+  if(!gameOver(g) || g.practice || g.scrim) return "";
   const wl = x => result(x) || (replay(x).sc.us > replay(x).sc.them ? "W" : "L");   // over by the horns counts before the Final tap
   const won = wl(g) === "W", typed = (infoOf(g).record || "").match(/(\d+)\s*-\s*(\d+)(?:\D+(\d+)\s*-\s*(\d+))?/);
   let w = 0, l = 0, dw = 0, dl = 0;
-  const before = Object.values(S.games).filter(x => !x.deleted && !x.practice && !x.off && x.team === g.team && x.id !== g.id && (x.date + x.time) < (g.date + g.time));
+  const before = Object.values(S.games).filter(x => !x.deleted && !x.practice && !x.scrim && !x.off && x.team === g.team && x.id !== g.id && (x.date + x.time) < (g.date + g.time));
   if(typed){ [w, l, dw, dl] = [1, 2, 3, 4].map(i => +typed[i] || 0); won ? w++ : l++;
     // No district record typed: count it from the book when every earlier district game is in it, else leave it out.
     if(g.district){ if(typed[3] != null) won ? dw++ : dl++;
@@ -3512,7 +3521,7 @@ function viewGames(){
     const R = g.ev.length ? replay(g) : null, res = result(g);
     return `<div class="grow${ui.gid === g.id ? " cur" : ""}"><div class="d">${esc(fmtDate(g.date))}<div class="small" style="font-family:var(--f-body);text-transform:none;font-weight:500">${esc(fmtTime(g.time))}</div></div>
       <div class="tm">${g.team === "girls" ? "Girls" : "Boys"}</div>
-      <div><b>${night ? esc(usName(g)) + " " : ""}${g.ha === "Away" ? "at" : "vs"} ${esc(g.opp)}</b> ${g.district ? '<span class="tag">District</span>' : ""} ${g.status === "live" ? (gameOver(g) ? '<span class="tag solid">Not final</span>' : '<span class="tag green">Live</span>') : ""}${g.off ? ` <span class="tag solid">${OFF_WORDS[g.off] || ""}</span>` : g.ppdFrom ? ` <span class="tag">Makeup from ${esc(new Date(g.ppdFrom + "T12:00:00").toLocaleDateString(undefined, {month:"short", day:"numeric"}))}</span>` : ""}${(sbSent(g) || {}).changed ? ' <span class="tag">Resend to Scorebook</span>' : ""}<div class="small">${esc(g.event || "")}</div></div>
+      <div><b>${night ? esc(usName(g)) + " " : ""}${g.ha === "Away" ? "at" : "vs"} ${esc(g.opp)}</b> ${g.district ? '<span class="tag">District</span>' : ""} ${g.scrim ? '<span class="tag" title="Not in the record or season stats. Never on the fan page.">Scrimmage</span>' : ""} ${g.status === "live" ? (gameOver(g) ? '<span class="tag solid">Not final</span>' : '<span class="tag green">Live</span>') : ""}${g.off ? ` <span class="tag solid">${OFF_WORDS[g.off] || ""}</span>` : g.ppdFrom ? ` <span class="tag">Makeup from ${esc(new Date(g.ppdFrom + "T12:00:00").toLocaleDateString(undefined, {month:"short", day:"numeric"}))}</span>` : ""}${(sbSent(g) || {}).changed ? ' <span class="tag">Resend to Scorebook</span>' : ""}<div class="small">${esc(g.event || "")}</div></div>
       <div class="row" style="justify-content:flex-end"><span class="res ${res === "W" ? "w" : ""}">${res ? esc(resultWords(g)) : R ? R.sc.us + "-" + R.sc.them : ""}</span>${(canEdit(g) && canCoach()) || rzOk(g) ? `<button class="btn sm" data-act="editgame" data-gid="${g.id}">Edit</button>` : ""}<button class="btn sm primary" data-act="open" data-gid="${g.id}">Open</button></div></div>`;
   }, rows = list.map(g => row(g));
   // Game night: tonight's games, both teams, sit on top, so between games the book opens the right one without scrolling the season.
@@ -3528,7 +3537,7 @@ function viewGames(){
 // team's games that were played and are over (a game that ended counts, Final tapped or not). No practice, deleted,
 // postponed or cancelled games, and no forfeit that was never played.
 function seasonGames(team){
-  return Object.values(S.games).filter(g => !g.deleted && !g.practice && !g.off && g.team === team && gameOver(g) && g.ev.some(e => !e.v && !PREGAME(e)))
+  return Object.values(S.games).filter(g => !g.deleted && !g.practice && !g.scrim && !g.off && g.team === team && gameOver(g) && g.ev.some(e => !e.v && !PREGAME(e)))
     .sort((a, b) => (a.date + (a.time || "")).localeCompare(b.date + (b.time || "")) || a.id.localeCompare(b.id));
 }
 function seasonLines(team){
@@ -4417,6 +4426,7 @@ document.addEventListener("click", async ev => {
     case "gclk": { const x = g && g.ev.find(e => e.id === a.dataset.id); if(x && canEdit(g)) clockSheet(g, x); break; }
     case "gclkclear": if(ui.sheet && ui.sheet.gc) setClock(ui.sheet.gc, null); break;
     case "boardok": Board.dismiss(); break;
+    case "boardnotyet": Board.notYet(); break;
     case "playscsv": if(g){ const pid = (ui.pf && ui.pf.pid) || "", pl = pid && (player(g, "us", pid) || player(g, "them", pid));
       download(`${g.id}${pl ? "-" + String(pl.num).replace(/[^\w-]/g, "") : ""}-plays.csv`, playsCsv(g, pl ? pid : ""), "text/csv"); } break;
     case "missed": if(g && canEdit(g)) missedSheet(g); break;
@@ -4653,6 +4663,9 @@ document.addEventListener("submit", ev => {
     // offWas (a called-off game an accidental tap started) goes only when the sheet offered Postponed and Cancelled.
     if(!g.off || g.forfeit) delete g.off; if(!g.forfeit) delete g.forfeit; if(!g.ev.some(e => !e.v && !PREGAME(e))) delete g.offWas;
     if(g.forfeit && g.status === "live") g.status = "final";
+    // Scrimmage (Admin only): off the record, the season stats and everything public. Its own box score stays in the app.
+    const scrimWas = !!g.scrim; if(canAdmin()){ if(d.get("scrim")) g.scrim = true; else delete g.scrim; }
+    if(!!g.scrim !== scrimWas){ if(g.scrim) Sync.unpubGame(g.id); else if(g.status !== "pre") Sync.pubSoon(g.id); }
     // Each field changed here is stamped, so a fix to another field on another device at the same time keeps both.
     edField(g, GFIELDS.filter((k, i) => JSON.stringify(g[k] ?? null) !== fwas[i]));
     closeSheet(); touch(g); Sync.seedSeason(true); toast("Saved."); return; }
@@ -4916,6 +4929,7 @@ function editGameSheet(g){
     <label class="fld" style="width:140px"><span>Where</span><select name="ha"><option ${g.ha === "Home" ? "selected" : ""}>Home</option><option ${g.ha === "Away" ? "selected" : ""}>Away</option><option ${g.ha === "Neutral" ? "selected" : ""}>Neutral</option></select></label></div>
     <label class="fld"><span>Event (optional)</span><input type="text" name="event" value="${esc(g.event || "")}" placeholder="Christmas Classic"></label>
     <label class="row" style="font-weight:600"><input type="checkbox" name="district" ${g.district ? "checked" : ""} style="width:22px;height:22px"> District game</label>
+    ${canAdmin() ? `<label class="row" style="font-weight:600"><input type="checkbox" name="scrim" ${g.scrim ? "checked" : ""} style="width:22px;height:22px"> Scrimmage: not in the record or season stats, never on the fan page or the stream</label>` : ""}
     <label class="fld"><span>Status</span><select name="off"><option value="">${played ? "Played" : "On the schedule"}</option>${played ? "" : `<option value="ppd" ${g.off === "ppd" ? "selected" : ""}>Postponed (new date to come)</option><option value="cxl" ${g.off === "cxl" ? "selected" : ""}>Cancelled</option>`}</select></label>
     <label class="fld"><span>Forfeit ruling</span><select name="forfeit"><option value="">None</option><option value="W" ${g.forfeit === "W" ? "selected" : ""}>Forfeit: Greenbrier wins</option><option value="L" ${g.forfeit === "L" ? "selected" : ""}>Forfeit: Greenbrier loses</option></select></label>
     <p class="small" style="margin:0">Moved, or a postponed game has its makeup date? Change the date here: it goes back on the schedule, and the fan page and the PA's script follow. A forfeit sets the win or loss for the record and ends a game still in progress; any stats from the plays still count.</p>
@@ -5125,9 +5139,12 @@ function boardOver(g, R, sn, v){
   if(!sn || sn.status !== "live" || !sn.brd) return book;
   if(sn.brd === 2 || (v && !v.fresh)) return {...book, tag:"unofficial"};
   if(!v) return book;
-  const n = (x, y) => Number.isInteger(x) ? x : y, bon = sn.bon || 5;
-  const sc = {us:n(v.home, R.sc.us), them:n(v.vis, R.sc.them)}, tf = {us:n(v.hf, sn.tf.us), them:n(v.vf, sn.tf.them)};
-  return {sc, tf, bonus:{us:tf.them >= bon, them:tf.us >= bon}, per:R.brk && !v.run ? null : `${perLabel(g, v.q || R.q)} ${clockText(v.s)}`, tag:"board"};
+  // Kevin (0.12.0): each team's score is the higher of the board's and the book's (a board that's behind never takes a
+  // basket back from the fans; one that's ahead is the scorer's to check: Board.xcheck). Team fouls, the bonus and
+  // timeouts are always the book's.
+  const n = (x, y) => Number.isInteger(x) ? Math.max(x, y) : y;
+  const sc = {us:n(v.home, R.sc.us), them:n(v.vis, R.sc.them)};
+  return {sc, tf:sn.tf, bonus:sn.bonus, per:R.brk && !v.run ? null : `${perLabel(g, v.q || R.q)} ${clockText(v.s)}`, tag:"board"};
 }
 
 /* ---------- public page (?live, or /hoops/live/) ----------
@@ -5825,7 +5842,7 @@ const Sync = (() => {
      table) at most every S.settings.pubSec seconds, and right away when a period ends or the game goes final. Every fan
      watching costs one Firestore read per copy, so the spacing is the dial that keeps a big crowd inside the free quota.
      A stream runs 20 to 30 seconds behind the gym anyway. hoopsPublic/_season is the schedule and results list. */
-  function pubOk(g){ return live() && canScore() && S.settings.pub !== false && g && !g.practice && !g.deleted && (g.status !== "pre" || !!st.pub.seen[g.id]) && (!g.writer || g.writer === S.dev || (openGame(g) && (!!st.pub.other[g.id] || !!(S.pubOwe || {})[g.id]))); }
+  function pubOk(g){ return live() && canScore() && S.settings.pub !== false && g && !g.practice && !g.scrim && !g.deleted && (g.status !== "pre" || !!st.pub.seen[g.id]) && (!g.writer || g.writer === S.dev || (openGame(g) && (!!st.pub.other[g.id] || !!(S.pubOwe || {})[g.id]))); }
   // A final another device scored whose public copy must change now (a name taken off or put back). That device may never
   // open the app again (a Safari tab left for the Home Screen app, a replaced iPad), so this one sends the copy only; the
   // game stays theirs, and w still names their device.
@@ -5911,7 +5928,7 @@ const Sync = (() => {
       for(const g of Object.values(S.games)){
         if(g.practice) continue;
         const h = have[g.id];
-        if(g.deleted){ if(h) add[g.id] = null; continue; }
+        if(g.deleted || g.scrim){ if(h) add[g.id] = null; continue; }   // a scrimmage (Admin, 0.12.0) is never on the fan page
         const r = seasonRow(g), mineNow = g.writer === S.dev && g.status !== "pre";
         // After the write below the cloud holds this row for each game this device scored (keyed the way pubSend keys it).
         if(mineNow && (g.status === "final" || !h)) has[g.id] = [g.status + ":" + replay(g).q, r.status + ":" + r.us + "-" + r.them];
@@ -6125,6 +6142,10 @@ const Sync = (() => {
     watch:(c, id, cb, err) => live() ? st.fb.onSnapshot(st.fb.doc(st.db, c, id), {includeMetadataChanges:true}, cb, err) : null,
     // The board feed came or went for this game: its fan page copy and the bug go out now, not at the next turn.
     pubSoon:id => { if(S.games[id]) pubQueue(id, true); },
+    // A game made a scrimmage: its fan page copy comes down (its season row goes with seedSeason), and with it the stream's bug.
+    unpubGame:id => { if(!live() || !canScore()) return; unpub(id); const {fb, db} = st;
+      fb.deleteDoc(fb.doc(db, "hoopsPublic", id)).catch(() => {});
+      if(st.bug.id === id){ st.bug.id = null; st.bug.last = ""; } },   // the bug drops a game whose public copy goes away
     token:() => st.auth && st.auth.currentUser ? st.auth.currentUser.getIdToken() : Promise.reject(new Error("Sign in to Brier Stats first.")),
     stale:() => st.stale, label:() => (ROLE_NAME[st.role] || "Viewer") + (st.stale ? " · not updating" : boss(st.role) && st.reqs.length ? " · " + st.reqs.length + " waiting" : pubOwed() ? " · updating fan page" : " · live")};
 })();
@@ -6155,7 +6176,7 @@ const Board = (() => {
     const was = st.gid && S.games[st.gid], d0 = ok() ? st.d : null;
     if(was && was.status === "final" && d0) setTimeout(() => final(was, d0), 0);
     for(const k of ["un", "unH"]) if(st[k]){ try{ st[k](); }catch(e){} }
-    Object.assign(st, {un:null, unH:null, gid, d:null, hb:null, got:0, offs:[], err:"", hist:[], since:{us:0, them:0}, was:null, mm:null, flag:null, R:null, Rg:null, rev:-1, pub:0});
+    Object.assign(st, {un:null, unH:null, gid, d:null, hb:null, got:0, offs:[], err:"", hist:[], since:{us:0, them:0}, was:null, mm:null, flag:null, R:null, Rg:null, rev:-1, pub:0, from:null});
     if(gid){ const err = e => { st.err = (e && (e.code || e.message)) || "error"; st.d = null; paint(); };
       st.un = Sync.watch("hoopsPublic", "_board", heard, err); st.unH = Sync.watch("hoopsPublic", "_boardHb", beat, err); }
   }
@@ -6178,6 +6199,8 @@ const Board = (() => {
     if(d.bye) st.hb = null;
     if(ok()) st.heard[st.gid] = true;
     if(prev) refit(d, prev);
+    // Where the clock was stopped when it last started (auto-start: a clock started from a full quarter is the tip).
+    if(prev && !prev.run && d.run && typeof prev.cs === "number") st.from = prev.cs; else if(!d.run) st.from = null;
     paint();
   }
   // The heartbeat. The one there when this iPad started listening counts only if it's fresh: a relay that died without
@@ -6250,7 +6273,9 @@ const Board = (() => {
     // A team's board score reaching the book's after trailing it: how long the board took.
     for(const tm of ["us", "them"]) if(st.was && st.was[tm] < K[tm] && B[tm] === K[tm] && st.since[tm] && now - st.since[tm] < 120000){ st.lag.push(now - st.since[tm]); if(st.lag.length > 8) st.lag.shift(); }
     st.was = B;
-    if(B.us === K.us && B.them === K.them){ st.mm = null; return null; }
+    // Kevin (0.12.0): only a board that's ahead of the book is flagged (the book missed a basket); a board behind the
+    // book is the board catching up, and fans see the book's score meanwhile (boardOver).
+    if(!(B.us > K.us || B.them > K.them)){ st.mm = null; return null; }
     const key = `${B.us}-${B.them}/${K.us}-${K.them}`;
     if(!st.mm || st.mm.key !== key) st.mm = {key, at:now};
     if(st.ok[g.id + "/" + key]) return null;
@@ -6263,11 +6288,46 @@ const Board = (() => {
     const t = behind ? age : now - st.mm.at;
     return t > (behind ? allow() : 10000) ? {B, K, behind, t, key} : null;
   }
+  /* Auto-start (0.12.0, Kevin): the game goes live before the first bucket, as soon as the gym board is set for its tip:
+     0-0, the 1st (or no period yet), the clock at a full quarter, stopped or just started from it. Only from 3 minutes
+     before its Tip-off time on its day, only on the iPad scoring it (the one that set its starters or arrow, so a second
+     device sitting on the Scorer page never grabs it), and never while another game that night is still being played
+     (a doubleheader's first game still on the board). A warmup countdown never matches. "Not yet" puts it back to
+     pregame and turns this off for that game on this iPad. */
+  const NOAUTO = KEY + ".noauto";
+  const noAuto = () => { try{ return JSON.parse(localStorage.getItem(NOAUTO) || "[]"); }catch(e){ return []; } };
+  let autoBy = null;
+  function tipAt(g){ const m = /^(\d{1,2}):(\d{2})/.exec(g.time || ""); if(!g.date || !m) return 0; const t = new Date(g.date + "T" + m[1].padStart(2, "0") + ":" + m[2]).getTime(); return isNaN(t) ? 0 : t; }
+  function tipSet(g){
+    const d = st.d; if(!ok() || d.home !== 0 || d.vis !== 0 || (Number.isInteger(d.q) && d.q > 1)) return false;
+    const full = (g.qlen || S.settings.qlen || 8) * 60, at = x => typeof x === "number" && Math.abs(x - full) < .05;
+    return d.run ? at(st.from) : at(d.cs);
+  }
+  function autoReady(g, now = Date.now()){
+    if(!g || g.id !== st.gid || g.status !== "pre" || g.practice || g.deleted || g.off || g.ha === "Away") return false;
+    if(g.writer !== S.dev || !canEdit(g) || g.date !== pubToday() || noAuto().includes(g.id)) return false;
+    const t = tipAt(g); if(!t || now < t - 3 * 60000) return false;
+    if(Object.values(S.games).some(x => x !== g && !x.deleted && !x.practice && x.date === g.date && x.status === "live" && !gameOver(x))) return false;
+    return tipSet(g);
+  }
+  function auto(g){
+    if(!autoReady(g)) return;
+    startGame(g); autoBy = g.id; touch(g);
+    toast("The scoreboard is set for the tip: the game is live. Tap Not yet on the green chip if it isn't.", 5000);
+  }
+  function notYet(){
+    const g = st.gid && S.games[st.gid]; if(!g || g.status !== "live" || !canEdit(g) || g.ev.some(x => !x.v && !PREGAME(x))) return;
+    g.status = "pre"; if(g.offWas) g.off = g.offWas; delete g.offWas; if(g.usOwn) lateAdds(g.team); else if(!g.practice) g.us = [];
+    try{ localStorage.setItem(NOAUTO, JSON.stringify([...noAuto().filter(x => x !== g.id), g.id].slice(-20))); }catch(e){}
+    autoBy = null; touch(g); toast("Back to pregame. It goes live with the first tap.");
+  }
+  const autoChip = g => autoBy === g.id && g.status === "live" && !g.ev.some(x => !x.v && !PREGAME(x))
+    ? `<button class="bchip on" data-act="boardnotyet" title="The scoreboard put this game live before the tip. Tap if it isn't starting yet.">Live from the board · <b>Not yet</b></button>` : "";
   function chips(g){
     const c = clock(), f = c && st.flag;
-    let h = c ? `<button class="bchip on" data-act="boardinfo" title="The gym scoreboard's clock: every tap gets it">Board <b>${clockText(c.s)}</b>${c.q ? ` ${esc(perLabel(g, c.q))}` : ""}${c.r ? "" : " · stopped"}</button>`
+    let h = autoChip(g) + (c ? `<button class="bchip on" data-act="boardinfo" title="The gym scoreboard's clock: every tap gets it">Board <b>${clockText(c.s)}</b>${c.q ? ` ${esc(perLabel(g, c.q))}` : ""}${c.r ? "" : " · stopped"}</button>`
       : lost(g) ? `<button class="bchip lost" data-act="boardinfo" title="Taps get the time of day only until it's back">Scoreboard feed lost</button>`
-      : `<button class="bchip" data-act="boardinfo" title="Nothing from the scoreboard Mac yet: taps get the time of day only">No board</button>`;
+      : `<button class="bchip" data-act="boardinfo" title="Nothing from the scoreboard Mac yet: taps get the time of day only">No board</button>`);
     if(f) h += `<button class="bchip bad" data-act="boardinfo">${esc(nudge(g, f))}</button>`;
     return h;
   }
@@ -6284,7 +6344,7 @@ const Board = (() => {
   setInterval(() => {
     const g = st.gid && S.games[st.gid]; if(!g) return;
     if(!st.R || st.Rg !== g || st.rev !== g.rev){ st.R = replay(g); st.Rg = g; st.rev = g.rev; }
-    st.flag = xcheck(g, st.R); paint();
+    auto(g); st.flag = xcheck(g, st.R); paint();
     const p = pub(g); if(p !== st.pub){ st.pub = p; Sync.pubSoon(g.id); }
     // The last horn: the board at 0:00 in the last period (or an overtime), the book's score settled or not.
     const c = clock(); if(c && !c.r && c.s === 0 && c.q >= (g.quarters || 4) && g.status === "live") final(g);
@@ -6310,7 +6370,7 @@ const Board = (() => {
   }
   // The scorer checked: the book is right. Quiet until the board or the book changes.
   function dismiss(){ const g = st.gid && S.games[st.gid]; if(g && st.flag) st.ok[g.id + "/" + st.flag.key] = true; st.flag = null; paint(); closeSheet(); }
-  return {check, stamp, strip, sheet, dismiss, clock, live:ok, pub};
+  return {check, stamp, strip, sheet, dismiss, clock, live:ok, pub, notYet, autoReady};
 })();
 
 /* ---------- boot ---------- */
