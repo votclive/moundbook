@@ -10,6 +10,11 @@ service cloud.firestore {
     function owner() { return member() && role() in ['owner', 'admin']; }
     function isTheOwner(uid) { return get(/databases/$(db)/documents/config/owner).data.uid == uid; }
     function ownerEmail() { return request.auth.token.email != null && request.auth.token.email.lower() == 'kevcriswell@gmail.com'; }
+    // A "let me in" request (Mound Book's and Brier Stats'): the email on it is the one the asker signed in with, so nobody
+    // asks under someone else's; the name is no longer than a name; "at" is a time.
+    function askOk(d) { return request.auth.token.email != null && d.get('email', '') is string
+        && d.get('email', '').lower() == request.auth.token.email.lower()
+        && d.get('name', '') is string && d.get('name', '').size() <= 200 && d.get('at', 0) is number; }
 
     // Claiming the program: only the owner email, only once, and only together with the owner's member record.
     match /config/owner {
@@ -38,7 +43,7 @@ service cloud.firestore {
     match /requests/{uid} {
       allow read: if signedIn() && (uid == request.auth.uid || owner());
       allow create, update: if signedIn() && uid == request.auth.uid
-        && request.resource.data.keys().hasOnly(['email', 'name', 'at']);
+        && request.resource.data.keys().hasOnly(['email', 'name', 'at']) && askOk(request.resource.data);
       allow delete: if owner() || (signedIn() && uid == request.auth.uid);
     }
     // Which devices are running which version, so Coach can see the iPad is up to date.
@@ -106,7 +111,7 @@ service cloud.firestore {
     match /hoopsRequests/{uid} {
       allow read: if signedIn() && (uid == request.auth.uid || hoopsCoach());
       allow create, update: if signedIn() && uid == request.auth.uid
-        && request.resource.data.keys().hasOnly(['email', 'name', 'at']);
+        && request.resource.data.keys().hasOnly(['email', 'name', 'at']) && askOk(request.resource.data);
       allow delete: if signedIn() && (uid == request.auth.uid || hoopsCoach());
     }
     // Rosters, opponents and settings: Coaches and Admins. The back-end settings (the Google Drive backup link, the fan
