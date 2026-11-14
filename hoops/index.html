@@ -3432,12 +3432,22 @@ function scriptEditor(){
     <div class="row" style="margin-top:10px"><button type="button" class="btn primary" data-act="segsave">Save the script</button><button type="button" class="btn" data-close>Cancel</button></div>`});
 }
 // Reads the editor's fields back into the working copy before anything re-draws it.
-// B and I in the script editor: put ** or * around the words picked in that line (or a placeholder to type over).
-function segFmt(a){
-  const box = a.closest("[data-seg]"), ta = box && $("textarea[data-sf=text]", box); if(!ta) return;
-  const w = a.dataset.w, s0 = ta.selectionStart, s1 = ta.selectionEnd, v = ta.value, pick = v.slice(s0, s1), lead = pick.match(/^\s*/)[0], tail = pick.match(/\s*$/)[0];
+// B and I in the script editor (and Cmd+B / Cmd+I, Ctrl on a PC): put ** or * around the words picked in that line (or a
+// placeholder to type over).
+function segFmt(a){ const box = a.closest("[data-seg]"), ta = box && $("textarea[data-sf=text]", box); if(ta) segWrap(ta, a.dataset.w); }
+document.addEventListener("keydown", ev => {
+  const ta = ev.target, k = (ev.key || "").toLowerCase();
+  if(!(ta && ta.matches && ta.matches("#sheet textarea[data-sf=text]")) || !(ev.metaKey || ev.ctrlKey) || ev.altKey || ev.shiftKey || (k !== "b" && k !== "i")) return;
+  ev.preventDefault(); segWrap(ta, k === "b" ? "**" : "*");
+});
+function segWrap(ta, w){
+  const s0 = ta.selectionStart, s1 = ta.selectionEnd, v = ta.value, pick = v.slice(s0, s1), lead = pick.match(/^\s*/)[0], tail = pick.match(/\s*$/)[0];
   const core = pick.trim() || (w === "**" ? "bold words" : "italic words"), at = s0 + lead.length + w.length;
-  ta.value = v.slice(0, s0) + lead + w + core + w + (pick.trim() ? tail : "") + v.slice(s1); ta.focus(); ta.setSelectionRange(at, at + core.length);
+  const put = lead + w + core + w + (pick.trim() ? tail : "");
+  // As typing, so Cmd+Z takes it back; straight into the box where the browser can't.
+  ta.focus(); ta.setSelectionRange(s0, s1); let ok = false; try{ ok = document.execCommand("insertText", false, put); }catch(e){}
+  if(!ok || ta.value !== v.slice(0, s0) + put + v.slice(s1)) ta.value = v.slice(0, s0) + put + v.slice(s1);
+  ta.setSelectionRange(at, at + core.length);
 }
 function grabSegs(){ const s = ui.sheet; if(!s || !s.segs) return; $$("[data-seg]").forEach(el => { const x = s.segs[+el.dataset.seg]; if(!x) return; $$("[data-sf]", el).forEach(f => { x[f.dataset.sf] = f.value; }); if(!x.need) delete x.need; }); }
 
