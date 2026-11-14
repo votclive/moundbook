@@ -753,7 +753,7 @@ table.rect tr.sub td{background:transparent;padding-top:10px}
    One device scores a game; everyone else signed in follows it live on the Announcer page. Each device's own saved copy is the
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
-const BS_VERSION = "0.16.5";
+const BS_VERSION = "0.16.6";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -3128,7 +3128,7 @@ const DEFAULT_SCRIPT = [
 const SCRIPT_AT = {top:"Top of the night", game:"Every game", end:"End of the night", ref:"Emergency card (only when needed)"};
 // [token, what it says, sample]. opt: says nothing when empty instead of showing a [box].
 const TOKENS = [["school","The school"],["tonight","Tonight's games, with tip times"],["level","varsity girls / varsity boys"],["us","Lady Cats / Bobcats"],["usFull","Greenbrier Lady Cats"],
-  ["opp","The opponent"],["oppFull","Opponent and mascot"],["oppMascot","Their mascot (the girls or boys name, whoever is playing)"],["tip","Tip-off time"],["usCoach","Our head coach"],["oppCoach","Their head coach"],["officials","Tonight's officials"],
+  ["opp","The opponent"],["oppFull","Opponent and mascot (the girls or boys name, whoever is playing)"],["oppMascot","Their mascot (the girls or boys name, whoever is playing)"],["tip","Tip-off time"],["usCoach","Our head coach"],["oppCoach","Their head coach"],["officials","Tonight's officials"],
   ["sponsor","Tonight's sponsor"],["honors","Halftime recognition"],["anthem","Who sings the anthem"],["anthemBy",", performed by … (blank if nobody's named)",1],
   ["oppStarters","Their five, one per line"],["usStarters","Our five, one per line"],["score","Live score, leader first"],["leaders","Each team's top scorer"],
   ["record","Our record once the game is final",1],["nextGame","Who plays next tonight",1],["nextHome","Our next home game",1],
@@ -3262,7 +3262,9 @@ function tokenValue(k, g, games, night){
     case "us": return esc(g ? usName(g) : first ? usName(first) : "Bobcats");
     case "usFull": return "Greenbrier " + esc(g ? usName(g) : first ? usName(first) : "Bobcats");
     case "opp": return esc(g ? g.opp : [...new Set(games.map(x => x.opp))].join(" and "));
-    case "oppFull": return esc(g ? oppFull(g) : first ? oppFull(first) : "");
+    // On a night-level line, each opponent once with every mascot playing tonight: "Watertown Lady Purple Tigers and Purple Tigers".
+    case "oppFull": { if(g) return esc(oppFull(g)); const by = new Map(); games.forEach(x => { const n = oppNick(x), L = by.get(x.opp) || []; if(n && !L.includes(n)) L.push(n); by.set(x.opp, L); });
+      return [...by].map(([o, L]) => esc(L.length ? o + " " + L.join(" and ") : o)).join(" and "); }
     // Rosters, Opponents: Boys mascot, and Girls team name (the boys one when that's blank).
     case "oppMascot": return g ? esc(oppNick(g)) : [...new Set(games.map(oppNick).filter(Boolean))].map(esc).join(" and ");
     case "tip": return g ? timeWords(g.time) : first ? timeWords(first.time) : "";
