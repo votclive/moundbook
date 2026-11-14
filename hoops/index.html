@@ -753,7 +753,7 @@ table.rect tr.sub td{background:transparent;padding-top:10px}
    One device scores a game; everyone else signed in follows it live on the Announcer page. Each device's own saved copy is the
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
-const BS_VERSION = "0.16.8";
+const BS_VERSION = "0.16.9";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -806,6 +806,7 @@ const SCHEDULE = [
      officiates, tonight's sponsor, which script lines are read). Not stats, so the scorer and the announcer both change it.
    S.opps[name lowercased]: {mascot, girls, c1, c2, abbr}: what Coach changed about an opponent; OPP_PRESETS has the rest.
    S.script: {segs:[{id, at:"top"|"game"|"end", title, cue, text, need}], upd}: the PA's game-night script, null = the default.
+   S.scriptSaves: {list:[{id, name, at, auto, segs}], upd}: saved copies of the script (hoopsBooth/_scriptSaves), S.scriptSavesOwe.
    S.say[pid]: a player's phonetic spelling ("SHAY-vee-on"), set by the PA. Only the PA and broadcast pages show it. Our
      players keep their pid all season. booth(gid).vis: the PA's own list of the visitors (paRoster, paFold).
      The lists in booth(gid) (vis, table, said, done) are also kept by id (visBy, tableBy, saidBy, doneBy: see setBooth).
@@ -3438,6 +3439,13 @@ function viewScript(){
   }
   return h;
 }
+function scriptCopiesHtml(){ const L = scriptCopies();
+  return `<details class="scopies" style="margin-top:10px;border:1px solid var(--grey);border-radius:8px;padding:8px" ${ui.sheet.copies ? "open" : ""}><summary><b>Saved copies</b> (${L.length})</summary>
+    <p class="small" style="margin:6px 0">Save these lines under a name to bring them back any time. Load puts a copy in the editor; Save makes it the script. The script as it was before each of your last ${SCRIPT_AUTO_KEEP} saves is kept here on its own, and so are unsaved lines that Start over or Load would replace. Every device sees these.</p>
+    <div class="row"><input type="text" data-copyname maxlength="80" placeholder="Name, like Senior night" style="flex:1;width:auto;min-width:140px"><button type="button" class="btn" data-act="scopysave">Save a copy</button></div>
+    ${L.map(x => `<div class="row between" style="border-top:1px solid var(--grey);padding:6px 0"><span>${x.auto ? "" : "<b>"}${esc(x.name || "Untitled")}${x.auto ? "" : "</b>"} <span class="small">· ${esc(stampWords(x.at || 0))} · ${x.segs.length} line${x.segs.length === 1 ? "" : "s"}${x.auto ? " · automatic" : ""}</span></span>
+      <span class="row" style="gap:4px"><button type="button" class="btn sm" data-act="scopyload" data-id="${esc(x.id)}">Load</button><button type="button" class="btn sm dark" data-act="scopydel" data-id="${esc(x.id)}" title="Delete this copy">✕</button></span></div>`).join("")}
+    <div class="row" style="margin-top:6px"><button type="button" class="btn" data-act="scopyfile">Download these lines as a file</button><button type="button" class="btn" data-act="scopyopen">Load from a file</button><input type="file" id="script-file" accept=".json,application/json" hidden></div></details>`; }
 function scriptEditor(){
   const segs = JSON.parse(JSON.stringify(scriptSegs()));
   openSheet({segs, script:true, wide:true, html:() => `<h3>Edit the script</h3><p class="small" style="margin:0 0 8px">Top-of-the-night lines are read once, game lines once for every game, end lines once at the close. Drag a line by its ⠿ to move it. Type a {token} to fill something in:</p>
@@ -3450,6 +3458,7 @@ function scriptEditor(){
       <textarea data-sf="text" rows="3"${ui.caps !== false ? ' style="text-transform:uppercase"' : ""}>${esc(x.text || "")}</textarea>
       <label class="row small">Only when this is filled in: <select data-sf="need" style="width:auto"><option value="">(always read it)</option>${["sponsor","honors","anthem","officials","oppCoach","usCoach","oppAssistants","usAssistants"].map(k => `<option ${x.need === k ? "selected" : ""}>${k}</option>`).join("")}</select></label></div>`).join("")}
     <div class="row"><button type="button" class="btn" data-act="segadd">+ Add a line</button><button type="button" class="btn" data-act="segreset">Start over from the default</button></div>
+    ${scriptCopiesHtml()}
     <div class="row" style="margin-top:10px"><button type="button" class="btn primary" data-act="segsave">Save and close</button><button type="button" class="btn" data-act="segdrop">Close without saving</button></div>
     <p class="small" style="margin:6px 0 0">Closing this any other way (tapping outside it, Esc) saves it too.</p>`});
 }
@@ -3495,12 +3504,34 @@ document.addEventListener("pointerdown", ev => { const g = ev.target.closest && 
 document.addEventListener("pointermove", ev => { const d = segDrag; if(!d || ev.pointerId !== d.id) return; ev.preventDefault(); d.y = ev.clientY; segDropAt(ev.clientY); });
 document.addEventListener("pointerup", ev => { if(segDrag && ev.pointerId === segDrag.id) segDragEnd(true); });
 document.addEventListener("pointercancel", ev => { if(segDrag && ev.pointerId === segDrag.id) segDragEnd(false); });
+// Saved copies of the PA script (Kevin: a fat-fingered "Start over from the default" must be undoable later, from a copy
+// or a file). Copies the PA names, plus automatic ones: the script as it was before each save, and unsaved lines that
+// Start over or Load would have thrown away (the newest 10 automatic ones are kept). Shared with every device.
+const SCRIPT_AUTO_KEEP = 10;
+function scriptCopies(){ return (S.scriptSaves && Array.isArray(S.scriptSaves.list) ? S.scriptSaves.list : []).filter(x => x && Array.isArray(x.segs)); }
+function scriptCopyAdd(name, segs, auto){ let n = 0;
+  const list = [{id:rid(), name:String(name).slice(0, 80), at:Date.now(), auto:!!auto, segs:paCopy(segs)}, ...scriptCopies()].filter(x => !x.auto || ++n <= SCRIPT_AUTO_KEEP);
+  S.scriptSaves = {list, upd:Date.now()}; save(); Sync.dirtyScriptSaves(); }
+const stampWords = t => new Date(t).toLocaleString("en-US", {weekday:"short", month:"short", day:"numeric", hour:"numeric", minute:"2-digit"});
+// A script file (from Download, or a full backup) to lines the editor can take; null when it isn't one.
+function scriptFileSegs(o){ const segs = Array.isArray(o) ? o : o && (Array.isArray(o.segs) ? o.segs : o.script && o.script.segs); if(!Array.isArray(segs)) return null;
+  const out = segs.filter(x => x && typeof x === "object").map(x => ({id:typeof x.id === "string" && /^[a-z0-9-]{1,40}$/i.test(x.id) ? x.id : rid(), at:SCRIPT_AT[x.at] ? x.at : "game",
+    title:String(x.title || ""), cue:String(x.cue || ""), text:String(x.text || ""), ...(TOKEN_KEY[String(x.need || "").toLowerCase()] ? {need:TOKEN_KEY[String(x.need).toLowerCase()]} : {})}));
+  return out.length ? out : null; }
+// The editor's lines are about to be replaced: keep them as an automatic copy unless they're already saved somewhere.
+function scriptKeepUnsaved(why){ grabSegs(); const s = ui.sheet, j = JSON.stringify(s.segs);
+  if(j === JSON.stringify(scriptSegs()) || j === JSON.stringify(DEFAULT_SCRIPT) || scriptCopies().some(x => JSON.stringify(x.segs) === j)) return false;
+  scriptCopyAdd("Unsaved lines before " + why + ", " + stampWords(Date.now()), s.segs, true); return true; }
+function scriptLoad(segs, what){ const s = ui.sheet; if(!s || !s.script) return; const kept = scriptKeepUnsaved("loading " + what);
+  s.segs = paCopy(segs); s.copies = true; const sh = $("#sheet .sheet"), top = sh ? sh.scrollTop : 0; renderSheet(); const nb = $("#sheet .sheet"); if(nb) nb.scrollTop = top;
+  toast(`Loaded ${what}. Tap Save to make it the script${kept ? " (the lines you had are kept under Saved copies)" : ""}.`, 6000); }
 // Saves the script editor's lines (Kevin: a Save on every line so he needn't scroll, and closing it by accident must not
 // lose the work). close: also shut the editor. Nothing changed: nothing saved, no undo step.
 function scriptSave(close){ const s = ui.sheet; if(!s || !s.script) return; grabSegs();
   s.segs.forEach(x => { if(!x.id) x.id = rid(); });
   const same = JSON.stringify(s.segs) === JSON.stringify(scriptSegs());
   if(!same){ const was = paCopy(S.script), now = {segs:paCopy(s.segs), upd:Date.now()};
+    if(JSON.stringify(scriptSegs()) !== JSON.stringify(DEFAULT_SCRIPT)) scriptCopyAdd("Before the save at " + stampWords(Date.now()), scriptSegs(), true);   // the default is always one tap away
     const put = v => { S.script = {segs:v && v.segs ? paCopy(v.segs) : null, upd:Date.now()}; save(); Sync.dirtyScript(); render(); };
     S.script = now; save(); Sync.dirtyScript(); undoable("Edit the script", () => put(was), () => put(now)); }
   if(close) closeSheet(); render();
@@ -5214,7 +5245,7 @@ async function shareFile(name, blob, title){
 async function shareBox(g){ const p = boxPdf(g); await shareFile(p.name, new Blob([p.bytes], {type:"application/pdf"}), p.title); }
 // Everything on this device in one file: every game, both rosters, the library, the scripts and Setup. Setup's Full backup
 // and the Save backup button at every final write the same file, and Restore from a backup reads either.
-function backupJson(){ return JSON.stringify({brierstats:1, at:Date.now(), teams:S.teams, games:S.games, booth:S.booth, say:S.say, bc:S.bc, lib:S.lib, settings:S.settings, opps:S.opps, script:S.script}, null, 1); }
+function backupJson(){ return JSON.stringify({brierstats:1, at:Date.now(), teams:S.teams, games:S.games, booth:S.booth, say:S.say, bc:S.bc, lib:S.lib, settings:S.settings, opps:S.opps, script:S.script, scriptSaves:S.scriptSaves}, null, 1); }
 // At the final the scorer saves a backup with one tap. On the iPad, Save to Files in the share sheet can drop it straight
 // into Google Drive, and it works with no signal. The file is named for the game, so a doubleheader's two sit side by side.
 // bkSaved keeps which version of each game was saved, so a correction after the save brings the button back.
@@ -5366,7 +5397,7 @@ function csvOf(g){
 // Viewers only watch. What would change the table, notes, name notes, the PA's prep and script, Jim's notes or the saved
 // rosters is read-only on their screens, and a tap on it says why (the cloud refuses it anyway).
 const VIEW_ACTS = new Set(["starter", "segdone", "paundo", "paredo", "vispaste", "viscopy", "visdel", "visclear", "libuse", "libdel", "libwipe", "libpastego",
-  "scriptclear", "scriptedit", "segsave", "cardtable", "patable", "bench", "tablein", "tableclear", "annsaid", "usebook", "say", "saypick", "saysave",
+  "scriptclear", "scriptedit", "segsave", "scopysave", "scopydel", "cardtable", "patable", "bench", "tablein", "tableclear", "annsaid", "usebook", "say", "saypick", "saysave",
   "pm-say", "pm-table", "bct", "bcn"]);
 const VIEW_BOXES = "[data-bnotes],[data-bcpad],[data-vis],[data-vissay],[data-lib],[data-info],[data-sf],[data-say],[name=libpaste],[data-visform] input,#libform input,#bcpform input,#bcpform textarea,#bcnform input,#bcnform textarea";
 function lockView(root){ if(root && viewOnly()) root.querySelectorAll(VIEW_BOXES).forEach(el => { if(el.tagName === "SELECT") el.disabled = true; else el.readOnly = true; }); }
@@ -5486,7 +5517,14 @@ document.addEventListener("click", async ev => {
     case "segmv": { grabSegs(); const L = s.segs, i = +a.dataset.i, j = i + +a.dataset.d; if(L[j]){ [L[i], L[j]] = [L[j], L[i]]; renderSheet(); } break; }
     case "segdel": { grabSegs(); s.segs.splice(+a.dataset.i, 1); renderSheet(); break; }
     case "segadd": { grabSegs(); s.segs.push({id:rid(), at:"game", title:"New line", cue:"", text:""}); renderSheet(); const f = $$("#sheet [data-seg]").pop(); if(f) f.scrollIntoView({block:"center"}); break; }
-    case "segreset": if(confirm("Throw out your changes and start from the default script?")){ s.segs = JSON.parse(JSON.stringify(DEFAULT_SCRIPT)); renderSheet(); } break;
+    case "segreset": if(confirm("Throw out your changes and start from the default script? (Your lines are kept under Saved copies.)")){ scriptKeepUnsaved("Start over"); s.segs = JSON.parse(JSON.stringify(DEFAULT_SCRIPT)); renderSheet(); } break;
+    case "scopysave": if(s && s.script){ const nm = (($("#sheet [data-copyname]") || {}).value || "").trim(); if(!nm){ toast("Give the copy a name first."); const f = $("#sheet [data-copyname]"); if(f) f.focus(); break; }
+      grabSegs(); scriptCopyAdd(nm, s.segs, false); s.copies = true; const sh = $("#sheet .sheet"), top = sh ? sh.scrollTop : 0; renderSheet(); const nb = $("#sheet .sheet"); if(nb) nb.scrollTop = top; toast(`Saved a copy: ${nm}.`); } break;
+    case "scopyload": { const x = scriptCopies().find(c => c.id === a.dataset.id); if(x) scriptLoad(x.segs, `"${x.name || "Untitled"}"`); break; }
+    case "scopydel": { const x = scriptCopies().find(c => c.id === a.dataset.id); if(!x || !confirm(`Delete the saved copy "${x.name || "Untitled"}"?`)) break;
+      grabSegs(); S.scriptSaves = {list:scriptCopies().filter(c => c.id !== x.id), upd:Date.now()}; save(); Sync.dirtyScriptSaves(); if(s) s.copies = true; renderSheet(); break; }
+    case "scopyfile": if(s && s.script){ grabSegs(); download(`pa-script-${pubToday()}.json`, JSON.stringify({brierstatsScript:1, at:Date.now(), segs:s.segs}, null, 1), "application/json"); } break;
+    case "scopyopen": { const f = $("#script-file"); if(f) f.click(); break; }
     // One Undo step: the script as it was goes back to every device (with a newer upd, so they take it; none = the default).
     case "segsave": scriptSave(!a.dataset.stay); break;
     case "segdrop": closeSheet(); break;
@@ -5853,6 +5891,8 @@ document.addEventListener("change", ev => {
   if(t.dataset.prior && canCoach()){ const [team, pid, k] = t.dataset.prior.split("|"), T = S.teams[team]; if(T){ const v = t.value.trim(), o = ((T.prior || (T.prior = {}))[pid] || (T.prior[pid] = {}));
     if(v === "") delete o[k]; else { const n = parseInt(v, 10); if(isNaN(n) || n < 0){ t.value = o[k] ?? ""; return; } o[k] = n; } S.teamsRev++; save(); Sync.dirtyTeams(); afterPress(softRender); } }   // a tap that ended the typing still lands
   if(t.dataset.set && (t.dataset.set === "pubSec" ? canAdmin() : canCoach())){ const v = parseInt(t.value, 10); if(!isNaN(v)){ S.settings[t.dataset.set] = v; S.teamsRev++; save(); Sync.dirtyTeams(); render(); } }
+  if(t.id === "script-file" && t.files[0]){ const r = new FileReader(); r.onload = () => { let segs = null; try{ segs = scriptFileSegs(JSON.parse(r.result)); }catch(e){}
+      if(segs) scriptLoad(segs, "the file"); else toast("That file isn't a Brier Stats script."); }; r.readAsText(t.files[0]); t.value = ""; }
   if(t.id === "restore-file" && t.files[0]){ const r = new FileReader(); r.onload = () => restore(r.result); r.readAsText(t.files[0]); t.value = ""; }
 });
 // The reconcile sheet's "off by" follows the official final as it's typed.
@@ -6334,6 +6374,7 @@ function restore(text){
   // A name note this device already has is the newer one (the cloud's, or the PA's since the backup): only fill gaps.
   if(o.say){ const ch = Object.keys(o.say).filter(pid => o.say[pid] && !S.say[pid]); ch.forEach(pid => { S.say[pid] = o.say[pid]; }); if(ch.length && Sync.live()){ S.sayUpd = Date.now(); Sync.dirtySay(ch); } }
   if(o.script && (o.script.upd || 0) > ((S.script && S.script.upd) || 0)){ S.script = o.script; Sync.dirtyScript(); }
+  if(o.scriptSaves && Array.isArray(o.scriptSaves.list) && (o.scriptSaves.upd || 0) > ((S.scriptSaves && S.scriptSaves.upd) || 0)){ S.scriptSaves = o.scriptSaves; Sync.dirtyScriptSaves(); }
   if(o.booth) for(const [id, b] of Object.entries(o.booth)) if(!id.startsWith("_") && (!S.booth[id] || (b.upd || 0) > (S.booth[id].upd || 0))) S.booth[id] = b;
   // Saved rosters: each field's newer change wins, as when two devices meet.
   if(o.lib && o.lib.e){ const up = {}; Object.entries(o.lib.e).forEach(([k, y]) => { if(!y || !y.t) return; const x = S.lib.e[k], c = libNorm({...y});
@@ -6979,6 +7020,8 @@ const Sync = (() => {
       snap.docChanges().forEach(ch => { if(ch.type === "removed") return; const d = ch.doc, r = d.data();
         if(d.id === "_say"){ const next = {...(r.say || {})}; Object.keys(S.sayOwe || {}).forEach(pid => { next[pid] = S.say[pid] || ""; }); S.say = next; S.sayUpd = r.upd || 0; changed = true; return; }
         if(d.id === "_script"){ if((r.upd || 0) > ((S.script && S.script.upd) || 0)){ S.script = r.segs ? {segs:r.segs, upd:r.upd} : null; changed = true; } return; }
+        if(d.id === "_scriptSaves"){ if((r.upd || 0) > ((S.scriptSaves && S.scriptSaves.upd) || 0) && !S.scriptSavesOwe){ S.scriptSaves = {list:Array.isArray(r.list) ? r.list : [], upd:r.upd || 0}; changed = true;
+            if(ui.sheet && ui.sheet.script && $("#sheet .scopies")){ grabSegs(); const d0 = $("#sheet .scopies"); ui.sheet.copies = d0.open; d0.outerHTML = scriptCopiesHtml(); } } return; }
         if(d.id === "_bc"){ const next = {...(r.n || {})}; Object.keys(S.bcDirty || {}).forEach(k => { next[k] = bcNote(k); }); S.bc = {n:next, upd:r.upd || 0}; changed = true; return; }
         if(d.id === "_opp"){ libMerge(r, !st.libHeard); st.libHeard = true; changed = true; return; }
         if(d.id.startsWith("_")) return;   // a shared doc this version doesn't know: never a game's booth
@@ -7100,6 +7143,7 @@ const Sync = (() => {
   function dirtyBooth(id){ if(id !== "practice" && (S.boothOwe || {})[id]) kick(600); }
   // Kept on the device too (S.scriptOwe), so a script edited with no signal still goes up after a reload.
   function dirtyScript(){ st.scriptDirty = true; S.scriptOwe = oweStamp(); save(); kick(700); }
+  function dirtyScriptSaves(){ S.scriptSavesOwe = oweStamp(); save(); kick(700); }
 
   /* The public page. The scoring device sends a small copy of the game (score, box score, recent plays: no notes, no
      table) at most every S.settings.pubSec seconds, and right away when a period ends or the game goes final. Every fan
@@ -7226,7 +7270,7 @@ const Sync = (() => {
   function dirtySay(pids){ if(!(pids || []).length) return; const n = oweStamp(); S.sayOwe = {...(S.sayOwe || {})}; pids.forEach(p => { S.sayOwe[p] = n; }); kick(700); }
   // Clears what a write paid for: a stamp that changed while it was on its way stays owed.
   function paid(o, sent){ if(o) Object.entries(sent).forEach(([k, x]) => { const y = o[k]; if(x && typeof x === "object"){ if(y && typeof y === "object"){ paid(y, x); if(!Object.keys(y).length) delete o[k]; } } else if(y === x) delete o[k]; }); }
-  const owedAny = () => !!(Object.keys(S.boothOwe || {}).length || Object.keys(S.sayOwe || {}).length || Object.keys(S.libOwe || {}).length || Object.keys(S.bcDirty || {}).length || S.scriptOwe);
+  const owedAny = () => !!(Object.keys(S.boothOwe || {}).length || Object.keys(S.sayOwe || {}).length || Object.keys(S.libOwe || {}).length || Object.keys(S.bcDirty || {}).length || S.scriptOwe || S.scriptSavesOwe);
   const owing = () => canScore() && owedAny();   // what this device can send now
   function dirtyBc(){ kick(700); }
   function dirtyLib(){ kick(700); }
@@ -7302,6 +7346,7 @@ const Sync = (() => {
         await fb.setDoc(fb.doc(db, "hoopsBooth", "_bc"), clean({n:part, upd:(S.bc && S.bc.upd) || Date.now()}), {merge:true});
         // Only what was sent is paid: a key changed again while this was on its way stays owed.
         const left = {...(S.bcDirty || {})}; Object.keys(owed).forEach(k => { if(left[k] === owed[k]) delete left[k]; }); S.bcDirty = left; save(); }
+      if(S.scriptSavesOwe){ const n = S.scriptSavesOwe; await fb.setDoc(fb.doc(db, "hoopsBooth", "_scriptSaves"), clean({list:scriptCopies(), upd:(S.scriptSaves && S.scriptSaves.upd) || Date.now()})); if(S.scriptSavesOwe === n){ delete S.scriptSavesOwe; save(); } }
       if(st.scriptDirty || S.scriptOwe){ const n = S.scriptOwe; st.scriptDirty = false; await fb.setDoc(fb.doc(db, "hoopsBooth", "_script"), clean(S.script ? {segs:S.script.segs, upd:S.script.upd} : {segs:null, upd:Date.now()})); if(S.scriptOwe === n){ delete S.scriptOwe; save(); } }
       }
       if(st.teamsDirty && !canCoach()) st.teamsDirty = false;   // only Coaches and Admins change rosters and settings
@@ -7407,7 +7452,7 @@ const Sync = (() => {
     }catch(e){ toast(authMsg(e), 5000); }
     st.busy = false; render();
   }
-  return {start, live, ready, settled, dirty, reset, owePids, dirtyBooth, dirtyTeams, dirtySay, dirtyBc, dirtyLib, dirtyScript, seedSeason, panel, click, submit,
+  return {start, live, ready, settled, dirty, reset, owePids, dirtyBooth, dirtyTeams, dirtySay, dirtyBc, dirtyLib, dirtyScript, dirtyScriptSaves, seedSeason, panel, click, submit,
     phase:() => st.phase, role:() => st.role, uid:() => st.uid,
     // One doc to follow (the gym scoreboard's, Board): its unsubscribe, or null with sync off.
     // With metadata changes: a doc already in this device's cache comes first from the cache and then again once the
