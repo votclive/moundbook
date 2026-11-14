@@ -1251,7 +1251,8 @@ function saveUi(){ if(PUB) return; try{ const p = JSON.parse(localStorage.getIte
 function cur(){ const g = ui.gid && S.games[ui.gid]; return g && !g.deleted ? g : null; }
 // Who can do what with live sync on. Sync.role(): "owner" is an Admin (Coach, Mound Book's owner and Admins, and anyone made
 // an Admin here), then "coach", "scorer" and "viewer". Admins: deleting and resetting games, the fan page switch, the Drive
-// backup, Restore and the rules. Coaches and up: rosters, the schedule, opponents, game rules and letting people in. Scorers
+// backup, Restore and the rules. Coaches and up: rosters, the schedule, opponents, game rules, letting people in and the
+// Stats tab (with the player page's extras and the Player PDF: Kevin, Nov 2026, staff only). Scorers
 // and up: scoring, the table, notes, name notes and the PA's prep. Viewers watch. Not sharing, this device can do it all.
 function canScore(){ return !Sync.live() || ["owner", "coach", "scorer"].includes(Sync.role()); }
 // Coach and Admin: with sync on but no answer from the cloud yet, the role this device had last time stands.
@@ -1639,7 +1640,8 @@ function draw(){
   pendingRender = false; Board.check();
   if(PUB){ $("#view").innerHTML = viewPublic(); return; }
   if(OBS){ $("#view").innerHTML = viewBug(); return; }
-  $("#tabs").innerHTML = TABS.map(([k, l]) => `<button role="tab" data-tab="${k}" aria-selected="${ui.tab === k}">${l}</button>`).join("");
+  if(ui.tab === "stats" && !canCoach()) ui.tab = "games";   // Stats is for Coaches and Admins only
+  $("#tabs").innerHTML = TABS.filter(([k]) => k !== "stats" || canCoach()).map(([k, l]) => `<button role="tab" data-tab="${k}" aria-selected="${ui.tab === k}">${l}</button>`).join("");
   const pill = $("#syncpill"), ph = Sync.phase();
   pill.className = "pill" + (ph === "live" && !Sync.stale() ? " live" : ph === "error" || Sync.stale() ? " bad" : "");
   pill.querySelector("span").textContent = ph === "live" ? Sync.label() : ph === "loading" ? "Connecting…" : ph === "signedout" ? "Not signed in" : ph === "waiting" ? "Waiting to be let in" : ph === "nosignal" ? "No signal" : ph === "error" ? "Sync problem" : "This device";
@@ -3679,8 +3681,8 @@ function gameLogHtml(team, p, sh){
     : shots.length ? `<p class="small" style="margin:10px 0 0">No shot spots charted in these games. Turn on Shot spots on the Scorer screen to chart them.</p>` : "";
   return `<div class="kicker">${team === "girls" ? "Girls" : "Boys"} varsity · game log${on ? " · vs " + esc(on.name) : ""}</div><h3>#${esc(p.num)} ${esc(p.name || "")}</h3>
     <p class="small" style="margin:0 0 8px">${[desc, n ? `${n} game${n === 1 ? "" : "s"} · ${pg(t.pts)} ppg · ${pg(t.oreb + t.dreb)} rpg · ${pg(t.ast)} apg` : ""].filter(Boolean).map(esc).join(" · ")}${on ? ` <button class="btn sm" data-act="glopp" data-opp="">Whole season</button>` : ""}</p>
-    ${n ? playerMore(team, p, rows) + table + vs + chart + `<p class="small" style="margin:8px 0 0">Newest first. Tap a game for its box score, an opponent for just those games, or a shot to see when it was. Shooting leaves out points-only games.</p>` : `<p style="margin:0">No games yet this season. A game counts here once it's over.</p>`}
-    <div class="row" style="margin-top:10px">${n ? `<button class="btn" data-act="plpdf" data-team="${team}" data-pid="${esc(pid)}" data-opp="${esc(sh.opp || "")}">Player PDF</button>` : ""}<button class="btn" data-close>Close</button></div>`;
+    ${n ? (canCoach() ? playerMore(team, p, rows) : "") + table + vs + chart + `<p class="small" style="margin:8px 0 0">Newest first. Tap a game for its box score, an opponent for just those games, or a shot to see when it was. Shooting leaves out points-only games.</p>` : `<p style="margin:0">No games yet this season. A game counts here once it's over.</p>`}
+    <div class="row" style="margin-top:10px">${n && canCoach() ? `<button class="btn" data-act="plpdf" data-team="${team}" data-pid="${esc(pid)}" data-opp="${esc(sh.opp || "")}">Player PDF</button>` : ""}<button class="btn" data-close>Close</button></div>`;
 }
 /* ---------- Stats in depth (0.14.0) ----------
    Every number here comes from plays the book already has: no new taps. A season view is a list of games (the season's
@@ -4607,7 +4609,7 @@ function viewTeams(){
       ${edit ? `<div class="row"><button class="btn sm" data-act="paste" data-team="${team}">Paste a roster</button><button class="btn sm" data-act="addroster" data-team="${team}">+ Player</button></div>` : ""}</div>
       <div class="scroll-x" style="margin-top:8px"><table class="pin rtab"><tr><th class="l">Player</th><th class="l">Pos</th><th class="l">Yr</th><th class="l">Ht</th>${edit ? "<th></th>" : ""}</tr>
       ${rs.map(p => `<tr><td class="l"><button class="lnk" data-act="glog" data-team="${team}" data-pid="${p.pid}" title="Game log">${esc(p.num)} ${esc(p.name)}</button>${S.say[p.pid] ? `<div class="small" style="font-style:italic">${esc(S.say[p.pid])}</div>` : ""}</td><td class="l">${esc(p.pos || "")}</td><td class="l">${esc(p.grade || "")}</td><td class="l">${esc(p.ht || "")}</td>${edit ? `<td><button class="btn sm" data-act="editroster" data-team="${team}" data-pid="${p.pid}">Edit</button></td>` : ""}</tr>`).join("") || `<tr><td class="l" colspan="5">No players yet. Paste the roster: one player per line, like <b>12 Jaylen Smith G Sr 6-2</b>.</td></tr>`}</table></div>
-      <div class="row" style="margin-top:6px"><p class="small" style="margin:0;flex:1 1 260px">Year and height feed the PA's starting-lineup intros. Tap a player for the game log. The record, season numbers and CSVs are on <button class="lnk" data-act="go" data-tab="stats">Stats</button>.</p></div></div>`;
+      <div class="row" style="margin-top:6px"><p class="small" style="margin:0;flex:1 1 260px">Year and height feed the PA's starting-lineup intros. Tap a player for the game log. ${canCoach() ? `The record, season numbers and CSVs are on <button class="lnk" data-act="go" data-tab="stats">Stats</button>.` : ""}</p></div></div>`;
   }).join("") + viewOpps() + viewLib() + `</div>`;
 }
 function oppNames(){
@@ -5409,8 +5411,8 @@ document.addEventListener("click", async ev => {
     case "playscsv": if(g){ const pid = (ui.pf && ui.pf.pid) || "", pl = pid && (player(g, "us", pid) || player(g, "them", pid));
       download(`${g.id}${pl ? "-" + String(pl.num).replace(/[^\w-]/g, "") : ""}-plays.csv`, playsCsv(g, pl ? pid : ""), "text/csv"); } break;
     case "missed": if(g && canEdit(g)) missedSheet(g); break;
-    case "seasoncsv": download(`brier-stats-${a.dataset.team}-season.csv`, seasonCsv(a.dataset.team), "text/csv"); break;
-    case "allcsv": download(`brier-stats-${a.dataset.team}-all-games.csv`, allGamesCsv(a.dataset.team), "text/csv"); break;
+    case "seasoncsv": if(canCoach()) download(`brier-stats-${a.dataset.team}-season.csv`, seasonCsv(a.dataset.team), "text/csv"); break;
+    case "allcsv": if(canCoach()) download(`brier-stats-${a.dataset.team}-all-games.csv`, allGamesCsv(a.dataset.team), "text/csv"); break;
     case "glog": gameLog(a.dataset.team, a.dataset.pid, a.dataset.opp || ""); break;
     case "shotpl": ui.shotPid = a.dataset.pid; ui.shotSel = null; render(); break;
     case "stteam": ui.stTeam = a.dataset.v; ui.stf = {}; ui.stc = {}; ui.stSel = ui.scSel = null; ui.stScout = ui.stRot = ""; ui.stCmp = []; render(); break;
@@ -5419,7 +5421,7 @@ document.addEventListener("click", async ev => {
     case "stview": ui.stView = a.dataset.v; render(); break;
     case "stcomp": ui.stComp = !ui.stComp; render(); break;
     case "stfclear": ui.stf = {}; render(); break;
-    case "plpdf": playerPdf(a.dataset.team, a.dataset.pid, a.dataset.opp || ""); break;
+    case "plpdf": if(canCoach()) playerPdf(a.dataset.team, a.dataset.pid, a.dataset.opp || ""); break;
     case "glopp": if(ui.sheet){ ui.sheet.opp = a.dataset.opp; ui.glSel = null; const top = ($("#sheet .sheet") || {}).scrollTop || 0; renderSheet(); const nb = $("#sheet .sheet"); if(nb) nb.scrollTop = top; } break;
     case "logbox": { const x = S.games[a.dataset.gid]; if(!x) break; closeSheet(); ui.gid = x.id; ui.follow = false; ui.tab = "box"; saveUi(); render(); window.scrollTo(0, 0); break; }
     case "csv": if(g) download(`${g.id}-box.csv`, csvOf(g), "text/csv"); break;
