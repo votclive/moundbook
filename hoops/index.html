@@ -753,7 +753,7 @@ table.rect tr.sub td{background:transparent;padding-top:10px}
    One device scores a game; everyone else signed in follows it live on the Announcer page. Each device's own saved copy is the
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
-const BS_VERSION = "0.16.9";
+const BS_VERSION = "0.16.10";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -3264,8 +3264,12 @@ const girlsFirst = games => { const G = games.filter(x => x.team === "girls"); r
 function nightOpps(games, nick, full){ const seen = new Set(), out = [];
   games.forEach(x => { if(seen.has(okey(x.opp))) return; seen.add(okey(x.opp)); const n = nick(x.opp, x); if(full) out.push(n ? x.opp + " " + n : x.opp); else if(n) out.push(n); });
   return [...new Set(out)].map(esc).join(" and "); }
+// The game a top-of-the-night or end line talks about when it uses a game's own token (coaches, officials, starters, the
+// score): the next game not over yet, or the last one once they all are. On a one-game night, that game.
+const upGame = games => games.find(x => !gameOver(x)) || games[games.length - 1] || null;
 function tokenValue(k, g, games, night){
-  const i = g ? infoOf(g) : {}, first = games[0], fi = first ? infoOf(first) : {};
+  // Kevin (0.16.10): Prep boxes filled in for a game must show in night-level lines too, not just in that game's lines.
+  const gu = g || upGame(games), i = gu ? infoOf(gu) : {}, first = games[0], fi = first ? infoOf(first) : {};
   const nightInfo = f => [...new Set(games.map(x => (infoOf(x)[f] || "").trim()).filter(Boolean))].map(esc).join(" and ");
   switch(k){
     case "school": return "Greenbrier High School";
@@ -3287,12 +3291,12 @@ function tokenValue(k, g, games, night){
     case "sponsor": return g ? esc((i.sponsor || "").trim()) : nightInfo("sponsor");
     case "anthem": return esc((g ? i.anthem : fi.anthem) || "");
     case "anthemBy": { const a = ((g ? i.anthem : fi.anthem) || "").trim(); return a ? ", performed by " + esc(a) : ""; }
-    case "oppStarters": return g ? introHtml(g, "them") : "";
-    case "usStarters": return g ? introHtml(g, "us") : "";
-    case "score": { if(!g) return ""; const ot = gameOver(g) ? lastQ(replay(g)) - (g.quarters || 4) : 0;
+    case "oppStarters": return gu ? introHtml(gu, "them") : "";
+    case "usStarters": return gu ? introHtml(gu, "us") : "";
+    case "score": { if(!gu) return ""; g = gu; const ot = gameOver(g) ? lastQ(replay(g)) - (g.quarters || 4) : 0;
       return scoreWords(g) + (ot > 0 ? " in " + (["overtime", "double overtime", "triple overtime"][ot - 1] || ot + " overtimes") : ""); }
-    case "leaders": return g ? leaderWords(g) : "";
-    case "record": return g ? recordWords(g) : "";
+    case "leaders": return gu ? leaderWords(gu) : "";
+    case "record": return gu ? recordWords(gu) : "";
     case "nextGame": { if(!g) return ""; const n = games[games.indexOf(g) + 1]; return n ? `Stay with us: the ${esc(usName(n))} and ${esc(n.opp)} tip off${n.time ? " at " + timeWords(n.time) : " next"}.` : ""; }
     case "nextHome": return nextHomeWords(night);
     case "shelter": case "admin": case "aed": return esc((fi[k] || "").trim());
@@ -5780,6 +5784,14 @@ document.addEventListener("click", async ev => {
 });
 document.addEventListener("keydown", ev => { if(ev.key !== "Escape") return;
   if(ui.sheet) sheetAway(); else if(ui.fu[0] && ui.fu[0].k === "loc" && $(".fu.loc")){ ui.fu.shift(); renderFu(); } });
+// A Prep box saved: on leaving it, and (Kevin, 0.16.10) after a short pause in typing, so the script shows it without
+// having to click out of the last box first. Each pause is one Undo step.
+function infoCommit(t){ const [gid, k] = t.dataset.info.split(":"), gg = S.games[gid]; if(!gg) return; const was = (booth(gid).info || {})[k] || "", now = t.value.trim(); if(was === now) return;
+  setBooth(gg, b => { b.info = {...(b.info || {}), [k]:now}; }, ["info"]);
+  undoable("Prep: " + (INFO_LABEL[k] || k), () => infoPut(gid, k, was), () => infoPut(gid, k, now));
+  if(pressing) document.addEventListener("pointerup", () => setTimeout(softRender, 0), {once:true}); else setTimeout(softRender, 0); }
+let infoT = 0;
+document.addEventListener("input", ev => { const t = ev.target; if(t && t.dataset && t.dataset.info && !viewOnly()){ clearTimeout(infoT); infoT = setTimeout(() => { if(t.isConnected) infoCommit(t); }, 700); } });
 document.addEventListener("input", ev => {
   const t = ev.target;
   if(t.dataset.hex || t.dataset.hext){ const k = t.dataset.hex || t.dataset.hext, pair = $(t.dataset.hex ? `[data-hext="${k}"]` : `[data-hex="${k}"]`);
@@ -5883,9 +5895,7 @@ document.addEventListener("change", ev => {
   // Prep saves as the PA leaves a box, and the redraw waits until the PA has landed: a Tab fires this before the cursor
   // reaches the next box, a mouse press before its click. Then it goes around the box the PA is typing in now (setView)
   // instead of wiping out the next words or the click.
-  if(t.dataset.info){ const [gid, k] = t.dataset.info.split(":"), gg = S.games[gid]; if(gg){ const was = (booth(gid).info || {})[k] || "", now = t.value.trim(); setBooth(gg, b => { b.info = {...(b.info || {}), [k]:now}; }, ["info"]);
-    if(was !== now) undoable("Prep: " + (INFO_LABEL[k] || k), () => infoPut(gid, k, was), () => infoPut(gid, k, now));
-    if(pressing) document.addEventListener("pointerup", () => setTimeout(softRender, 0), {once:true}); else setTimeout(softRender, 0); } }
+  if(t.dataset.info) infoCommit(t);
   if(t.hasAttribute("data-bnotes")){ const g = S.games[t.dataset.gid], k = t.dataset.bnotes === "bnotes" ? "bnotes" : "notes"; if(g){ setBooth(g, b => { b[k] = t.value; }, [k]); toast(k === "bnotes" ? "Broadcast notes saved." : "PA notes saved."); noteStep(g, k, t, k === "bnotes" ? "Broadcast notes" : "PA notes"); afterPress(softRender); } }
   if(t.hasAttribute("data-bcpad")){ bcPadSave(t, true); const gg = S.games[t.dataset.bcpad]; if(gg){ padStep(gg, t); afterPress(render); } }
   if(t.dataset.prior && canCoach()){ const [team, pid, k] = t.dataset.prior.split("|"), T = S.teams[team]; if(T){ const v = t.value.trim(), o = ((T.prior || (T.prior = {}))[pid] || (T.prior[pid] = {}));
