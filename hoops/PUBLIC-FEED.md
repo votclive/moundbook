@@ -20,6 +20,6 @@ Each write costs one read for every listener, so listen to one game doc at a tim
 - `box {us, them}`: one row per player who played: `[num, name, "", "", "", pts, fgm, fga, tpm, tpa, ftm, fta, oreb, dreb, ast, stl, blk, to, pf, played, onFloor, pointsOnly, techs]`. A player kept off the public page has an empty name.
 - `tt {us:[oreb, dreb, to], them}`: team rebounds and turnovers
 - `plays`: the last 40 (all of them at the final): `[period, us, them, text, scored, team, timeOfDay ms, gameClock, boxRow]` (`boxRow` -1 for a team play)
-- `sh`: charted shots `[team, boxRow, x, y, made, period, points]`, x and y in thousandths of the half court (x across, 0 to 1000; y from the baseline, 0 to 1000 = half court)
+- `sh`: charted shots `[team, boxRow, x, y, made, period, points, clock]`, x and y in thousandths of the half court (x across, 0 to 1000; y from the baseline, 0 to 1000 = half court); clock is the game clock when it was taken as the board shows it ("5:49", "0:45.3"), or "" without one (added in 0.13.0, so older copies have 7 entries)
 - `fw`: the flow, one per scoring play: `[period, clockLeft (-1 if none), us, them]`
 - `ql [period seconds, OT seconds]`, `fl` (lead changes, ties, biggest leads, current run), `x` (bench, 2nd-chance, off-TO, paint points), `brd` (1 board live, 2 lost), `rv`, `sponsor`, `every`, `upd`
