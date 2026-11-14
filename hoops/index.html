@@ -760,6 +760,7 @@ const OBS = !PUB && /[?&#]bug\b/.test(location.search + location.hash);
 const BC_ONLY = !PUB && !ANN_ONLY && /[?&#]broadcast\b/.test(location.search + location.hash);   // Jim's broadcast page
 
 /* ---------- schedule (from the 2026-27 master sheet in the social kit) ---------- */
+const SEASON = "2026-27";
 const SCHEDULE = [
  ["2026-11-16","19:30","boys","Watertown","Away",0,"Hall of Fame (preseason)"],["2026-11-17","18:00","girls","White House Heritage","Away",0,"Hall of Fame (preseason)"],
  ["2026-11-17","19:30","boys","White House Heritage","Away",0,"Hall of Fame (preseason)"],["2026-11-19","18:00","girls","Wilson Central","Away",0,"Hall of Fame (preseason)"],
@@ -1065,7 +1066,8 @@ function pShort(p){ return p ? String(p.name || "").trim().replace(/\s+/g, " ") 
 // A published play's words come escaped (the desk's play line is HTML), so the fan page undoes that once before it
 // escapes them again: "Ja'Kobe", not "Ja&#39;Kobe".
 const unent = s => String(s ?? "").replace(/&(amp|lt|gt|quot|#39);/g, (m, k) => ({amp:"&", lt:"<", gt:">", quot:'"', "#39":"'"}[k]));
-function sortRoster(a){ return a.slice().sort((x, y) => (parseInt(x.num, 10) || 0) - (parseInt(y.num, 10) || 0) || String(x.num).localeCompare(String(y.num))); }
+const byNum = (a, b) => (parseInt(a.num, 10) || 0) - (parseInt(b.num, 10) || 0);
+function sortRoster(a){ return a.slice().sort((x, y) => byNum(x, y) || String(x.num).localeCompare(String(y.num))); }
 function homeAway(g){ return g.ha === "Away" ? {home:"them", away:"us"} : {home:"us", away:"them"}; }
 // Which team sits on which side of the screen. Home on the left, the way our table sees the floor, unless this device
 // swapped it (S.settings.flip, never synced: the scorer, the PA and Jim each set their own). The fan page never flips.
@@ -1315,7 +1317,7 @@ function kList(f, m){
   if(f === "table"){ const t = {us:[], them:[]}; live.forEach(([k, e]) => { if(t[e.tm]) t[e.tm].push(k); }); return t; }
   if(f !== "vis") return live.map(([k]) => k);
   const by = new Map(); live.forEach(([k, e]) => { by.set(paNum(e.num) || k, {pid:k, ...kVis(e)}); });
-  return [...by.values()].sort((a, b) => (parseInt(a.num, 10) || 0) - (parseInt(b.num, 10) || 0) || a.num.localeCompare(b.num));
+  return [...by.values()].sort((a, b) => byNum(a, b) || a.num.localeCompare(b.num));
 }
 // What a change did to a plain list, id by id (setBooth stamps it). A visitor replaced in one change by a new id under the
 // same number (paFold giving the list the book's id) points at it (to).
@@ -1513,7 +1515,7 @@ function stat(tm, pid, k){
       const R2 = replay(g), ln = pid && R2.box[tm][pid];
       if(teamFouls(g, R2, tm) === S.settings.bonus) toast(tmName(g, OTHER(tm)) + " in the bonus.", 3000);
       // Bench and coach technicals add up over the night: from the second one, say so (the book tells the official book).
-      if(!pid && R2.team[tm].tf >= 2){ const n = R2.team[tm].tf; toast(`${tmName(g, tm)} bench: ${n === 2 ? "2nd" : n === 3 ? "3rd" : n + "th"} technical tonight. Tell the official book.${teamFouls(g, R2, tm) === S.settings.bonus ? " " + tmName(g, OTHER(tm)) + " in the bonus." : ""}`, 4500); }
+      if(!pid && R2.team[tm].tf >= 2){ const n = R2.team[tm].tf; toast(`${tmName(g, tm)} bench: ${ORD(n)} technical tonight. Tell the official book.${teamFouls(g, R2, tm) === S.settings.bonus ? " " + tmName(g, OTHER(tm)) + " in the bonus." : ""}`, 4500); }
       else if(ln && ln.tf >= 2) toast(pLabel(g, tm, pid) + ": 2nd technical. EJECTED. Get a sub to the table.", 4500);
       else if(ln && ln.pf >= 5) toast(pLabel(g, tm, pid) + " FOULED OUT. Get a sub to the table.", 4000);
       break; }
@@ -2017,7 +2019,7 @@ function extrasOf(g, R){
 // possession. Each needs its stats logged: shooting needs the misses (Every stat), the turnover rate turnovers, the
 // rebound rate rebounds, and possessions all three. null where they weren't.
 function factorsOf(g, R){
-  const T = tm => sumLines(Object.values(R.box[tm]).concat([R.team[tm]])), t = {us:T("us"), them:T("them")}, out = {};
+  const T = tm => totalsOf(R, tm), t = {us:T("us"), them:T("them")}, out = {};
   const has = (...k) => R.plays.some(p => !p.void && k.includes(p.e.t)), reb = has("REB"), to = has("TO", "STL");
   for(const tm of ["us", "them"]){ const a = t[tm], o = t[OTHER(tm)], sh = !a.po && a.fga > 0, poss = a.fga - a.oreb + a.to + .44 * a.fta;
     out[tm] = {efg:sh ? (a.fgm + .5 * a.tpm) / a.fga : null, tov:sh && to ? a.to / (a.fga + .44 * a.fta + a.to) : null,
@@ -2062,6 +2064,8 @@ function headline(g, R, o = {}){
 function agoWords(at){ if(!at) return ""; const s = Math.max(0, Math.round((Date.now() - at) / 1000)); return s < 60 ? s + " s ago" : Math.round(s / 60) + " min ago"; }
 function lastAtOf(g){ for(let i = g.ev.length - 1; i >= 0; i--) if(!g.ev[i].v) return g.ev[i].at || 0; return 0; }
 // W or L, or "" while undecided. A forfeit ruling wins over the score; player stats still come from the plays.
+// W or L, counting a game that's over by the horns before the Final tap.
+const wlNow = g => result(g) || (replay(g).sc.us > replay(g).sc.them ? "W" : "L");
 function result(g){ if(!g || g.deleted || g.practice || g.scrim) return ""; if(g.forfeit === "W" || g.forfeit === "L") return g.forfeit; if(!gameOver(g)) return ""; const R = replay(g); return R.sc.us > R.sc.them ? "W" : "L"; }
 function resultWords(g){ const r = result(g);
   if(g && g.scrim && !g.deleted && gameOver(g)){ const R = replay(g); return `Scrimmage ${R.sc.us}-${R.sc.them}`; }   // no W or L: it isn't on the record
@@ -2073,19 +2077,19 @@ const OFF_WORDS = {ppd:"Postponed", cxl:"Cancelled"};
 // it; else nothing (a count that's missing games is worse than none).
 function recordOf(g){
   if(g.practice || g.scrim) return "";
-  const wl = x => result(x) || (replay(x).sc.us > replay(x).sc.them ? "W" : "L"), over = gameOver(g) || g.forfeit;
+  const over = gameOver(g) || g.forfeit;
   const typed = (infoOf(g).record || "").match(/(\d+)\s*-\s*(\d+)/);
-  if(typed){ let w = +typed[1], l = +typed[2]; if(over) wl(g) === "W" ? w++ : l++; return w + "-" + l; }
+  if(typed){ let w = +typed[1], l = +typed[2]; if(over) wlNow(g) === "W" ? w++ : l++; return w + "-" + l; }
   const before = Object.values(S.games).filter(x => !x.deleted && !x.practice && !x.scrim && !x.off && x.team === g.team && x.id !== g.id && (x.date + (x.time || "")) < (g.date + (g.time || "")));
   if(before.some(x => !gameOver(x) && !x.forfeit)) return "";
-  let w = 0, l = 0; for(const x of over ? before.concat([g]) : before) wl(x) === "W" ? w++ : l++;
+  let w = 0, l = 0; for(const x of over ? before.concat([g]) : before) wlNow(x) === "W" ? w++ : l++;
   return w + l ? w + "-" + l : "";
 }
 function lastMeeting(g){ const x = Object.values(S.games).filter(x => x.id !== g.id && x.team === g.team && okey(x.opp) === okey(g.opp) && result(x) && x.date < g.date).sort((a, b) => b.date.localeCompare(a.date))[0];
   return x ? `Last met ${fmtDate(x.date)}: ${resultWords(x)}` : ""; }
 function teamGlance(g, R, pre){
   const sd = sides(g), fl = (pre && pre.fl) || flowOf(R), x = (pre && pre.x) || extrasOf(g, R), rows = [];
-  const T = tm => R.box[tm] ? sumLines(Object.values(R.box[tm]).concat([R.team[tm]])) : LINE();
+  const T = tm => R.box[tm] ? totalsOf(R, tm) : LINE();
   const t = {us:T("us"), them:T("them")}, both = f => [f(sd.left), f(sd.right)];
   const sh = (tm, m, a) => t[tm].po ? "—" : `${t[tm][m]}-${t[tm][a]} ${pct(t[tm][m], t[tm][a])}`;
   rows.push(["FG", ...both(tm => sh(tm, "fgm", "fga"))], ["3PT", ...both(tm => sh(tm, "tpm", "tpa"))], ["FT", ...both(tm => sh(tm, "ftm", "fta"))]);
@@ -2265,7 +2269,7 @@ function bcBoard(g, R, tm){
     if(extra.length) h += `<div class="kicker bck">Noted, not on the roster</div>` + extra.map(([k, v]) => `<button class="bcrow" data-act="bcn" data-num="${esc(k.slice(pre.length))}"><span class="pnum">${esc(k.slice(pre.length))}</span><span class="bcwho"><span class="bcnote">${esc(v)}</span></span><span></span></button>`).join("");
     h += `<div class="row no-print" style="margin-top:6px"><button class="btn sm" data-act="bcn">+ Note for a number</button></div>`;
   }
-  const T = sumLines(Object.values(R.box[tm]).concat([R.team[tm]]));
+  const T = totalsOf(R, tm);
   if(g.ev.length) h += `<div class="bctot">${T.po ? "" : `FG ${T.fgm}-${T.fga} ${pct(T.fgm, T.fga)} · 3P ${T.tpm}-${T.tpa} · FT ${T.ftm}-${T.fta} · `}REB ${T.oreb + T.dreb} (${T.oreb} off) · TO ${T.to}</div>`;
   return h + `</section>`;
 }
@@ -3177,7 +3181,7 @@ function htWords(h){ const m = String(h || "").match(/^(\d)-(\d{1,2})$/); return
 // "At guard, a 6-foot-2 senior, number 3, Sam Wing (SAM-pul GARD)."
 function introHtml(g, tm){
   const rank = p => POS_ORDER[POS_WORD[(p.pos || "").toUpperCase()]] ?? 9;
-  const ps = startersOf(g, tm).map(pid => paPlayer(g, tm, pid)).filter(Boolean).sort((a, b) => rank(a) - rank(b) || (parseInt(a.num, 10) || 0) - (parseInt(b.num, 10) || 0));
+  const ps = startersOf(g, tm).map(pid => paPlayer(g, tm, pid)).filter(Boolean).sort((a, b) => rank(a) - rank(b) || byNum(a, b));
   if(!ps.length) return "";
   const lines = ps.map((p, i) => {
     const pos = POS_WORD[(p.pos || "").toUpperCase()], desc = [htWords(p.ht), YEAR_WORD[p.grade]].filter(Boolean).join(" "), bits = [];
@@ -3213,18 +3217,17 @@ function leaderWords(g){
 // (games this app never scored count too), else from the book, but only when every earlier game is final in the book.
 function recordWords(g){
   if(!gameOver(g) || g.practice || g.scrim) return "";
-  const wl = x => result(x) || (replay(x).sc.us > replay(x).sc.them ? "W" : "L");   // over by the horns counts before the Final tap
-  const won = wl(g) === "W", typed = (infoOf(g).record || "").match(/(\d+)\s*-\s*(\d+)(?:\D+(\d+)\s*-\s*(\d+))?/);
+  const won = wlNow(g) === "W", typed = (infoOf(g).record || "").match(/(\d+)\s*-\s*(\d+)(?:\D+(\d+)\s*-\s*(\d+))?/);
   let w = 0, l = 0, dw = 0, dl = 0;
   const before = Object.values(S.games).filter(x => !x.deleted && !x.practice && !x.scrim && !x.off && x.team === g.team && x.id !== g.id && (x.date + x.time) < (g.date + g.time));
   if(typed){ [w, l, dw, dl] = [1, 2, 3, 4].map(i => +typed[i] || 0); won ? w++ : l++;
     // No district record typed: count it from the book when every earlier district game is in it, else leave it out.
     if(g.district){ if(typed[3] != null) won ? dw++ : dl++;
-      else { const bd = before.filter(x => x.district); if(bd.every(x => gameOver(x) || x.forfeit)) for(const x of bd.concat([g])) wl(x) === "W" ? dw++ : dl++; } } }
+      else { const bd = before.filter(x => x.district); if(bd.every(x => gameOver(x) || x.forfeit)) for(const x of bd.concat([g])) wlNow(x) === "W" ? dw++ : dl++; } } }
   else {
     const open = before.filter(x => !gameOver(x) && !x.forfeit);
     if(open.length) return `<span class="miss">[record? ${open.length} earlier game${open.length > 1 ? "s aren't" : " isn't"} final in the book: type the record before tonight under Prep]</span>`;
-    for(const x of before.concat([g])){ const wx = wl(x) === "W"; wx ? w++ : l++; if(x.district) wx ? dw++ : dl++; }
+    for(const x of before.concat([g])){ const wx = wlNow(x) === "W"; wx ? w++ : l++; if(x.district) wx ? dw++ : dl++; }
   }
   return `The ${esc(usName(g))} are now ${w} and ${l}${dw + dl ? `, ${dw} and ${dl} in the district` : ""}.`;
 }
@@ -3458,6 +3461,8 @@ const boxCell = (ln, k) => cellOf(ln, k);
 function cellOf(ln, k){
   switch(k){ case "fg": return ln.po ? ln.fgm + "-—" : ln.fgm + "-" + ln.fga; case "tp": return ln.po ? ln.tpm + "-—" : ln.tpm + "-" + ln.tpa; case "ft": return ln.po ? ln.ftm + "-—" : ln.ftm + "-" + ln.fta; case "reb": return ln.oreb + ln.dreb; case "pm": return ln.pm > 0 ? "+" + ln.pm : ln.pm; default: return ln[k]; }
 }
+// A team's totals: every player's line plus the team line (team rebounds, bench technicals).
+const totalsOf = (R, tm) => sumLines(Object.values(R.box[tm]).concat([R.team[tm]]));
 function sumLines(lines){ const t = LINE(); for(const ln of lines) for(const k of Object.keys(t)) t[k] += ln[k] || 0; return t; }
 // fan: the fan page's columns, and a mark on who's on the floor while the game is live. pa: the PA page, points and fouls
 // only, with no team row or shooting line (they'd be empty).
@@ -3560,8 +3565,9 @@ function viewPlays(){
     ${playList(g, R, 0, canEdit(g), keep)}</div>`;
 }
 // Every play with its time of day, for a spreadsheet.
+const csvCell = v => /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : v;
 function playsCsv(g, pid){
-  const R = replay(g), ha = homeAway(g), q = v => /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : v;
+  const R = replay(g), ha = homeAway(g), q = csvCell;
   const rows = [["game_id","date","opponent","period","time_of_day",tmName(g, ha.home) + "_score",tmName(g, ha.away) + "_score","team","num","player","play","removed","added_later","game_clock"]];
   for(const p of R.plays){ const e = p.e, pl = e.pid ? player(g, e.tm, e.pid) : null; if(pid && e.pid !== pid) continue;
     rows.push([g.id, g.date, g.opp, perLabel(g, p.q), e.at ? new Date(e.at).toLocaleTimeString([], {hour:"numeric", minute:"2-digit", second:"2-digit"}) : "", p.sc[ha.home], p.sc[ha.away], e.t === "PER" ? "" : tmName(g, e.tm), pl ? pl.num : "", pl ? pl.name : "", playText(g, e).replace(/<[^>]+>/g, ""), p.void ? "yes" : "", e.ins ? "yes" : "", gcText(e, g, p.q)]); }
@@ -3612,7 +3618,6 @@ function viewShots(){
 // Under the Shots chart: every player who shot in the period picked, team by team, with made-attempted from everywhere
 // and from each zone of the charted ones. A row shows only that player's shots on the chart (the Everyone pick again).
 function shotsByPlayer(g, pool, cols){
-  const ma = ss => ss.length ? `${ss.filter(s => s.e.m).length}-${ss.length}` : "–";
   const rows = cols.flatMap(tm => sortRoster(roster(g, tm)).map(p => ({tm, p, ss:pool.filter(s => s.e.tm === tm && s.e.pid === p.pid)})).filter(r => r.ss.length));
   if(!rows.length) return "";
   return `<div class="scroll-x" style="margin-top:12px"><table class="pin shpl" style="max-width:640px"><tr><th class="l">By player</th><th>FG</th><th>3PT</th><th>Paint</th><th>Mid</th><th>Three</th></tr>
@@ -3633,7 +3638,7 @@ function viewGames(){
   }, rows = list.map(g => row(g));
   // Game night: tonight's games, both teams, sit on top, so between games the book opens the right one without scrolling the season.
   const today = pubToday(), tn = Object.values(S.games).filter(g => !g.deleted && !g.practice && g.date === today).sort((a, b) => (a.time || "").localeCompare(b.time || "") || a.team.localeCompare(b.team));
-  return `<div class="stack"><div class="row between"><div><div class="kicker">2026-27</div><h2>Game records</h2></div>
+  return `<div class="stack"><div class="row between"><div><div class="kicker">${SEASON}</div><h2>Game records</h2></div>
     <div class="row"><select data-sel="gfilter" style="width:auto"><option value="all">Boys &amp; girls</option><option value="boys" ${ui.gfilter === "boys" ? "selected" : ""}>Boys</option><option value="girls" ${ui.gfilter === "girls" ? "selected" : ""}>Girls</option></select>
     ${canCoach() ? `<button class="btn primary" data-act="newgame">+ New game</button>` : ""}${S.games.practice ? `<button class="btn" data-act="open" data-gid="practice">Practice game</button>` : ""}</div></div>
     ${tn.length ? `<div class="tonight"><div class="kicker">Tonight</div><div class="glist">${tn.map(g => row(g, true)).join("")}</div></div><div class="kicker">The season</div>` : ""}<div class="glist">${rows.join("") || `<p>No games yet.</p>`}</div></div>`;
@@ -3666,7 +3671,7 @@ function teamRecord(team){
   return `<div class="small" style="margin-top:6px;font-weight:600">Record ${r.all.join("-")}${r.district[0] + r.district[1] ? " · District " + r.district.join("-") : ""} · Home ${r.Home.join("-")} · Away ${r.Away.join("-")}${r.Neutral[0] + r.Neutral[1] ? " · Neutral " + r.Neutral.join("-") : ""}</div>`;
 }
 function seasonCsv(team){
-  const sl = seasonLines(team), q = v => /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : v;
+  const sl = seasonLines(team), q = csvCell;
   const rows = [["num","name","pos","year","height","gp","pts","ppg","fgm","fga","tpm","tpa","ftm","fta","oreb","dreb","reb","rpg","ast","apg","stl","blk","to","pf","tech","fg_pct","tp_pct","ft_pct"]];
   for(const p of sortRoster(S.teams[team].roster)){ const a = sl[p.pid]; if(!a) continue; const per = k => (a[k] / a.g).toFixed(1), pc = (m, n) => n ? (100 * m / n).toFixed(1) : "";
     rows.push([p.num, p.name, p.pos || "", p.grade || "", p.ht || "", a.g, a.pts, per("pts"), a.fgm, a.fga, a.tpm, a.tpa, a.ftm, a.fta, a.oreb, a.dreb, a.oreb + a.dreb, ((a.oreb + a.dreb) / a.g).toFixed(1), a.ast, per("ast"), a.stl, a.blk, a.to, a.pf, a.tf, pc(a.x.fgm, a.x.fga), pc(a.x.tpm, a.x.tpa), pc(a.x.ftm, a.x.fta)]); }
@@ -3675,7 +3680,7 @@ function seasonCsv(team){
 // Every counted game (seasonGames), one row per player per game, with every column the box score has. A player taken off
 // Rosters since still has his rows: each game keeps its own copy of the roster.
 function allGamesCsv(team){
-  const q = v => /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : v;
+  const q = csvCell;
   const rows = [["game_id","date","opponent","home_away","result","team_score","opp_score","num","name","pts","fgm","fga","tpm","tpa","ftm","fta","oreb","dreb","reb","ast","stl","blk","to","pf","tech","plus_minus"]];
   for(const g of seasonGames(team)){
     // +/- only from games with subs tapped, the way the box score shows it.
@@ -3707,7 +3712,7 @@ function gameLogHtml(team, p, sh){
   const groups = oppGroups(all.map(r => r.g)); if(sh.opp && !groups.some(o => o.k === sh.opp)) sh.opp = "";
   const rows = all.filter(r => !sh.opp || okey(r.g.opp) === sh.opp), on = groups.find(o => o.k === sh.opp);
   const n = rows.length, t = sumLines(rows.map(r => r.ln)), x = sumLines(rows.filter(r => !r.ln.po).map(r => r.ln)), pmr = rows.filter(r => r.pm), pmt = pmr.reduce((s, r) => s + r.ln.pm, 0);
-  const pg = v => (v / n).toFixed(1), sg = v => (v > 0 ? "+" : "") + v, pgs = (m, a) => t.po ? pg(t[m]) : pg(t[m]) + "-" + pg(t[a]);
+  const pg = v => (v / n).toFixed(1), pgs = (m, a) => t.po ? pg(t[m]) : pg(t[m]) + "-" + pg(t[a]);
   const desc = [p.pos, p.grade, p.ht].filter(Boolean).join(" · ");
   const shots = rows.flatMap(r => r.R.shots.filter(s => s.e.tm === "us" && s.e.pid === pid).map(s => ({e:s.e, q:s.q, r, k:r.g.id + ":" + s.e.id, t:`${fmtDate(r.g.date)} ${r.g.ha === "Away" ? "at" : "vs"} ${r.g.opp}: ${s.e.m ? "made" : "missed"} ${s.e.p}`})));
   const placed = shots.filter(s => s.e.x != null), picked = (ui.glSel || []).map(k => placed.find(s => s.k === k)).filter(Boolean);
@@ -3716,7 +3721,7 @@ function gameLogHtml(team, p, sh){
   const line = r => `<tr><td class="l"><button class="glink" data-act="logbox" data-gid="${esc(r.g.id)}" title="Open the box score"><b>${esc(fmtDate(r.g.date))}</b><span>${r.g.ha === "Away" ? "at" : "vs"} ${esc(r.g.opp)}</span></button></td><td class="l">${esc(resultWords(r.g))}</td>${cells(r.ln, r.pm ? cellOf(r.ln, "pm") : "–")}</tr>`;
   const table = `<div class="scroll-x"><table class="pin glog"><tr><th class="l">Game</th><th class="l">Result</th><th>PTS</th><th>FG</th><th>3PT</th><th>FT</th><th>REB</th><th>AST</th><th>STL</th><th>BLK</th><th>TO</th><th>PF</th><th>+/-</th></tr>
     ${rows.map(line).join("")}
-    <tr class="tot"><td class="l">${on ? "vs " + esc(on.name) : "Season"}</td><td class="l">${n} game${n === 1 ? "" : "s"}</td>${cells(t, pmr.length ? sg(pmt) : "–")}</tr>
+    <tr class="tot"><td class="l">${on ? "vs " + esc(on.name) : "Season"}</td><td class="l">${n} game${n === 1 ? "" : "s"}</td>${cells(t, pmr.length ? pmText(pmt) : "–")}</tr>
     <tr><td class="l">A game</td><td></td><td>${pg(t.pts)}</td><td>${pgs("fgm", "fga")}</td><td>${pgs("tpm", "tpa")}</td><td>${pgs("ftm", "fta")}</td><td>${pg(t.oreb + t.dreb)}</td><td>${pg(t.ast)}</td><td>${pg(t.stl)}</td><td>${pg(t.blk)}</td><td>${pg(t.to)}</td><td>${pg(t.pf)}</td><td>${pmr.length ? (pmt > 0 ? "+" : "") + (pmt / pmr.length).toFixed(1) : "–"}</td></tr>
     <tr><td class="l">Shooting</td><td></td><td></td><td>${pct(x.fgm, x.fga)}</td><td>${pct(x.tpm, x.tpa)}</td><td>${pct(x.ftm, x.fta)}</td><td colspan="7"></td></tr></table></div>`;
   // Their line against each team, over the whole season: a row picks that opponent (again: the whole season).
@@ -3872,8 +3877,8 @@ const gSig = g => [g.ev.length, g.rev || 0, g.upd || 0, g.status, g.scrim ? 1 : 
 const fx1 = v => (Math.round(v * 10) / 10).toFixed(1);
 const pctN = (m, a) => a ? m / a : null;
 const pctS = v => v == null ? "–" : Math.round(100 * v) + "%";
-const sgn = v => (v > 0 ? "+" : "") + v;
-const sgn1 = v => (v > 0 ? "+" : v < 0 ? "" : "") + fx1(v);
+const digRec = ds => `${ds.filter(d => d.res === "W").length}-${ds.filter(d => d.res === "L").length}`;
+const sgn1 = v => (v > 0 ? "+" : "") + fx1(v);
 // One game taken apart (comp: competitive minutes only, see gameComp).
 function dig(g, comp){
   const k = comp ? "c" : "a", c = DIG.get(g) || {}, sig = gSig(g);
@@ -3910,7 +3915,7 @@ function digOf(g, orig){
     prev = p.sc;
   }
   const ck = real >= 10 && clk / real >= .9, M = ck ? clockStats(g, R) : null, lq = Math.max(1, lastQ(R));
-  const T = {us:sumLines(Object.values(R.box.us).concat([R.team.us])), them:sumLines(Object.values(R.box.them).concat([R.team.them]))};
+  const T = {us:totalsOf(R, "us"), them:totalsOf(R, "them")};
   return {g:orig, gv:g, R, sc:orig === g ? R.sc : replay(orig).sc, P, ck, M:M && M.show ? M : null, Q, lq, end:start(lq + 1), start, T, ast, blk, stl, subs, five:bookFive(g, "us"), res:result(orig)};
 }
 // Days off before each game of a season (b2b: the day after the last one, "1": one day between, "2+": more, or the first).
@@ -4062,7 +4067,7 @@ function ffTable(S0){
   return `<div class="stblk"><div class="kicker">Four factors and efficiency</div><div class="scroll-x"><table class="pin"><tr><th class="l"></th>${cols.map(([h]) => `<th>${h}</th>`).join("")}</tr>
     ${row("Shooting (eFG%)", "efg", pctS, "Field goals with a three worth one and a half")}${row("Turnover rate", "tov", pctS, "Turnovers per possession")}${row("Off. rebound rate", "orb", pctS, "Share of own misses rebounded")}${row("Free throw rate", "ftr", pctS, "Free throws made per shot")}
     ${row("Pace (possessions a game)", "poss", fx1, "Estimated")}${row("Points per 100 possessions", "ppp", v => Math.round(100 * v), "Offense (the Opponents column is our defense)")}</table></div>
-    <p class="small" style="margin:4px 0 0">${net != null ? `Net <b>${sgn(net)}</b> points per 100 possessions. ` : ""}Second-chance points a game: <b>${fx1(all.x.second.us / all.n)}</b> for, <b>${fx1(all.x.second.them / all.n)}</b> against. Points off turnovers: <b>${fx1(all.x.offTo.us / all.n)}</b> for, <b>${fx1(all.x.offTo.them / all.n)}</b> against. From ${all.n} game${all.n === 1 ? "" : "s"} with every stat logged.</p></div>`;
+    <p class="small" style="margin:4px 0 0">${net != null ? `Net <b>${pmText(net)}</b> points per 100 possessions. ` : ""}Second-chance points a game: <b>${fx1(all.x.second.us / all.n)}</b> for, <b>${fx1(all.x.second.them / all.n)}</b> against. Points off turnovers: <b>${fx1(all.x.offTo.us / all.n)}</b> for, <b>${fx1(all.x.offTo.them / all.n)}</b> against. From ${all.n} game${all.n === 1 ? "" : "s"} with every stat logged.</p></div>`;
 }
 // Record and margin by how many days off came before the game, and fast games against slow ones (pace above or below the
 // median of these games).
@@ -4224,7 +4229,7 @@ function playersTable(S0, L){
   else if(v === "floor"){ const F = floorOf(S0);
     head = ["Player", ["On +/-", "Points for minus against with them on"], ["Off +/-", "With them on the bench"], ["Net/32 on ⏱", "Per 32 minutes, clock games"], ["Net/32 off ⏱", ""], ["Usage", "Their share of the team's shots, free throws and turnovers while on"], ["Pts share", "Share of the team's points while on"], ["OREB%", "Offensive rebounds they got of the ones there were while on"], ["DREB%", "Defensive rebounds they got of the ones there were while on"], ["Opp FG% on", ""], ["Opp FG% off", ""], ["STL+BLK", "A game"]];
     rows = ps.filter(p => F[p.pid]).map(p => { const f = F[p.pid], o = f.on, x = f.off, w = o.own, a = L[p.pid], n32 = m => m.sec >= 60 ? sgn1((m.pf - m.pa) * 1920 / m.sec) : "–";
-      return [pBtn(S0, p), sgn(o.pf - o.pa), sgn(x.pf - x.pa), n32(f.m.on), n32(f.m.off), pc(w.fga + .44 * w.fta + w.to, o.fga + .44 * o.fta + o.to), pc(w.pts, o.pts), pc(w.oreb, o.uor + o.tdr), pc(w.dreb, o.udr + o.tor), pc(o.ofgm, o.ofga), pc(x.ofgm, x.ofga), fx1((a.stl + a.blk) / a.g)]; });
+      return [pBtn(S0, p), pmText(o.pf - o.pa), pmText(x.pf - x.pa), n32(f.m.on), n32(f.m.off), pc(w.fga + .44 * w.fta + w.to, o.fga + .44 * o.fta + o.to), pc(w.pts, o.pts), pc(w.oreb, o.uor + o.tdr), pc(w.dreb, o.udr + o.tor), pc(o.ofgm, o.ofga), pc(x.ofgm, x.ofga), fx1((a.stl + a.blk) / a.g)]; });
     note = `From ${S0.ds.filter(d => d.subs).length} of ${S0.ds.length} games with subs tapped, counting only plays with five of ours on the floor. Net/32 needs the clock too: ${clockNote(S0, "mds").replace(/<[^>]+>/g, "")}`;
     if(!rows.length) return nav + noData("These need subs tapped in or out during games."); }
   else if(v === "highs"){
@@ -4430,9 +4435,9 @@ function leadsCard(S0){
 // Close games: decided by 5 or fewer, overtime, and clutch time (last 4:00 of the 4th or OT within 5) both ways.
 function clutchCard(S0){
   const n = S0.ds.length; if(!n) return "";
-  const rec = ds => `${ds.filter(d => d.res === "W").length}-${ds.filter(d => d.res === "L").length}`, close = S0.ds.filter(d => d.res && Math.abs(d.sc.us - d.sc.them) <= 5), ot = S0.ds.filter(d => d.res && d.lq > d.Q);
+  const close = S0.ds.filter(d => d.res && Math.abs(d.sc.us - d.sc.them) <= 5), ot = S0.ds.filter(d => d.res && d.lq > d.Q);
   const C = clutchOf(S0), cg = S0.cds.filter(d => d.res && d.P.some(p => clutchP(d, p))), l = C.T;
-  return `<div class="stblk"><div class="kicker">Close games and clutch time</div>${stTable(["", "Us", "Opponents"], [["Record in games decided by 5 or less", rec(close), ""], ["Record in overtime games", rec(ot), ""], ["Record with clutch time ⏱", rec(cg), ""],
+  return `<div class="stblk"><div class="kicker">Close games and clutch time</div>${stTable(["", "Us", "Opponents"], [["Record in games decided by 5 or less", digRec(close), ""], ["Record in overtime games", digRec(ot), ""], ["Record with clutch time ⏱", digRec(cg), ""],
     ["Clutch points", l.us.pts, l.them.pts], ["Clutch FG", `${l.us.fgm}-${l.us.fga}`, `${l.them.fgm}-${l.them.fga}`], ["Clutch FT", `${l.us.ftm}-${l.us.fta}`, `${l.them.ftm}-${l.them.fta}`], ["Clutch turnovers", l.us.to, l.them.to]])}
     <p class="small" style="margin:4px 0 0">Clutch time: the last 4 minutes of the 4th quarter or overtime with the score within 5. ${clockNote(S0).replace(/<[^>]+>/g, "")}</p></div>`;
 }
@@ -4513,7 +4518,7 @@ function toCard(S0){
 // Pace by opponent: possessions a game, points per 100 both ways.
 function paceCard(S0){
   const rows = S0.groups.map(o => { const ds = S0.ds.filter(d => okey(d.g.opp) === o.k), f = ffAgg(ds); if(!f) return null;
-    return [esc(o.name), f.n, fx1(f.us.poss), f.us.ppp != null ? Math.round(100 * f.us.ppp) : "–", f.them.ppp != null ? Math.round(100 * f.them.ppp) : "–", `${ds.filter(d => d.res === "W").length}-${ds.filter(d => d.res === "L").length}`]; }).filter(Boolean);
+    return [esc(o.name), f.n, fx1(f.us.poss), f.us.ppp != null ? Math.round(100 * f.us.ppp) : "–", f.them.ppp != null ? Math.round(100 * f.them.ppp) : "–", digRec(ds)]; }).filter(Boolean);
   if(!rows.length) return "";
   return `<div class="stblk"><div class="kicker">Pace by opponent</div>${stTable(["Opponent", "G", ["Pace", "Possessions a game (ours, estimated)"], ["Off", "Our points per 100 possessions"], ["Def", "Their points per 100 possessions"], "W-L"], rows)}<p class="small" style="margin:4px 0 0">Games with every stat logged.</p></div>`;
 }
@@ -4537,8 +4542,8 @@ const net32 = u => u.sec >= 60 ? sgn1((u.pf - u.pa) * 1920 / u.sec) : "–";
 function unitsCard(S0){
   const A = unitAgg(S0); if(!A.U.length) return `<div class="stblk"><div class="kicker">Lineups ⏱🔁</div>${noData("Lineups need games with the game clock and subs tapped. " + clockNote(S0, "mds"))}</div>`;
   const nums = u => u.pids.map(pid => numOf(S0, pid)).sort((a, b) => (parseInt(a.slice(1), 10) || 0) - (parseInt(b.slice(1), 10) || 0)).join(" ");
-  return `<div class="stblk"><div class="kicker">Five-man lineups ⏱🔁</div>${stTable(["On the floor", "G", "MIN", "PTS", "OPP", "+/-", ["Net/32", "Per 32 minutes"]], A.U.slice(0, 12).map(u => [nums(u), u.g.size, mss(u.sec), u.pf, u.pa, sgn(u.pf - u.pa), net32(u)]))}
-    <div class="kicker" style="margin-top:10px">Pairs</div>${stTable(["Together", "MIN", "PTS", "OPP", "+/-", "Net/32"], A.P.filter(p => p.sec >= 60).slice(0, 12).map(u => [nums(u), mss(u.sec), u.pf, u.pa, sgn(u.pf - u.pa), net32(u)]))}
+  return `<div class="stblk"><div class="kicker">Five-man lineups ⏱🔁</div>${stTable(["On the floor", "G", "MIN", "PTS", "OPP", "+/-", ["Net/32", "Per 32 minutes"]], A.U.slice(0, 12).map(u => [nums(u), u.g.size, mss(u.sec), u.pf, u.pa, pmText(u.pf - u.pa), net32(u)]))}
+    <div class="kicker" style="margin-top:10px">Pairs</div>${stTable(["Together", "MIN", "PTS", "OPP", "+/-", "Net/32"], A.P.filter(p => p.sec >= 60).slice(0, 12).map(u => [nums(u), mss(u.sec), u.pf, u.pa, pmText(u.pf - u.pa), net32(u)]))}
     <p class="small" style="margin:4px 0 0">The 12 most used. ${clockNote(S0, "mds")} A lineup with a sub that had no clock is left out.</p></div>`;
 }
 // One game's rotation: a bar for each stint, by period.
@@ -4595,7 +4600,7 @@ function bigCard(S0){
   for(const u of unitAgg(S0).U){ const b = B[key(cnt(S0, u.pids))] || (B[key(cnt(S0, u.pids))] = {pf:0, pa:0, sec:0}); b.sec += u.sec; }
   const ks = ["0", "1", "2", "3+"].filter(k => B[k] && (B[k].pf || B[k].pa || B[k].sec)); if(!ks.length) return "";
   const bigs = Object.keys(linesOf(S0.ds)).map(pid => stPlayer(S0.team, pid, S0.ds)).filter(p => isBig(p, S0.team));
-  return `<div class="stblk"><div class="kicker">Big and small 🔁</div>${stTable(["Bigs on the floor", "PTS", "OPP", "+/-", ["MIN ⏱", ""], ["Net/32 ⏱", ""]], ks.map(k => { const b = B[k]; return [k, b.pf, b.pa, sgn(b.pf - b.pa), b.sec ? mss(b.sec) : "–", net32(b)]; }))}
+  return `<div class="stblk"><div class="kicker">Big and small 🔁</div>${stTable(["Bigs on the floor", "PTS", "OPP", "+/-", ["MIN ⏱", ""], ["Net/32 ⏱", ""]], ks.map(k => { const b = B[k]; return [k, b.pf, b.pa, pmText(b.pf - b.pa), b.sec ? mss(b.sec) : "–", net32(b)]; }))}
     <p class="small" style="margin:4px 0 0">Bigs: ${bigs.length ? bigs.map(pNm).join(", ") : "none yet"} (centers, forwards and posts from Rosters; no position: ${S0.team === "girls" ? "6-0" : "6-4"} and up). Points from plays with five of ours on the floor.</p></div>`;
 }
 /* ---- Scouting: an opponent across every game we've played them ---- */
@@ -4620,7 +4625,7 @@ function scoutCard(S0){
   return `<div class="card"><div class="row between"><div><div class="kicker">Scouting</div><h3 style="margin:0">${esc(o.name)}</h3></div>
     <select data-sel="stScout" aria-label="Opponent" style="width:auto;max-width:100%">${groups.map(x => `<option value="${esc(x.k)}" ${x.k === k ? "selected" : ""}>${esc(x.name)} (${x.gs.length})${nx && okey(nx.opp) === x.k ? " · next up" : ""}</option>`).join("")}</select></div>
     ${up ? `<p class="small" style="margin:4px 0 0;font-weight:600">Next: ${esc(fmtDate(up.date))}${up.time ? " " + esc(fmtTime(up.time)) : ""} ${up.ha === "Away" ? "at" : "vs"} ${esc(up.opp)}</p>` : ""}
-    <div class="stblk"><div class="kicker">Meetings · ${ds.filter(d => d.res === "W").length}-${ds.filter(d => d.res === "L").length}</div><div class="row" style="gap:6px">${ds.map(d => `<button class="glink" data-act="logbox" data-gid="${esc(d.g.id)}"><b>${esc(fmtDate(d.g.date))}</b><span>${esc(d.res || "")} ${d.sc.us}-${d.sc.them}${d.g.ha === "Away" ? " (away)" : ""}</span></button>`).join("")}</div></div>
+    <div class="stblk"><div class="kicker">Meetings · ${digRec(ds)}</div><div class="row" style="gap:6px">${ds.map(d => `<button class="glink" data-act="logbox" data-gid="${esc(d.g.id)}"><b>${esc(fmtDate(d.g.date))}</b><span>${esc(d.res || "")} ${d.sc.us}-${d.sc.them}${d.g.ha === "Away" ? " (away)" : ""}</span></button>`).join("")}</div></div>
     <div class="stblk"><div class="kicker">Their players against us</div>${stTable(["Player", "GP", "PTS", "PPG", "FG", "3PT", "FT", "REB", "AST", "STL", "TO", "PF"], ps.map(a => [`#${esc(a.num)} ${esc(a.name)}`, a.g, a.ln.pts, fx1(a.ln.pts / a.g), a.x.fga ? `${a.x.fgm}-${a.x.fga}` : a.ln.fgm, a.x.tpa ? `${a.x.tpm}-${a.x.tpa}` : a.ln.tpm, a.x.fta ? `${a.x.ftm}-${a.x.fta}` : a.ln.ftm, a.ln.oreb + a.ln.dreb, a.ln.ast, a.ln.stl, a.ln.to, a.ln.pf]))}
       <p class="small" style="margin:4px 0 0">Matched across games by jersey number and name.</p></div>
     ${placed.length ? `<div class="stblk"><div class="kicker">Their shots against us</div><div class="glchart" style="margin-top:0"><div style="flex:1 1 280px;max-width:380px">${svg}</div><div style="flex:1;min-width:220px">
@@ -4669,7 +4674,7 @@ function oppTable(S0){
   return `<div class="stblk"><div class="kicker">Against each opponent</div><div class="scroll-x" style="margin-top:4px"><table class="pin shpl"><tr><th class="l">Opponent</th><th>GP</th><th class="l">W-L</th><th>PTS</th><th>OPP</th><th>+/-</th><th>FG%</th><th>3P%</th><th>FT%</th><th>REB</th><th>TO</th></tr>
     ${rows.map(o => { const ds = gs.get(o.k), n = ds.length, T2 = {us:LINE(), them:LINE()}, X = LINE(), pts = {us:0, them:0}, sel = o.k === S0.f.opp;
       for(const d of ds){ for(const tm of ["us", "them"]){ pts[tm] += d.R.sc[tm]; T2[tm] = sumLines([T2[tm], d.R.team[tm]].concat(Object.values(d.R.box[tm]))); } Object.assign(X, sumLines([X].concat(Object.values(d.R.box.us).filter(ln => !ln.po)))); }
-      return `<tr${sel ? ' class="on"' : ""}><td class="l"><button class="lnk" data-act="stopp" data-opp="${esc(sel ? "" : o.k)}" aria-pressed="${sel}">${esc(o.name)}</button></td><td>${n}</td><td class="l">${ds.filter(d => d.res === "W").length}-${ds.filter(d => d.res === "L").length}</td><td>${fx1(pts.us / n)}</td><td>${fx1(pts.them / n)}</td><td>${sgn1((pts.us - pts.them) / n)}</td><td>${pct(X.fgm, X.fga)}</td><td>${pct(X.tpm, X.tpa)}</td><td>${pct(X.ftm, X.fta)}</td><td>${fx1((T2.us.oreb + T2.us.dreb) / n)}</td><td>${fx1(T2.us.to / n)}</td></tr>`; }).join("")}</table></div>
+      return `<tr${sel ? ' class="on"' : ""}><td class="l"><button class="lnk" data-act="stopp" data-opp="${esc(sel ? "" : o.k)}" aria-pressed="${sel}">${esc(o.name)}</button></td><td>${n}</td><td class="l">${digRec(ds)}</td><td>${fx1(pts.us / n)}</td><td>${fx1(pts.them / n)}</td><td>${sgn1((pts.us - pts.them) / n)}</td><td>${pct(X.fgm, X.fga)}</td><td>${pct(X.tpm, X.tpa)}</td><td>${pct(X.ftm, X.fta)}</td><td>${fx1((T2.us.oreb + T2.us.dreb) / n)}</td><td>${fx1(T2.us.to / n)}</td></tr>`; }).join("")}</table></div>
     <p class="small" style="margin:4px 0 0">Points, rebounds and turnovers are a game. Tap an opponent to see everything against just them.</p></div>`;
 }
 /* ---- The Stats tab ---- */
@@ -4703,7 +4708,7 @@ function viewSeason(){
     shooting:() => shotChartCard(S0, L) + howTeam(S0) + ftTeam(S0) + rimCard(S0),
     flow:() => quarterCard(S0) + leadsCard(S0) + clutchCard(S0) + marginCurve(S0) + startsCard(S0) + droughtCard(S0) + runsCard(S0) + timeoutCard(S0) + toCard(S0) + paceCard(S0),
     lineups:() => unitsCard(S0) + rotationCard(S0) + minutesCard(S0, L) + benchCard(S0) + foulCard(S0, L) + bigCard(S0) + `<p class="small" style="margin:12px 0 0">Each player on and off the floor (+/-, shares, rebounding, defense): Players, On the floor.</p>`}[sec]()}</div>`;
-  return `<div class="stack stv"><div class="card rcard"><div class="row between"><div class="tc-head" style="margin:0"><img src="bobcat-head.png" alt=""><div><div class="kicker">2026-27 · Season stats</div><h2>${esc(T.name)}</h2></div></div>
+  return `<div class="stack stv"><div class="card rcard"><div class="row between"><div class="tc-head" style="margin:0"><img src="bobcat-head.png" alt=""><div><div class="kicker">${SEASON} · Season stats</div><h2>${esc(T.name)}</h2></div></div>
       <div class="row">${["boys", "girls"].map(t => `<button class="btn sm" data-act="stteam" data-v="${t}" aria-pressed="${t === team}">${t === "girls" ? "Girls" : "Boys"}</button>`).join("")}</div></div>
       ${sec === "records" ? "" : filterBar(S0) + sum}
       <div class="stnav" role="group" aria-label="Stats section">${ST_SECS.map(([k, lb]) => `<button data-act="stsec" data-v="${k}" aria-pressed="${k === sec}">${lb}</button>`).join("")}</div></div>${body}</div>`;
@@ -4718,7 +4723,7 @@ function playerMore(team, p, rows){
   const adv = [["TS%", pc(x.pts, 2 * (x.fga + .44 * x.fta))], ["eFG%", pc(x.fgm + .5 * x.tpm, x.fga)], ["PTS/shot", x.fga ? ((2 * x.fgm + x.tpm) / x.fga).toFixed(2) : "–"], ["3PA rate", pc(x.tpa, x.fga)], ["FT rate", x.fga ? (x.fta / x.fga).toFixed(2) : "–"],
     ["Assisted", h ? pc(h.a2 + h.a3, h.m2 + h.m3) : "–"], ["Game Score", fx1(gs.reduce((s, v) => s + v, 0) / gs.length)]];
   const p32 = m && m.g ? [["MPG ⏱", fx1(m.sec / 60 / m.g)], ["PTS/32", ast32(m.ln.pts, m.sec)], ["REB/32", ast32(m.ln.oreb + m.ln.dreb, m.sec)], ["AST/32", ast32(m.ln.ast, m.sec)]] : [];
-  const onoff = F ? [["On +/-", sgn(F.on.pf - F.on.pa)], ["Off +/-", sgn(F.off.pf - F.off.pa)]] : [];
+  const onoff = F ? [["On +/-", pmText(F.on.pf - F.on.pa)], ["Off +/-", pmText(F.off.pf - F.off.pa)]] : [];
   const tiles = adv.concat(p32, onoff).map(([l, v]) => `<div class="sttile"><span>${l}</span><b>${v}</b></div>`).join("");
   const xs = ds.map(d => oppInfo(d.g.opp, d.g).abbr), pts = ds.map(d => (d.R.box.us[pid] || {}).gp ? d.R.box.us[pid].pts : null);
   return `<div class="sttiles">${tiles}</div>
@@ -4733,9 +4738,9 @@ function playerPdf(team, pid, opp){
   const all = seasonGames(team).filter(g => { const ln = replay(g).box.us[pid]; return ln && ln.gp; }), gs = all.filter(g => !opp || okey(g.opp) === opp), ds = gs.map(g => dig(g, false));
   if(!ds.length){ toast("No games for this player yet."); return; }
   const sub = {team, all:gs, ds, cds:ds.filter(d => d.ck), mds:ds.filter(d => d.M), groups:oppGroups(all), f:{}, rest:new Map()}, L = linesOf(ds), a = L[pid], x = a.x, n = a.g, h = howOf(sub).P[pid], m = minOf(sub)[pid];
-  const on = opp ? sub.groups.find(o => o.k === opp) : null, title = `${p.name || "#" + p.num} ${team === "girls" ? "girls" : "boys"} basketball 2026-27`, D = pdfDoc(title), Lx = 36, RT = 576; let y = 40;
+  const on = opp ? sub.groups.find(o => o.k === opp) : null, title = `${p.name || "#" + p.num} ${team === "girls" ? "girls" : "boys"} basketball ${SEASON}`, D = pdfDoc(title), Lx = 36, RT = 576; let y = 40;
   const need = hh => { if(y + hh > 756){ D.page(); y = 40; } };
-  D.page(); D.text(Lx, y, `${team === "girls" ? "Girls" : "Boys"} varsity · 2026-27 player profile${on ? " · vs " + on.name : ""}`.toUpperCase(), {sz:8.5, b:true, g:.35});
+  D.page(); D.text(Lx, y, `${team === "girls" ? "Girls" : "Boys"} varsity · ${SEASON} player profile${on ? " · vs " + on.name : ""}`.toUpperCase(), {sz:8.5, b:true, g:.35});
   y += 22; D.text(Lx, y, `#${p.num} ${p.name || ""}`, {sz:20, b:true, fit:RT - Lx});
   y += 15; D.text(Lx, y, [p.pos, p.grade, p.ht, `${n} game${n === 1 ? "" : "s"}`].filter(Boolean).join(" · "), {sz:9.5, g:.25});
   const tiles = (list) => { const cw = (RT - Lx) / list.length; y += 22; D.fill(Lx, y - 12, RT - Lx, 30, .93);
@@ -4771,7 +4776,7 @@ function playerPdf(team, pid, opp){
     for(const o of sub.groups){ const gl = a.games.filter(g => okey(g.d.g.opp) === o.k); if(!gl.length) continue; const l = sumLines(gl.map(g => g.ln)); need(13); y += 12.5;
       D.text(Lx, y, `${o.name} (${gl.length})`, {sz:8.5, fit:240}); cols.forEach(([c, f], i) => D.text(ccx(i), y, c === "GMSC" ? fx1(gl.reduce((s, g) => s + gmSc(g.ln), 0) / gl.length) : String(f(l)), {sz:8.5, al:"c", fit:cw - 2})); } }
   y += 22; need(14); D.text(Lx, y, `Brier Stats ${BS_VERSION} · ${new Date().toLocaleDateString()} · Shooting percentages leave out points-only games. Game Score (Hollinger): 10 is a solid night.`, {sz:7, g:.45, fit:RT - Lx});
-  const name = `brier-stats-${(p.name || "player-" + p.num).toLowerCase().replace(/[^a-z0-9]+/g, "-")}-2026-27.pdf`;
+  const name = `brier-stats-${(p.name || "player-" + p.num).toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${SEASON}.pdf`;
   shareFile(name, new Blob([D.bytes()], {type:"application/pdf"}), title);
 }
 function viewTeams(){
@@ -5284,7 +5289,7 @@ function bookCheck(g){
 }
 function csvOf(g){
   const R = replay(g), M = clockStats(g, R), cols = ["game_id","date","opponent","home_away","team","num","name","pos","pts","fgm","fga","tpm","tpa","ftm","fta","oreb","dreb","reb","ast","stl","blk","to","pf","tech","plus_minus","min"];
-  const q = v => /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : v;
+  const q = csvCell;
   const lines = [cols.join(",")], pre = [g.id, g.date, g.opp, g.ha];
   for(const tm of ["us","them"]){
     for(const p of sortRoster(roster(g, tm))){ const ln = R.box[tm][p.pid]; if(!ln) continue;
@@ -6486,7 +6491,7 @@ function bugCard(sn){
   const full = tm => tm === "us" ? (/greenbrier/i.test(usName(g)) ? usName(g) : "Greenbrier " + usName(g)) : oppFull(g);
   const stage = fin ? "Final" + (lq > Q ? (lq - Q > 1 ? ` (${lq - Q}OT)` : " (OT)") : "") : "Halftime", won = tm => fin && R.sc[tm] > R.sc[OTHER(tm)];
   const per = Array.from({length:lq}, (_, i) => i + 1);
-  const tot = tm => sumLines(Object.values(R.box[tm]).concat([R.team[tm]])), T = {us:tot("us"), them:tot("them")};
+  const tot = tm => totalsOf(R, tm), T = {us:tot("us"), them:tot("them")};
   const st = [["FG", t => `${t.fgm}-${t.fga}`, t => !t.po], ["3PT", t => `${t.tpm}-${t.tpa}`, t => !t.po], ["FT", t => `${t.ftm}-${t.fta}`, t => !t.po], ["REB", t => t.oreb + t.dreb, () => true], ["TO", t => t.to, () => true]]
     .filter(([, , ok]) => order.every(tm => ok(T[tm])));
   return `<div class="ocard"><div class="kick">${esc(stage)} · ${g.team === "girls" ? "Girls" : "Boys"} basketball</div>
@@ -6638,7 +6643,7 @@ function pubRecap(g, R, sn, rows){
   const tw = tops(W), tl = tops(L);
   if(tw[0]) s.push(`${who(tw[0][0])} led ${nm(W)} with ${tw[0][1].pts} points${extra(tw[0][1])}${tw[1] && tw[1][1].pts >= 8 ? `, and ${who(tw[1][0])} added ${tw[1][1].pts}` : ""}.`);
   if(tl[0]) s.push(`${who(tl[0][0])} scored ${tl[0][1].pts} for ${nm(L)}.`);
-  const T = sumLines(Object.values(R.box.us).concat([R.team.us]));
+  const T = totalsOf(R, "us");
   if(!T.po && T.fga >= 10) s.push(`Greenbrier shot ${pct(T.fgm, T.fga)} from the field (${T.fgm} of ${T.fga})${T.tpa ? ` and made ${T.tpm} three${T.tpm === 1 ? "" : "s"}` : ""}.`);
   const [w, l] = pubRec(rows, g.team), [dw, dl] = pubRec(rows, g.team, r => r.district);
   if(w + l) s.push(`The ${usName(g)} ${won ? "improve" : "fall"} to ${w}-${l}${g.district && dw + dl ? ` (${dw}-${dl} in the district)` : ""}.`);
