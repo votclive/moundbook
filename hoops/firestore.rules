@@ -86,23 +86,25 @@ service cloud.firestore {
     // end: rosters, schedule, opponents, settings, letting people in), Scorer 2 (scores games), Viewer 1 (watches).
     // Coaches and Admins are kept as scorers with a tier, so whatever only checks for a scorer (an older copy of the app,
     // the Drive backup script) still lets them score. Each rule works the level out once (four document reads at most).
+    // The scoreboard relay's sign-in is a scorer with the tier "board": level 0, so it reads and writes nothing here but
+    // the two scoreboard documents (see hoopsPublic).
     function hoopsLevel() {
       let me = /databases/$(db)/documents/hoopsMembers/$(request.auth.uid);
       let rec = exists(me) ? get(me).data : {};
       return owner() ? 4 : rec.get('role', '') == 'viewer' ? 1 : rec.get('role', '') != 'scorer' ? 0
-        : rec.get('tier', '') == 'admin' ? 4 : rec.get('tier', '') == 'coach' ? 3 : 2;
+        : rec.get('tier', '') == 'admin' ? 4 : rec.get('tier', '') == 'coach' ? 3 : rec.get('tier', '') == 'board' ? 0 : 2;
     }
     function hoopsIn() { return signedIn() && hoopsLevel() >= 1; }
     function hoopsScorer() { return signedIn() && hoopsLevel() >= 2; }
     function hoopsCoach() { return signedIn() && hoopsLevel() >= 3; }
     function hoopsAdmin() { return signedIn() && hoopsLevel() >= 4; }
-    // A person's entry: a scorer (maybe with the Coach or Admin tier) or a viewer. Admins give and take away anything; a
-    // Coach anything but Admin.
-    function hoopsEntry(d) { return d.role in ['scorer', 'viewer'] && d.get('tier', '') in ['', 'coach', 'admin']
+    // A person's entry: a scorer (maybe with the Coach, Admin or scoreboard-only tier) or a viewer. Admins give and take
+    // away anything; a Coach anything but Admin. Each person reads their own entry; the whole list is for Coaches and Admins.
+    function hoopsEntry(d) { return d.role in ['scorer', 'viewer'] && d.get('tier', '') in ['', 'coach', 'admin', 'board']
         && (d.role == 'scorer' || d.get('tier', '') == ''); }
     function hoopsMayGive(lvl, d) { return lvl >= 4 || (lvl == 3 && d.get('tier', '') != 'admin'); }
     match /hoopsMembers/{uid} {
-      allow read: if signedIn() && (request.auth.uid == uid || hoopsIn());
+      allow read: if signedIn() && (request.auth.uid == uid || hoopsCoach());
       allow create: if signedIn() && hoopsEntry(request.resource.data) && hoopsMayGive(hoopsLevel(), request.resource.data);
       allow update: if signedIn() && hoopsEntry(request.resource.data) && hoopsMayChange(hoopsLevel(), resource.data, request.resource.data);
       allow delete: if signedIn() && hoopsMayGive(hoopsLevel(), resource.data);
@@ -148,9 +150,16 @@ service cloud.firestore {
     }
     // The public page: a small copy of each game (score, box score, recent plays) and the season list. Anyone can read it
     // with no sign-in; only scorers write it. Nothing private goes here: no notes, no table, no name notes.
+    // With the fan page turned off (the season list's off switch) the game copies and the season stats are read only by
+    // people let in. The season list (it carries the switch), the scoreboard's two documents and the stream's score bug stay
+    // open. The scoreboard relay's sign-in writes the scoreboard's two documents and nothing else.
+    function hoopsPubOn() { let s = /databases/$(db)/documents/hoopsPublic/_season;
+      return !exists(s) || get(s).data.get('off', false) != true; }
+    function hoopsBoard() { let me = /databases/$(db)/documents/hoopsMembers/$(request.auth.uid);
+      return exists(me) && get(me).data.get('role', '') == 'scorer' && get(me).data.get('tier', '') == 'board'; }
     match /hoopsPublic/{doc} {
-      allow read: if true;
-      allow create, update: if signedIn() && hoopsPublicWrite(hoopsLevel(), doc);
+      allow read: if doc in ['_season', '_board', '_boardHb', '_bug'] || hoopsPubOn() || hoopsIn();
+      allow create, update: if signedIn() && ((doc in ['_board', '_boardHb'] && hoopsBoard()) || hoopsPublicWrite(hoopsLevel(), doc));
       allow delete: if signedIn() && (doc == '_season' ? hoopsLevel() >= 4 : hoopsLevel() >= 2);
     }
     // A game's copy comes only from the device scoring it, so copies queued on a device that lost the game are refused.
