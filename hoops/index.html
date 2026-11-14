@@ -753,7 +753,7 @@ table.rect tr.sub td{background:transparent;padding-top:10px}
    One device scores a game; everyone else signed in follows it live on the Announcer page. Each device's own saved copy is the
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
-const BS_VERSION = "0.16.10";
+const BS_VERSION = "0.16.11";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -1566,7 +1566,8 @@ function subIn(g, tm, pin, pout){
 }
 
 /* ---------- render ---------- */
-const TABS = [["desk","Scorer"],["ann","Announcer"],["box","Box score"],["plays","Plays"],["shots","Shots"],["games","Games"],["stats","Stats"],["teams","Rosters"],["setup","Setup"]];
+// Kevin (0.16.11): Jim's broadcast page and the fans' live page are tabs too, to swap between them in one window.
+const TABS = [["desk","Scorer"],["ann","Announcer"],["bc","Broadcast"],["box","Box score"],["live","Live stats"],["plays","Plays"],["shots","Shots"],["games","Games"],["stats","Stats"],["teams","Rosters"],["setup","Setup"]];
 let pendingRender = false;
 // Sync calls this: it waits while someone is typing in the page so a live update doesn't eat their words.
 function softRender(){
@@ -1669,8 +1670,8 @@ function draw(){
   if(PUB){ $("#view").innerHTML = viewPublic(); return; }
   if(OBS){ $("#view").innerHTML = viewBug(); return; }
   if(ui.tab === "stats" && !canCoach()) ui.tab = "games";   // Stats, the PA page and the broadcast page: Coaches and Admins only
-  if(ui.tab === "ann" && !ANN_ONLY && !paOk()) ui.tab = "box";
-  $("#tabs").innerHTML = TABS.filter(([k]) => k === "stats" ? canCoach() : k === "ann" ? paOk() : true).map(([k, l]) => `<button role="tab" data-tab="${k}" aria-selected="${ui.tab === k}">${l}</button>`).join("");
+  if((ui.tab === "ann" && !ANN_ONLY || ui.tab === "bc" && !BC_ONLY) && !paOk()) ui.tab = "box";
+  $("#tabs").innerHTML = TABS.filter(([k]) => k === "stats" ? canCoach() : k === "ann" || k === "bc" ? paOk() : true).map(([k, l]) => `<button role="tab" data-tab="${k}" aria-selected="${ui.tab === k}">${l}</button>`).join("");
   const pill = $("#syncpill"), ph = Sync.phase();
   pill.className = "pill" + (ph === "live" && !Sync.stale() ? " live" : ph === "error" || Sync.stale() ? " bad" : "");
   pill.querySelector("span").textContent = ph === "live" ? Sync.label() : ph === "loading" ? "Connecting…" : ph === "signedout" ? "Not signed in" : ph === "waiting" ? "Waiting to be let in" : ph === "nosignal" ? "No signal" : ph === "error" ? "Sync problem" : "This device";
@@ -1679,6 +1680,7 @@ function draw(){
   // A game on screen with no roster yet starts from the saved roster for that opponent, and the Scorer screen's book shows it.
   libSeed(); { const lg = ["desk", "ann", "bc"].includes(ui.tab) && cur(); if(lg){ libTie(lg); if(ui.tab === "desk" && (S.booth[lg.id] || {}).lib && deskFold(lg)) paFoldAll(); } }
   if(ui.tab === "bc"){ drawBroadcast(banners.join("")); renderFu(); return; }
+  if(ui.tab === "live"){ drawLive(banners.join("")); renderFu(); return; }
   const body = ({desk:viewDesk, ann:viewAnn, box:viewBox, plays:viewPlays, shots:viewShots, games:viewGames, stats:viewSeason, teams:viewTeams, setup:viewSetup}[ui.tab] || viewDesk)();
   if(!setView(banners.join("") + body)) pendingRender = true;
   renderFu();
@@ -2357,6 +2359,11 @@ function bcBar(g){
     <span class="small">${Sync.live() ? (Sync.stale() ? "<b>Not updating: no signal.</b> Numbers may be behind." : "Live from the Scorer screen, to the second.") : "Sign in to follow the scorer's iPad live."}</span></div>`;
 }
 // Drawn in parts so the notepad is never redrawn: Jim can type through a live update without losing a letter.
+// The fans' page, as they see it, in a frame (its own copy of the app in ?live mode: it never touches this device's book).
+// Drawn once and left alone, so the app's redraws don't reload it.
+function drawLive(pre){ const view = $("#view"), head = `<div class="row between" style="margin-bottom:6px"><p class="small" style="margin:0">What fans see on the live stats page right now. It updates every 15 to 30 seconds.</p><a class="btn sm" href="live/" target="_blank" rel="noopener">Open on its own</a></div>`;
+  const fr = $("#livefr", view); if(fr){ const b = $("#livepre", view); if(b && b.innerHTML !== pre) b.innerHTML = pre; return; }
+  view.innerHTML = `<div id="livepre">${pre}</div>${head}<iframe id="livefr" src="./?live" title="Live stats, the fans' page" style="width:100%;height:max(520px, calc(100vh - 170px));border:1px solid var(--grey);border-radius:8px;background:var(--white)"></iframe>`; }
 function drawBroadcast(pre){
   if(!paOk()){ $("#view").innerHTML = pre + (Sync.live() ? "" : Sync.panel()) + paLock(); return; }
   followLive();
