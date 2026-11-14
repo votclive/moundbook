@@ -5,7 +5,7 @@
 <!-- The page's lock: the only script that may run is the one in this file (named by the SHA-256 of its text) and files
      from this folder (fb.js). Text that turns up in the page from a roster, a game or the cloud can never run as code.
      After ANY edit to the script, run "python3 hoops/stamp.py hoops": with a stale hash the browser runs nothing. -->
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-aLLBrULQXCkcxCzJzB7KxJioMEY+ob05W4upirXmO3g='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-gf/2gJTvWrM+xVTp4+07/FqttgxjxZ7nLEr2jO6qT/s='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#094A28">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -739,7 +739,9 @@ table.rect tr.sub td{background:transparent;padding-top:10px}
 }
 /* headshots: a round photo beside a player's name (see Faces). Sized in em, so it follows the words it sits next to. */
 .face{display:inline-block;flex:none;width:1.7em;height:1.7em;border-radius:50%;background:#DDE2DD center/cover no-repeat;vertical-align:middle;margin:-.35em .4em -.3em 0;box-shadow:0 0 0 1px rgba(0,0,0,.2);-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.face.none{background:radial-gradient(circle at 50% 38%,#A9B2AC 0 19%,transparent 20%),radial-gradient(ellipse 40% 30% at 50% 100%,#A9B2AC 0 99%,transparent 100%),#E6EAE6;box-shadow:0 0 0 1px rgba(0,0,0,.1)}
+.face.none{background:url(bobcat-head.png) center 56%/74% auto no-repeat,radial-gradient(circle at 50% 28%,#0F5B34 0,#073B21 78%);box-shadow:0 0 0 1px rgba(0,0,0,.3),inset 0 0 0 1px rgba(255,255,255,.3)}
+.face.none[data-n]{display:inline-flex;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 28%,#0F5B34 0,#073B21 78%);container-type:size;overflow:hidden}
+.face.none[data-n]::after{content:attr(data-n);color:#fff;font:normal 900 11px/1 var(--f-display);font-size:56cqw;letter-spacing:-.01em}
 .face.md{width:40px;height:40px;margin:0 10px 0 0}
 .face.lg{width:56px;height:56px;margin:0 12px 0 0}
 .face.xl{width:76px;height:76px;margin:0}
@@ -790,7 +792,7 @@ td .face{width:24px;height:24px;margin:-5px 7px -4px 0}
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
 { const n = document.getElementById("nostart"); if(n) n.remove(); }   // the script is running: see #nostart
-const BS_VERSION = "0.17.0";
+const BS_VERSION = "0.17.1";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -1807,7 +1809,7 @@ function teamCol(g, R, tm, side, hideNarrow){
     return h + `<div class="card stack">${lk ? `<button class="btn primary" data-act="libuse" data-book="1" data-gid="${g.id}">Use the saved ${esc(g.opp)} roster (${lk})</button>` : ""}${prev ? `<button class="btn${lk ? "" : " primary"}" data-act="copythem" data-from="${prev.id}">Use ${esc(g.opp)}'s roster from ${esc(fmtDate(prev.date))} (${prev.them.length})</button>` : ""}<span>No players yet. Tap <b>+</b>${tm === "us" ? ", or paste the roster under Rosters." : " and type their numbers. Several at once works: 2 3 4 12 14. Names are optional."}</span>${tm === "them" && edit ? `<button class="btn" data-act="pastethem">Paste their roster</button>` : ""}</div></section>`; }
   if(lineupMode){
     const pa = ((booth(g.id).start || {})[tm] || []).filter(pid => player(g, tm, pid) && !court.has(pid));
-    return h + `<div class="flag small">Tap players to put them on the floor or take them off. ${court.size} of 5 on.${pa.length && court.size < 5 ? ` <button class="btn sm primary" data-act="lineuppa" data-tm="${tm}">Use the PA's starters: ${pa.map(pid => "#" + esc(player(g, tm, pid).num)).join(" ")}</button>` : ""}</div><div class="bench">${list.map(p => `<button class="chip${court.has(p.pid) ? " at" : ""}" data-act="lineuptap" data-tm="${tm}" data-pid="${p.pid}">${face(p)}<b>${esc(p.num)}</b><span class="nm">${esc(pShort(p))}</span></button>`).join("")}</div></section>`;
+    return h + `<div class="flag small">Tap players to put them on the floor or take them off. ${court.size} of 5 on.${pa.length && court.size < 5 ? ` <button class="btn sm primary" data-act="lineuppa" data-tm="${tm}">Use the PA's starters: ${pa.map(pid => "#" + esc(player(g, tm, pid).num)).join(" ")}</button>` : ""}</div><div class="bench">${list.map(p => `<button class="chip${court.has(p.pid) ? " at" : ""}" data-act="lineuptap" data-tm="${tm}" data-pid="${p.pid}">${face(p, "", tm === "us")}<b>${esc(p.num)}</b><span class="nm">${esc(pShort(p))}</span></button>`).join("")}</div></section>`;
   }
   if(!court.size){
     if(edit) h += `<div class="flag small no-print">Tap <b>Starters</b> to put the five on the floor. Then this column shows just them, with the bench below.</div>`;
@@ -1819,10 +1821,10 @@ function teamCol(g, R, tm, side, hideNarrow){
   // Where they came from goes under the cards, so both columns' cards start level. "Goes back" only when it does (libFlowOk).
   if(edit && !court.size && tm === "them" && (S.booth[g.id] || {}).lib && list.some(p => p.byPA && libIs(g, p.pid))) h += `<p class="small libnote no-print">These came from the saved ${esc(g.opp)} roster${libFlowOk(g) ? ": a fix goes back into it" : ""}.</p>`;
   if(bench.length) h += `<div class="bench no-print"><span class="kicker">Bench · tap for the table</span>${bench.map(p => { const ln = R.box[tm][p.pid] || LINE(), at = table.includes(p.pid);
-    return `<button class="chip${at ? " at" : ""}${ln.pf >= 5 || ln.tf >= 2 ? " dark" : ""}${fcls(ln)}" data-act="bench" data-tm="${tm}" data-pid="${p.pid}">${face(p)}<b>${esc(p.num)}</b><span class="nm">${esc(pShort(p))}${ln.pts ? " · " + ln.pts : ""}${ln.pf ? " · " + ln.pf + "F" : ""}</span></button>`; }).join("")}</div>`;
+    return `<button class="chip${at ? " at" : ""}${ln.pf >= 5 || ln.tf >= 2 ? " dark" : ""}${fcls(ln)}" data-act="bench" data-tm="${tm}" data-pid="${p.pid}">${face(p, "", tm === "us")}<b>${esc(p.num)}</b><span class="nm">${esc(pShort(p))}${ln.pts ? " · " + ln.pts : ""}${ln.pf ? " · " + ln.pf + "F" : ""}</span></button>`; }).join("")}</div>`;
   // Subs waiting at the table sit under the bench: a sub reporting never moves the five cards above under the book's finger.
   // Each shows her whole name and her foul color; a full bar packs the bench tighter (benchFit), never past the screen.
-  if(table.length) h += `<div class="table-bar"><span class="kicker">At the table</span><div class="tbl">${table.map(pid => { const p = player(g, tm, pid); return `<button class="chip at${fcls(R.box[tm][pid])}" data-act="tablein" data-tm="${tm}" data-pid="${pid}" ${edit ? "" : "disabled"} title="Check in at the next stoppage">${face(p)}<b>${esc(p.num)}</b>${p.name ? `<span class="nm">${esc(pShort(p))}</span>` : ""}<span class="go">▸ IN</span></button>`; }).join("")}</div><button class="chip skip" data-act="tableclear" data-tm="${tm}">Clear</button></div>`;
+  if(table.length) h += `<div class="table-bar"><span class="kicker">At the table</span><div class="tbl">${table.map(pid => { const p = player(g, tm, pid); return `<button class="chip at${fcls(R.box[tm][pid])}" data-act="tablein" data-tm="${tm}" data-pid="${pid}" ${edit ? "" : "disabled"} title="Check in at the next stoppage">${face(p, "", tm === "us")}<b>${esc(p.num)}</b>${p.name ? `<span class="nm">${esc(pShort(p))}</span>` : ""}<span class="go">▸ IN</span></button>`; }).join("")}</div><button class="chip skip" data-act="tableclear" data-tm="${tm}">Clear</button></div>`;
   return h + `</section>`;
 }
 // Foul trouble, Kevin's way, the same for the scorer, the PA and Jim (never the fan page): 3 fouls yellow, 4 orange, 5 red.
@@ -1839,7 +1841,7 @@ function pcard(g, R, tm, p, edit, onFloor){
   const ln = R.box[tm][p.pid] || LINE(), fo = ln.pf >= 5 || ln.tf >= 2, dis = edit ? "" : "disabled";
   const B = (k, lbl, cls) => `<button class="${cls || ""}" data-st="${k}" data-tm="${tm}" data-pid="${p.pid}" ${dis}>${lbl}</button>`;
   let h = `<div class="pcard${onFloor ? " on" : ""}${fo ? " fo" : ""}${fcls(ln)}"><button class="pnum" data-act="pmenu" data-tm="${tm}" data-pid="${p.pid}" aria-label="More for #${esc(p.num)}">${esc(p.num)}</button><div>
-    <div class="pline">${face(p)}<b class="fit">${esc(pShort(p) || "#" + p.num)}</b>${foulPill(g, R, ln)}<span>${statLine(ln, true)}</span><span class="pts">${ln.pts}</span></div>`;
+    <div class="pline">${face(p, "", tm === "us")}<b class="fit">${esc(pShort(p) || "#" + p.num)}</b>${foulPill(g, R, ln)}<span>${statLine(ln, true)}</span><span class="pts">${ln.pts}</span></div>`;
   // Fouled out or ejected and still on the floor: her stat buttons give way to the bench (the ones at the table first), so
   // a missed toast can't put the next plays on her, and one tap brings in the sub. Same height, so no card moves; each sub
   // chip in her foul color, so a sub already at 3 or 4 shows.
@@ -1903,7 +1905,7 @@ function playList(g, R, limit, edit, keep, fix){
   const sd = sides(g);
   return `<ul class="plays">${show.map(p => { const e = p.e;
     const tapFix = limit && fix && !p.void && ["FG","FT","REB","AST","STL","BLK","TO","PF","TF"].includes(e.t);
-    return `<li class="${p.void ? "void" : ""} ${p.scored ? "score" : ""} ${e.t === "NOTE" ? "note" : ""}${tapFix ? " tapfix" : ""}" style="${e.tm === "them" ? tvars(g, "them") : ""}"${tapFix ? ` data-act="fix" data-id="${e.id}" role="button" title="Fix this play"` : ""}><span class="pq">${perLabel(g, p.q)}${playClock(g, e, p, edit && !limit)}${!limit && e.at ? `<small>${esc(new Date(e.at).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}))}</small>` : ""}</span><span class="ps">${p.sc[sd.left]}-${p.sc[sd.right]}</span><span class="pt">${e.tm && e.t !== "PER" && e.t !== "NOTE" ? `<span class="ptm">${esc(e.tm === "us" ? "GHS" : oppInfo(g.opp, g).abbr)}</span> ` : ""}${e.tm === "us" && e.pid && e.t !== "NOTE" ? face(e.pid) : ""}${playText(g, e)}${p.auto ? " (its shot was removed or changed)" : p.void ? " (removed)" : ""}${e.ins ? ' <span class="tag">added later</span>' : ""}</span>
+    return `<li class="${p.void ? "void" : ""} ${p.scored ? "score" : ""} ${e.t === "NOTE" ? "note" : ""}${tapFix ? " tapfix" : ""}" style="${e.tm === "them" ? tvars(g, "them") : ""}"${tapFix ? ` data-act="fix" data-id="${e.id}" role="button" title="Fix this play"` : ""}><span class="pq">${perLabel(g, p.q)}${playClock(g, e, p, edit && !limit)}${!limit && e.at ? `<small>${esc(new Date(e.at).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}))}</small>` : ""}</span><span class="ps">${p.sc[sd.left]}-${p.sc[sd.right]}</span><span class="pt">${e.tm && e.t !== "PER" && e.t !== "NOTE" ? `<span class="ptm">${esc(e.tm === "us" ? "GHS" : oppInfo(g.opp, g).abbr)}</span> ` : ""}${e.tm === "us" && e.pid && e.t !== "NOTE" ? face(player(g, "us", e.pid) || e.pid, "", true) : ""}${playText(g, e)}${p.auto ? " (its shot was removed or changed)" : p.void ? " (removed)" : ""}${e.ins ? ' <span class="tag">added later</span>' : ""}</span>
       ${edit ? `<span class="row no-print">${!p.void && ["FG","FT","REB","AST","STL","BLK","TO","PF","TF"].includes(e.t) ? `<button class="btn sm" data-act="fix" data-id="${e.id}">Fix</button>` : ""}<button class="btn sm" data-act="voidtog" data-id="${e.id}">${p.void && !p.auto ? "Restore" : "Remove"}</button></span>` : ""}</li>`;
   }).join("")}</ul>`;
 }
@@ -1922,7 +1924,7 @@ function renderFu(){
   const chips = (tm, excl, pool) => {
     const c = R.court[tm], list = sortRoster(roster(g, tm)).filter(p => p.pid !== excl);
     const use = pool || (c.size ? list.filter(p => c.has(p.pid)) : list);
-    return use.map(p => { const out = outNow(tm, p.pid); return `<button class="chip${tm === "them" ? " skip" : ""}${out ? " dark" : ""}" style="${tm === "them" ? "border-color:" + teamInk(g, tm).line : ""}" data-fu="pick" data-tm="${tm}" data-pid="${p.pid}">${face(p)}<b>${esc(p.num)}</b><span class="nm">${esc(pShort(p))}${out ? " · OUT" : ""}</span></button>`; }).join("");
+    return use.map(p => { const out = outNow(tm, p.pid); return `<button class="chip${tm === "them" ? " skip" : ""}${out ? " dark" : ""}" style="${tm === "them" ? "border-color:" + teamInk(g, tm).line : ""}" data-fu="pick" data-tm="${tm}" data-pid="${p.pid}">${face(p, "", tm === "us")}<b>${esc(p.num)}</b><span class="nm">${esc(pShort(p))}${out ? " · OUT" : ""}</span></button>`; }).join("");
   };
   let h = "";
   // The shot chart takes the whole screen until the spot is tapped: the court as big as the window allows, the shot it's
@@ -2159,7 +2161,7 @@ function playerCard(g, tm, pid){
   const p = paPlayer(g, tm, pid); if(!p) return; const say = sayOf(g, tm, p);
   const R = replay(g), ln = R.box[tm][p.pid] || LINE(), sl = tm === "us" && !g.practice ? seasonLines(g.team)[p.pid] : null;
   const desc = [p.pos, YEAR_WORD[p.grade], htWords(p.ht)].filter(Boolean).join(" · ");
-  openSheet({html:() => `${fhead(p, `<div class="kicker">${esc(tmName(g, tm))}</div><h3>#${esc(p.num)} ${esc(p.name || "")}</h3>${desc ? `<div class="small">${esc(desc)}</div>` : ""}`, ` style="${tvars(g, tm)}"`)}
+  openSheet({html:() => `${fhead(p, `<div class="kicker">${esc(tmName(g, tm))}</div><h3>#${esc(p.num)} ${esc(p.name || "")}</h3>${desc ? `<div class="small">${esc(desc)}</div>` : ""}`, ` style="${tvars(g, tm)}"`, tm === "us")}
     ${say ? `<p style="font-size:20px;font-style:italic;margin:8px 0" title="Phonetic spelling">${esc(say)}</p>` : ""}
     <p style="margin:8px 0"><b>Tonight:</b> ${ln.pts} pts · ${ln.pf} foul${ln.pf === 1 ? "" : "s"}${ln.tf ? ` (${ln.tf} technical${ln.tf === 1 ? "" : "s"})` : ""}</p>
     ${sl && sl.g ? `<p style="margin:0 0 8px"><b>Season (${sl.g} games):</b> ${(sl.pts / sl.g).toFixed(1)} ppg</p>` : ""}
@@ -2227,11 +2229,11 @@ function viewAnn(){
     const send = ui.pa && !fin;
     const chipAct = pid => ui.pa ? `data-act="annsaid" data-tm="${tm}" data-pid="${pid}" title="Mark it called once you've announced it (click again to take it back)"` : `data-act="pinfo" data-tm="${tm}" data-pid="${pid}" title="Open the card"`;
     return `<div class="card" style="${tvars(g, tm)}"><div class="tc-head">${badge(g, tm)}<h3>${esc(tmName(g, tm))}${tm === "them" && oppNick(g) ? ` <small>${esc(oppNick(g))}</small>` : ""}</h3><span class="side">${tm === ha.home ? "Home" : "Away"}</span></div>
-      ${table.length ? `<div class="table-bar"><span class="kicker">At the table</span>${ui.pa ? "" : `<span class="small">On the PA mic? Tick the box up top to mark subs called.</span>`}${shown.map(({pid, ids}) => { const p = paPlayer(g, tm, pid), done = ids.some(x => said.includes(x)), say = sayShow(g, tm, p); return `<button class="chip ${done ? "dark" : "at"}${fcls(R.box[tm][pid])}" ${chipAct(ids[0])}>${face(p)}<b>${esc(p.num)}</b>${esc(p.name || "")}${done ? " ✓ called" : ""}${say ? `<span class="say">${esc(say)}</span>` : ""}</button>`; }).join("")}</div>` : ""}
+      ${table.length ? `<div class="table-bar"><span class="kicker">At the table</span>${ui.pa ? "" : `<span class="small">On the PA mic? Tick the box up top to mark subs called.</span>`}${shown.map(({pid, ids}) => { const p = paPlayer(g, tm, pid), done = ids.some(x => said.includes(x)), say = sayShow(g, tm, p); return `<button class="chip ${done ? "dark" : "at"}${fcls(R.box[tm][pid])}" ${chipAct(ids[0])}>${face(p, "", tm === "us")}<b>${esc(p.num)}</b>${esc(p.name || "")}${done ? " ✓ called" : ""}${say ? `<span class="say">${esc(say)}</span>` : ""}</button>`; }).join("")}</div>` : ""}
       ${subs.length ? `<ul class="subs">${subs.map(s => `<li><b>${perLabel(g, s.q)}</b> ${esc(s.txt)}</li>`).join("")}</ul>` : ""}
-      ${floor.length ? `<table class="floor"><tr><th class="l">On the floor</th><th>PTS</th><th>Fouls</th></tr>${floor.map(p => { const ln = R.box[tm][p.pid] || LINE(); return `<tr class="${fcls(ln).trim()}"><td class="nm l" data-act="pinfo" data-tm="${tm}" data-pid="${p.pid}" tabindex="0" role="button" title="Open #${esc(p.num)}'s card">${face(p)}${esc(p.num)} ${esc(p.name || "")}${justIn.has(p.pid) ? ' <span class="tag green">Just in</span>' : ""}${sayShow(g, tm, p) ? `<div class="say">${esc(sayShow(g, tm, p))}</div>` : ""}</td><td>${ln.pts}</td><td>${foulPill(g, R, ln)}</td></tr>`; }).join("")}</table>` : `<p class="small" style="margin:6px 0">The scorer hasn't set a lineup yet.</p>`}
+      ${floor.length ? `<table class="floor"><tr><th class="l">On the floor</th><th>PTS</th><th>Fouls</th></tr>${floor.map(p => { const ln = R.box[tm][p.pid] || LINE(); return `<tr class="${fcls(ln).trim()}"><td class="nm l" data-act="pinfo" data-tm="${tm}" data-pid="${p.pid}" tabindex="0" role="button" title="Open #${esc(p.num)}'s card">${face(p, "", tm === "us")}${esc(p.num)} ${esc(p.name || "")}${justIn.has(p.pid) ? ' <span class="tag green">Just in</span>' : ""}${sayShow(g, tm, p) ? `<div class="say">${esc(sayShow(g, tm, p))}</div>` : ""}</td><td>${ln.pts}</td><td>${foulPill(g, R, ln)}</td></tr>`; }).join("")}</table>` : `<p class="small" style="margin:6px 0">The scorer hasn't set a lineup yet.</p>`}
       <div class="bench no-print"><span class="kicker full">${send ? `Bench · click a name to send to the table, again to take back · <span style="text-transform:none">ⓘ</span> opens the card` : "Bench · a name opens the card"}</span>${list.filter(p => !c.has(p.pid)).map(p => { const ln = R.box[tm][p.pid] || LINE(), at = table.includes(p.pid), who = "#" + esc(p.num) + (p.name ? " " + esc(p.name) : "");
-        return `<span class="bk"><button class="chip${at ? " at" : ""}${fcls(ln)}" ${send ? `data-act="patable" data-gid="${g.id}" data-tm="${tm}" data-pid="${p.pid}" aria-pressed="${at}" title="${at ? `${who} is at the table. Click to take off` : `Click to send ${who} to the table`}"` : `data-act="pinfo" data-tm="${tm}" data-pid="${p.pid}" title="Open ${who}'s card"`}>${face(p)}<b>${esc(p.num)}</b>${esc(pShort(p))}${ln.pts ? " · " + ln.pts : ""}${ln.pf ? " · " + ln.pf + "F" : ""}${sayShow(g, tm, p) ? `<span class="say">${esc(sayShow(g, tm, p))}</span>` : ""}</button><button class="binfo" data-act="pinfo" data-tm="${tm}" data-pid="${p.pid}" title="Open ${who}'s card" aria-label="Open ${who}'s card">ⓘ</button></span>`; }).join("")}</div>
+        return `<span class="bk"><button class="chip${at ? " at" : ""}${fcls(ln)}" ${send ? `data-act="patable" data-gid="${g.id}" data-tm="${tm}" data-pid="${p.pid}" aria-pressed="${at}" title="${at ? `${who} is at the table. Click to take off` : `Click to send ${who} to the table`}"` : `data-act="pinfo" data-tm="${tm}" data-pid="${p.pid}" title="Open ${who}'s card"`}>${face(p, "", tm === "us")}<b>${esc(p.num)}</b>${esc(pShort(p))}${ln.pts ? " · " + ln.pts : ""}${ln.pf ? " · " + ln.pf + "F" : ""}${sayShow(g, tm, p) ? `<span class="say">${esc(sayShow(g, tm, p))}</span>` : ""}</button><button class="binfo" data-act="pinfo" data-tm="${tm}" data-pid="${p.pid}" title="Open ${who}'s card" aria-label="Open ${who}'s card">ⓘ</button></span>`; }).join("")}</div>
       <div class="row no-print" style="margin-top:6px"><button class="btn sm" data-act="saypick" data-gid="${g.id}" data-tm="${tm}" title="Phonetic spellings for ${esc(tmName(g, tm))}">Phonetics</button></div></div>`;
   };
   const b = booth(g.id);
@@ -2287,7 +2289,7 @@ function bcRow(g, R, tm, p, on, sl, lm){
   const stats = [[ln.oreb + ln.dreb, "reb"], [ln.ast, "ast"], [ln.stl, "stl"], [ln.blk, "blk"], [ln.to, "to"]].filter(x => x[0]).map(x => x.join(" ")).join(" · ");
   const shots = ln.fga || ln.fta || ln.fgm || ln.ftm ? [`FG ${shoot(ln, "fgm", "fga")}`, ln.tpa || ln.tpm ? `3P ${shoot(ln, "tpm", "tpa")}` : "", ln.fta || ln.ftm ? `FT ${shoot(ln, "ftm", "fta")}` : ""].filter(Boolean).join(" · ") : "";
   return `<button class="bcrow${on ? " on" : ""}${ft === "out" ? " fo" : ""}${fcls(ln)}" data-act="bcp" data-tm="${tm}" data-pid="${esc(p.pid)}" title="Notes on #${esc(p.num)}"><span class="pnum">${esc(p.num)}</span>
-    <span class="bcwho">${p.name ? `<span class="bcname">${face(p)}${esc(p.name)}</span>` : ""}${desc ? `<span class="bcdesc">${esc(desc)}</span>` : ""}${say.v ? `<span class="say" title="${say.by === "yours" ? "Your phonetic spelling (only on your page)" : "The PA's phonetic spelling"}">${esc(say.v)}<span class="sayby">${say.by === "yours" ? "Yours" : "PA's"}</span></span>` : ""}${note ? `<span class="bcnote">${esc(note)}</span>` : ""}${stats || shots ? `<span class="bcline">${[stats, shots].filter(Boolean).join(" · ")}</span>` : ""}${s && s.g ? `<span class="bcline">Season: ${[(s.pts / s.g).toFixed(1) + " ppg", s.oreb + s.dreb ? ((s.oreb + s.dreb) / s.g).toFixed(1) + " rpg" : "", s.ast ? (s.ast / s.g).toFixed(1) + " apg" : ""].filter(Boolean).join(" · ")} (${s.g} g)</span>` : ""}${was ? `<span class="bcline">${esc(fmtDate(lm.date))}: ${was.pts} pts${was.oreb + was.dreb ? `, ${was.oreb + was.dreb} reb` : ""}${was.tpm ? `, ${was.tpm} three${was.tpm === 1 ? "" : "s"}` : ""}${was.pf >= 5 ? ", fouled out" : ""}</span>` : ""}</span>
+    <span class="bcwho">${p.name ? `<span class="bcname">${face(p, "", tm === "us")}${esc(p.name)}</span>` : ""}${desc ? `<span class="bcdesc">${esc(desc)}</span>` : ""}${say.v ? `<span class="say" title="${say.by === "yours" ? "Your phonetic spelling (only on your page)" : "The PA's phonetic spelling"}">${esc(say.v)}<span class="sayby">${say.by === "yours" ? "Yours" : "PA's"}</span></span>` : ""}${note ? `<span class="bcnote">${esc(note)}</span>` : ""}${stats || shots ? `<span class="bcline">${[stats, shots].filter(Boolean).join(" · ")}</span>` : ""}${s && s.g ? `<span class="bcline">Season: ${[(s.pts / s.g).toFixed(1) + " ppg", s.oreb + s.dreb ? ((s.oreb + s.dreb) / s.g).toFixed(1) + " rpg" : "", s.ast ? (s.ast / s.g).toFixed(1) + " apg" : ""].filter(Boolean).join(" · ")} (${s.g} g)</span>` : ""}${was ? `<span class="bcline">${esc(fmtDate(lm.date))}: ${was.pts} pts${was.oreb + was.dreb ? `, ${was.oreb + was.dreb} reb` : ""}${was.tpm ? `, ${was.tpm} three${was.tpm === 1 ? "" : "s"}` : ""}${was.pf >= 5 ? ", fouled out" : ""}</span>` : ""}</span>
     <span class="bcnum">${ln.gp || ln.pts || ln.pf || ln.tf ? `<span class="bcpts">${ln.pts}</span>${ft === "out" ? `<i class="pfp f5" title="${ln.tf >= 2 ? "Ejected" : "Fouled out"}">${ln.tf >= 2 ? "EJ" : "OUT"}</i>` : `<i class="pfp${fcls(ln)}" title="${ln.pf} personal foul${ln.pf === 1 ? "" : "s"}">${ln.pf}F${ln.tf ? " · T" : ""}</i>`}` : ""}</span></button>`;
 }
 // One team's spotting board: the five on the floor first, then the bench, each by number.
@@ -2469,7 +2471,7 @@ function bcPlayer(g, tm, p){
   const R = replay(g), ln = R.box[tm][p.pid] || LINE(), k = bcKey(g, tm, p), sl = tm === "us" && !g.practice ? seasonLines(g.team)[p.pid] : null;
   const desc = [p.pos, YEAR_WORD[p.grade], htWords(p.ht)].filter(Boolean).join(" · ");
   const say = sayOf(g, tm, p), mine = bcNote(bcSayKey(g, tm, p));
-  openSheet({bc:{k, pid:p.pid, num:p.num}, html:() => `${fhead(p, `<div class="kicker">${esc(tmName(g, tm))}</div><h3>#${esc(p.num)} ${esc(p.name || "")}</h3>${desc ? `<div class="small">${esc(desc)}</div>` : ""}`, ` style="${tvars(g, tm)}"`)}
+  openSheet({bc:{k, pid:p.pid, num:p.num}, html:() => `${fhead(p, `<div class="kicker">${esc(tmName(g, tm))}</div><h3>#${esc(p.num)} ${esc(p.name || "")}</h3>${desc ? `<div class="small">${esc(desc)}</div>` : ""}`, ` style="${tvars(g, tm)}"`, tm === "us")}
     <p style="margin:8px 0"><b>Tonight:</b> ${ln.pts} pts${statLine(ln) ? " · " + esc(statLine(ln)) : ""}</p>
     ${sl && sl.g ? `<p style="margin:0 0 8px"><b>Season (${sl.g} games):</b> ${(sl.pts / sl.g).toFixed(1)} ppg · ${((sl.oreb + sl.dreb) / sl.g).toFixed(1)} rpg · ${(sl.ast / sl.g).toFixed(1)} apg · FG ${pct(sl.x.fgm, sl.x.fga)} · 3P ${pct(sl.x.tpm, sl.x.tpa)} · FT ${pct(sl.x.ftm, sl.x.fta)}</p>` : ""}
     <form id="bcpform" class="stack"><label class="fld"><span>Your note${tm === "them" ? ` (stays all season on ${esc(g.opp)}'s #${esc(p.num)})` : " (stays all season)"}</span><textarea name="note" rows="4" placeholder="Committed to Belmont. Goes left every time. 6 away from 1,000 career points.">${esc(bcNote(k))}</textarea></label>
@@ -3448,7 +3450,7 @@ function viewScript(){
     const tile = tm => `<span class="tm" style="${tvars(g, tm)}"><span class="nm fit" data-min="13">${esc(tmName(g, tm))}</span><b>${R.sc[tm]}</b></span>`;
     const fouls = tm => { const n = teamFouls(g, R, tm), on = inBonus(g, R, tm); return `<span class="tfm${on ? " bonus" : ""}" style="${tvars(g, tm)}" title="${esc(tmName(g, tm))}: ${n} team foul${n === 1 ? "" : "s"}${on ? ", in the bonus" : ""}"><i></i>${n}${on ? "<b>BONUS</b>" : ""}</span>`; };
     const table = ["us","them"].flatMap(tm => tableShown(g, tm, R).map(({pid, ids}) => { const p = paPlayer(g, tm, pid), done = ids.some(x => said.includes(x)), say = sayShow(g, tm, p);
-      return `<button class="chip ${done ? "dark" : "at"}${fcls(R.box[tm][pid])}" style="${tvars(g, tm)}" data-act="annsaid" data-gid="${g.id}" data-tm="${tm}" data-pid="${ids[0]}" title="${done ? "Called. Click to take it back" : "Mark it called once you've announced it"}">${face(p)}<b>${esc(p.num)}</b>${esc(p.name || tmName(g, tm))}${done ? " ✓" : " ▸ in"}${say ? `<span class="say">${esc(say)}</span>` : ""}</button>`; }));
+      return `<button class="chip ${done ? "dark" : "at"}${fcls(R.box[tm][pid])}" style="${tvars(g, tm)}" data-act="annsaid" data-gid="${g.id}" data-tm="${tm}" data-pid="${ids[0]}" title="${done ? "Called. Click to take it back" : "Mark it called once you've announced it"}">${face(p, "", tm === "us")}<b>${esc(p.num)}</b>${esc(p.name || tmName(g, tm))}${done ? " ✓" : " ▸ in"}${say ? `<span class="say">${esc(say)}</span>` : ""}</button>`; }));
     return `<div class="ls-game"><span class="ls-sc">${tile(sd.left)}${tile(sd.right)}</span><span class="tag ${g.status === "live" ? "green" : g.status === "final" ? "solid" : ""}">${g.status === "final" ? "Final" : g.status === "live" ? nowLabel(g, R) : esc(timeWords(g.time) || "Pregame")}</span>
       ${g.status === "live" ? `<span class="lsfl"><span class="kicker">Team fouls</span>${fouls(sd.left)}${fouls(sd.right)}</span>` : ""}${table.length ? `<span class="kicker">At the table</span>${table.join("")}` : ""}</div>`; }).join("")}`;
   h += "\u0001strip\u0001";
@@ -3462,7 +3464,7 @@ function viewScript(){
     const i = infoOf(g), fld = (k, l, ph) => `<label class="fld"><span>${l}</span><input type="text" data-info="${g.id}:${k}" value="${esc(i[k] || "")}" placeholder="${esc(ph)}"></label>`;
     // The scorer's book has a different starting five than the PA picked: say so before the PA introduces the wrong kid.
     const pick = tm => { const st = startersOf(g, tm), bk = bookFive(g, tm), mine = ((booth(g.id).start || {})[tm] || []).map(pid => (paPlayer(g, tm, pid) || {}).pid).filter(Boolean), off = mine.length > 0 && bk.length === 5 && (mine.length !== 5 || bk.some(p => !mine.includes(p)));
-      return `<div style="${tvars(g, tm)}"><div class="row between" style="margin:6px 0 4px"><span class="kicker">${esc(tmName(g, tm))} starters · ${st.length} of 5</span><button class="btn sm" data-act="saypick" data-gid="${g.id}" data-tm="${tm}" title="Phonetic spellings for ${esc(tmName(g, tm))}">Phonetics</button></div>${off ? `<div class="flag" style="margin-bottom:6px"><span>The scorer's book starts ${bk.map(p => "#" + esc((player(g, tm, p) || {}).num)).join(" ")}, so the intro reads those five, not your picks.</span><button class="btn sm primary" data-act="usebook" data-gid="${g.id}" data-tm="${tm}">Use the book's five</button></div>` : ""}<div class="bench" style="margin:0">${sortRoster(paRoster(g, tm)).map(p => `<button class="chip${st.includes(p.pid) ? " at" : ""}" data-act="starter" data-gid="${g.id}" data-tm="${tm}" data-pid="${p.pid}" title="${st.includes(p.pid) ? "Starting. Click to take off" : "Click to start"} #${esc(p.num)}" aria-pressed="${st.includes(p.pid)}">${face(p)}<b>${esc(p.num)}</b>${esc(pShort(p))}</button>`).join("") || `<span class="small">No roster yet${tm === "them" ? ": add their players above, or the scorer adds them on the Scorer screen" : ""}.</span>`}</div></div>`; };
+      return `<div style="${tvars(g, tm)}"><div class="row between" style="margin:6px 0 4px"><span class="kicker">${esc(tmName(g, tm))} starters · ${st.length} of 5</span><button class="btn sm" data-act="saypick" data-gid="${g.id}" data-tm="${tm}" title="Phonetic spellings for ${esc(tmName(g, tm))}">Phonetics</button></div>${off ? `<div class="flag" style="margin-bottom:6px"><span>The scorer's book starts ${bk.map(p => "#" + esc((player(g, tm, p) || {}).num)).join(" ")}, so the intro reads those five, not your picks.</span><button class="btn sm primary" data-act="usebook" data-gid="${g.id}" data-tm="${tm}">Use the book's five</button></div>` : ""}<div class="bench" style="margin:0">${sortRoster(paRoster(g, tm)).map(p => `<button class="chip${st.includes(p.pid) ? " at" : ""}" data-act="starter" data-gid="${g.id}" data-tm="${tm}" data-pid="${p.pid}" title="${st.includes(p.pid) ? "Starting. Click to take off" : "Click to start"} #${esc(p.num)}" aria-pressed="${st.includes(p.pid)}">${face(p, "", tm === "us")}<b>${esc(p.num)}</b>${esc(pShort(p))}</button>`).join("") || `<span class="small">No roster yet${tm === "them" ? ": add their players above, or the scorer adds them on the Scorer screen" : ""}.</span>`}</div></div>`; };
     return `<div style="border-top:2px solid var(--black);padding-top:8px"><h3 style="font-size:20px">${esc(usName(g))} ${gameTitle(g)}${g.time ? " · " + esc(fmtTime(g.time)) : ""}</h3>
       <div class="infogrid" style="margin-top:6px">${fld("usCoach", "Our head coach (name only)", "Dana Jones")}${fld("oppCoach", "Their head coach (name only)", "Pat Smith")}${fld("usAssistants", "Our assistant coaches", "Sam Lee and Jo Park")}${fld("oppAssistants", "Their assistant coaches", "Chris Day and Lee Fox")}${fld("officials", "Officials", "Bob Lee, Tim Ray and Ann Cole")}${fld("sponsor", "Sponsor", "Greenbrier Pharmacy")}${fld("anthem", "Anthem sung by", "the GHS Chorus")}${fld("record", "Our record before tonight", "12-5, 3-1 district")}</div>
       <label class="fld" style="margin-top:6px"><span>Halftime recognition (read word for word)</span><textarea rows="2" data-info="${g.id}:honors" placeholder="Please welcome our seniors and their families to center court…">${esc(i.honors || "")}</textarea></label>
@@ -3762,7 +3764,7 @@ function shotsByPlayer(g, pool, cols){
   if(!rows.length) return "";
   return `<div class="scroll-x" style="margin-top:12px"><table class="pin shpl" style="max-width:640px"><tr><th class="l">By player</th><th>FG</th><th>3PT</th><th>Paint</th><th>Mid</th><th>Three</th></tr>
     ${rows.map(({tm, p, ss}) => { const pl = ss.filter(s => s.e.x != null), on = ui.shotPid === p.pid;
-      return `<tr${on ? ' class="on"' : ""} style="${tvars(g, tm)}"><td class="l"><button class="lnk" data-act="shotpl" data-tm="${tm}" data-pid="${on ? "" : p.pid}" aria-pressed="${on}">${face(p)}<b style="color:var(--tl,var(--green))">${tm === "us" ? "" : esc(oppInfo(g.opp, g).abbr) + " "}#${esc(p.num)}</b> ${esc(p.name || "")}</button></td><td>${ma(ss)}</td><td>${ma(ss.filter(s => s.e.p === 3))}</td><td>${ma(pl.filter(s => inPaint(s.e)))}</td><td>${ma(pl.filter(s => !inPaint(s.e) && !isThree(s.e.x, s.e.y)))}</td><td>${ma(pl.filter(s => isThree(s.e.x, s.e.y)))}</td></tr>`; }).join("")}</table></div>`;
+      return `<tr${on ? ' class="on"' : ""} style="${tvars(g, tm)}"><td class="l"><button class="lnk" data-act="shotpl" data-tm="${tm}" data-pid="${on ? "" : p.pid}" aria-pressed="${on}">${face(p, "", tm === "us")}<b style="color:var(--tl,var(--green))">${tm === "us" ? "" : esc(oppInfo(g.opp, g).abbr) + " "}#${esc(p.num)}</b> ${esc(p.name || "")}</button></td><td>${ma(ss)}</td><td>${ma(ss.filter(s => s.e.p === 3))}</td><td>${ma(pl.filter(s => inPaint(s.e)))}</td><td>${ma(pl.filter(s => !inPaint(s.e) && !isThree(s.e.x, s.e.y)))}</td><td>${ma(pl.filter(s => isThree(s.e.x, s.e.y)))}</td></tr>`; }).join("")}</table></div>`;
 }
 
 /* ---------- games ---------- */
@@ -3870,7 +3872,7 @@ function gameLogHtml(team, p, sh){
       return `<tr${sel ? ' class="on"' : ""}><td class="l"><button class="lnk" data-act="glopp" data-opp="${esc(sel ? "" : o.k)}" aria-pressed="${sel}">${esc(o.name)}</button></td><td>${rs.length}</td><td>${l.pts}</td><td>${(l.pts / rs.length).toFixed(1)}</td><td>${cellOf(l, "fg")}</td><td>${cellOf(l, "tp")}</td><td>${cellOf(l, "ft")}</td><td>${l.oreb + l.dreb}</td><td>${l.ast}</td><td>${l.stl}</td><td>${l.to}</td></tr>`; }).join("")}</table></div>` : "";
   const chart = placed.length ? `<div class="glchart"><div style="flex:1 1 260px;max-width:300px">${courtSvg(placed, "", null, null, {key:"glSel", sel:picked.map(s => s.k)})}</div><div style="flex:1;min-width:200px"><div class="kicker">${on ? "Shot chart vs " + esc(on.name) : "Season shot chart"}</div><p class="small" style="margin:4px 0">${zone("Paint", inPaint)} · ${zone("Mid-range", e => !inPaint(e) && !isThree(e.x, e.y))} · ${zone("Three", e => isThree(e.x, e.y))}</p><p class="small" style="margin:0">${placed.length} of ${shots.length} shots charted. Dots are makes, X's are misses.</p>${shotPanel(picked.map(s => shotInfo(s.r.g, s.r.R, s, true)), placed.length)}</div></div>`
     : shots.length ? `<p class="small" style="margin:10px 0 0">No shot spots charted in these games. Turn on Shot spots on the Scorer screen to chart them.</p>` : "";
-  return `${fhead(p, `<div class="kicker">${team === "girls" ? "Girls" : "Boys"} varsity · game log${on ? " · vs " + esc(on.name) : ""}</div><h3>#${esc(p.num)} ${esc(p.name || "")}</h3>`)}
+  return `${fhead(p, `<div class="kicker">${team === "girls" ? "Girls" : "Boys"} varsity · game log${on ? " · vs " + esc(on.name) : ""}</div><h3>#${esc(p.num)} ${esc(p.name || "")}</h3>`, undefined, true)}
     <p class="small" style="margin:0 0 8px">${[desc, n ? `${n} game${n === 1 ? "" : "s"} · ${pg(t.pts)} ppg · ${pg(t.oreb + t.dreb)} rpg · ${pg(t.ast)} apg` : ""].filter(Boolean).map(esc).join(" · ")}${on ? ` <button class="btn sm" data-act="glopp" data-opp="">Whole season</button>` : ""}</p>
     ${n ? (canCoach() ? playerMore(team, p, rows) : "") + table + vs + chart + `<p class="small" style="margin:8px 0 0">Newest first. Tap a game for its box score, an opponent for just those games, or a shot to see when it was. Shooting leaves out points-only games.</p>` : `<p style="margin:0">No games yet this season. A game counts here once it's over.</p>`}
     <div class="row" style="margin-top:10px">${n && canCoach() ? `<button class="btn" data-act="plpdf" data-team="${team}" data-pid="${esc(pid)}" data-opp="${esc(sh.opp || "")}">Player PDF</button>` : ""}<button class="btn" data-close>Close</button></div>`;
@@ -4091,7 +4093,7 @@ function linesOf(ds){
 // A player by pid, from the season's roster or from any game that had them.
 function stPlayer(team, pid, ds){ const r = ((S.teams[team] || {}).roster || []).find(x => x.pid === pid); if(r) return r;
   for(let i = ds.length - 1; i >= 0; i--){ const p = player(ds[i].g, "us", pid); if(p) return p; } return {pid, num:"?", name:""}; }
-const pNm = p => `${esc(p.num)} ${esc(p.name || "")}`, pNmF = p => faceNm(p, pNm(p));
+const pNm = p => `${esc(p.num)} ${esc(p.name || "")}`, pNmF = p => faceNm(p, pNm(p), true);
 // Hollinger's Game Score: one number for a night's line.
 const gmSc = l => l.pts + .4 * l.fgm - .7 * l.fga - .4 * (l.fta - l.ftm) + .7 * l.oreb + .3 * l.dreb + l.stl + .7 * l.ast + .7 * l.blk - .4 * l.pf - l.to;
 const dbl = l => [l.pts, l.oreb + l.dreb, l.ast, l.stl, l.blk].filter(v => v >= 10).length;
@@ -4998,7 +5000,7 @@ function sheetText(title, label, val, onSave, rows = 1, placeholder = ""){
 }
 function pmenu(g, tm, pid){
   const R = replay(g), p = player(g, tm, pid), on = R.court[tm].has(pid), at = atTable(g, tm).includes(pid), edit = canEdit(g);
-  openSheet({html:() => `${fhead(p, `<h3>#${esc(p.num)} ${esc(p.name || "")}</h3><p class="small" style="margin:0 0 10px">${esc(tmName(g, tm))} · ${statLine(R.box[tm][pid] || LINE())}</p>`)}
+  openSheet({html:() => `${fhead(p, `<h3>#${esc(p.num)} ${esc(p.name || "")}</h3><p class="small" style="margin:0 0 10px">${esc(tmName(g, tm))} · ${statLine(R.box[tm][pid] || LINE())}</p>`, undefined, tm === "us")}
     <div class="row">${edit ? (on ? `<button class="btn" data-act="pm-out">Take out (no sub)</button>` : `<button class="btn primary" data-act="pm-in">Put in</button>`) : ""}
     ${on ? "" : `<button class="btn" data-act="pm-table">${at ? "Off the table" : "Send to the table"}</button>`}
     ${edit ? `<button class="btn dark" data-act="pm-tech">Technical foul</button><button class="btn" data-act="pm-edit">Edit name / number</button>` : ""}
@@ -5099,16 +5101,18 @@ function faceOk(s){
 }
 // The round photo beside a name, or nothing for a player with none (every opponent). p is a player or a player id; on the
 // fan page a player carries his season id as fid (pubGame). hold: an empty circle instead, so a column of names lines up.
-function face(p, cls, hold){
+function face(p, cls, ours){
   const id = p && typeof p === "object" ? p.fid || p.pid : p, c = id ? Faces.cls(id) : "";
-  return c ? `<i class="face ${c}${cls ? " " + cls : ""}"></i>` : hold && Faces.any() ? `<i class="face none${cls ? " " + cls : ""}"></i>` : "";
+  const n = p && typeof p === "object" && p.num != null ? String(p.num).trim().slice(0, 3) : "";
+  return c ? `<i class="face ${c}${cls ? " " + cls : ""}"></i>` : ours && id && Faces.any() ? `<i class="face none${cls ? " " + cls : ""}"${n ? ` data-n="${esc(n)}"` : ""}></i>` : "";
 }
 // A photo file's name: "B_20_Hudson_Savage_Black_StepRepeat.jpg" is boys #20 Hudson Savage, "LC_5_Alysia_Graham.jpg" girls
 // #5. The team letters and the name are optional; the first one- or two-digit number is the jersey.
 // A sheet's or page's heading with the kid's photo to its left. With no photo the heading is exactly what it was.
-function fhead(p, html, attr){ const f = face(p, "xl"); return f ? `<div class="fhead"${attr || ""}>${f}<div>${html}</div></div>` : attr == null ? html : `<div${attr}>${html}</div>`; }
+// ours: one of our kids with no photo gets the bobcat circle, once any photos are loaded (so do face and faceNm).
+function fhead(p, html, attr, ours){ const f = face(p, "xl", ours); return f ? `<div class="fhead"${attr || ""}>${f}<div>${html}</div></div>` : attr == null ? html : `<div${attr}>${html}</div>`; }
 // A name with its photo, kept on one line together. With no photo: the name alone, as before.
-function faceNm(p, nm){ const f = face(p); return f ? `<span class="fnw">${f}${nm}</span>` : nm; }
+function faceNm(p, nm, ours){ const f = face(p, "", ours); return f ? `<span class="fnw">${f}${nm}</span>` : nm; }
 function faceFile(name){
   const tok = String(name).replace(/\.[a-z0-9]+$/i, "").split(/[\s_.,()-]+/).filter(Boolean), t0 = (tok[0] || "").toLowerCase(); let team = "";
   if(/^(b|bc|boys?|bobcats?)$/.test(t0)){ team = "boys"; tok.shift(); }
@@ -6932,7 +6936,7 @@ const BugRead = (() => {
 function bugLead(g, R, tm, k){
   const val = l => k === "reb" ? l.oreb + l.dreb : l[k], ls = Object.entries(R.box[tm]), top = Math.max(0, ...ls.map(([, l]) => val(l)));
   if(!top) return "–";
-  return ls.filter(([, l]) => val(l) === top).map(([pid]) => player(g, tm, pid)).filter(Boolean).slice(0, 2).map(p => faceNm(p, esc(p.name ? pShort(p) : "#" + p.num))).join(", ") + " " + top;
+  return ls.filter(([, l]) => val(l) === top).map(([pid]) => player(g, tm, pid)).filter(Boolean).slice(0, 2).map(p => faceNm(p, esc(p.name ? pShort(p) : "#" + p.num), tm === "us")).join(", ") + " " + top;
 }
 // Halftime and the final: the score, points by period, each team's leaders and a few team numbers.
 function bugCard(sn){
@@ -6977,7 +6981,7 @@ function leadCard(g, R, k, lbl){
   const sd = sides(g), val = ln => k === "reb" ? ln.oreb + ln.dreb : ln[k];
   const row = tm => { const ls = Object.entries(R.box[tm]), top = Math.max(0, ...ls.map(([, l]) => val(l)));
     const who = top ? ls.filter(([, l]) => val(l) === top).map(([pid]) => player(g, tm, pid)).filter(Boolean) : [];
-    const names = who.slice(0, 3).map(p => faceNm(p, esc(p.name ? pShort(p) : "#" + p.num))).join(", ") + (who.length > 3 ? " +" + (who.length - 3) : "");
+    const names = who.slice(0, 3).map(p => faceNm(p, esc(p.name ? pShort(p) : "#" + p.num), tm === "us")).join(", ") + (who.length > 3 ? " +" + (who.length - 3) : "");
     return `<div class="lr" style="${tvars(g, tm)}"><b>${top || "–"}</b><span>${top ? names : g.status === "final" ? "None" : "Nobody yet"}<small>${esc(tmName(g, tm))}</small></span></div>`; };
   return `<div class="card"><div class="kicker">${lbl}</div>${row(sd.left)}${row(sd.right)}</div>`;
 }
@@ -7042,7 +7046,7 @@ function pubPlayerSheet(tm, i){
   const sr = stats && real ? stats.p.find(r => r[0] === real) : null, per = (v, n) => n ? (v / n).toFixed(1) : "–";
   if(tm === "us" && !PS.stats) PubRead.stats();
   const shoot = ln.po ? `FG ${ln.fgm} made · FT ${ln.ftm} made` : `FG ${ln.fgm}-${ln.fga} · 3PT ${ln.tpm}-${ln.tpa} · FT ${ln.ftm}-${ln.fta}`;
-  openSheet({wide:true, html:() => `${fhead(p, `<div class="kicker">${esc(tmName(g, tm))}</div><h3>#${esc(p.num)} ${esc(p.name || "")}</h3>`, ` style="${tvars(g, tm)}"`)}
+  openSheet({wide:true, html:() => `${fhead(p, `<div class="kicker">${esc(tmName(g, tm))}</div><h3>#${esc(p.num)} ${esc(p.name || "")}</h3>`, ` style="${tvars(g, tm)}"`, tm === "us")}
     <div class="pcl"><div><b>${ln.pts}</b>PTS</div><div><b>${ln.oreb + ln.dreb}</b>REB</div><div><b>${ln.ast}</b>AST</div><div><b>${ln.stl}</b>STL</div><div><b>${ln.blk}</b>BLK</div><div><b>${ln.to}</b>TO</div><div><b>${ln.pf}</b>PF</div></div>
     <p class="small" style="margin:6px 0">${shoot}</p>
     ${sr ? `<p style="margin:6px 0"><b>Season (${sr[3]} game${sr[3] === 1 ? "" : "s"}):</b> ${per(sr[4], sr[3])} ppg · ${per(sr[5], sr[3])} rpg · ${per(sr[6], sr[3])} apg</p>` : ""}
@@ -7056,7 +7060,7 @@ function pubStreak(rows, team){ const fs = rows.filter(([, r]) => r.team === tea
   const last = fs[fs.length - 1]; let n = 0; for(let i = fs.length - 1; i >= 0 && fs[i] === last; i--) n++; return n >= 2 ? `${last ? "Won" : "Lost"} ${n} straight` : ""; }
 function pubLeaders(team){
   const t = PS.stats && PS.stats.t && PS.stats.t[team]; if(!t || !t.p.length) return "";
-  const best = (k, lbl) => { const r = t.p.filter(x => x[3]).sort((a, b) => b[k] / b[3] - a[k] / a[3])[0]; return r && r[k] ? `<div class="lr"><b>${(r[k] / r[3]).toFixed(1)}</b><span>${face(r[0])}${esc(r[2] || "#" + r[1])}<small>${lbl}</small></span></div>` : ""; };
+  const best = (k, lbl) => { const r = t.p.filter(x => x[3]).sort((a, b) => b[k] / b[3] - a[k] / a[3])[0]; return r && r[k] ? `<div class="lr"><b>${(r[k] / r[3]).toFixed(1)}</b><span>${face({pid:r[0], num:r[1]}, "", true)}${esc(r[2] || "#" + r[1])}<small>${lbl}</small></span></div>` : ""; };
   const h = best(4, "points a game") + best(5, "rebounds a game") + best(6, "assists a game");
   return h ? `<div class="card"><div class="kicker">Season leaders</div>${h}</div>` : "";
 }
@@ -7112,7 +7116,7 @@ function viewStats(rows){
   const ppg = n ? (fin.reduce((a, [, r]) => a + r.us, 0) / n).toFixed(1) : "–", opp = n ? (fin.reduce((a, [, r]) => a + r.them, 0) / n).toFixed(1) : "–";
   return head + `<div class="card" style="margin-top:10px"><h2>${esc(t.name || (team === "girls" ? "Lady Cats" : "Bobcats"))} season stats</h2><div class="small" style="font-weight:600;margin:2px 0 8px">${w + l ? `${w}-${l} · ` : ""}${ppg} points a game · allowing ${opp}</div>
     <div class="scroll-x"><table class="sttab"><tr><th class="l">Player</th>${STCOLS.map(([l, k]) => `<th><button class="lnk${k === K ? " on" : ""}" data-act="pubsort" data-v="${k}">${l}</button></th>`).join("")}</tr>
-    ${ps.map(r => `<tr><td class="l">${face(r[0], "", true)}${esc(r[1])} ${esc(r[2] || "")}</td>${STCOLS.map(([, k]) => `<td${k === K ? ' class="on"' : ""}>${cell(r, k)}</td>`).join("")}</tr>`).join("")}</table></div>
+    ${ps.map(r => `<tr><td class="l">${face({pid:r[0], num:r[1]}, "", true)}${esc(r[1])} ${esc(r[2] || "")}</td>${STCOLS.map(([, k]) => `<td${k === K ? ' class="on"' : ""}>${cell(r, k)}</td>`).join("")}</tr>`).join("")}</table></div>
     <p class="small" style="margin:6px 0 0">Per game, from ${t.gp} finished game${t.gp === 1 ? "" : "s"}. Tap a column to sort. Shooting counts only games where misses were kept.</p></div>`;
 }
 function viewPublic(){
@@ -7155,7 +7159,7 @@ function viewPublic(){
     const meta = tm => `${ov.tf[tm]} team foul${ov.tf[tm] === 1 ? "" : "s"}<br>Timeouts 60s ${sn.tol[tm][60]} · 30s ${sn.tol[tm][30]}${ov.bonus[tm] ? `<div class="bonus">IN THE BONUS</div>` : ""}`;
     // At the final the strip under the board names each team's top scorer instead of the last horn.
     const tops = fin ? [sides(g).left, sides(g).right].map(tm => { const ls = Object.entries(R.box[tm]), m = Math.max(0, ...ls.map(([, l]) => l.pts));
-      return m ? ls.filter(([, l]) => l.pts === m).map(([pid]) => player(g, tm, pid)).filter(Boolean).slice(0, 2).map(p => `${faceNm(p, `<b>${esc(p.name ? pShort(p) : "#" + p.num)}</b>`)} ${m}`).join(", ") : ""; }).filter(Boolean) : [];
+      return m ? ls.filter(([, l]) => l.pts === m).map(([pid]) => player(g, tm, pid)).filter(Boolean).slice(0, 2).map(p => `${faceNm(p, `<b>${esc(p.name ? pShort(p) : "#" + p.num)}</b>`, tm === "us")} ${m}`).join(", ") : ""; }).filter(Boolean) : [];
     const last = sn.plays[sn.plays.length - 1];
     h += `<div class="ann stack" style="margin-top:8px"><div><div class="bugcap"><span>${esc(fmtDate(g.date))}${g.event ? " · " + esc(g.event) : ""}${g.district ? " · District" : ""}</span>${ov.tag === "unofficial" ? `<span class="tag solid" title="The gym scoreboard's feed is down: this is the stat keeper's score">Unofficial score</span>` : review ? `<span class="tag">Final · stats under review</span>` : ""}</div>
       ${old ? `<div class="flag" style="margin:0 0 6px"><b>Last update ${esc(agoWords(sn.upd + PS.delay * 1000))}.</b> Waiting on the scorer: the table may have lost signal.</div>` : ""}
@@ -7170,7 +7174,7 @@ function viewPublic(){
       <div class="row only-narrow"><button class="btn sm" aria-pressed="${ui.pubTm !== "away"}" data-act="pubtm" data-v="home">${esc(tmName(g, ha.home))}</button><button class="btn sm" aria-pressed="${ui.pubTm === "away"}" data-act="pubtm" data-v="away">${esc(tmName(g, ha.away))}</button></div>
       <div class="ann-cols" id="pubbox"><div class="card fanbox${ui.pubTm === "away" ? " hide-narrow" : ""}">${boxTable(g, R, ha.home, true)}</div><div class="card fanbox${ui.pubTm !== "away" ? " hide-narrow" : ""}">${boxTable(g, R, ha.away, true)}</div></div>${!fin && (R.court.us.size || R.court.them.size) ? `<p class="small" style="margin:-6px 0 0"><i class="onfl"></i>On the floor now</p>` : ""}
       ${pubShots(g, R)}
-      <div class="card" id="pubplays"><h3 style="font-size:22px;margin-bottom:4px">${sn.more ? "Last " + sn.plays.length + " plays" : "Play-by-play"}</h3>${sn.plays.length ? `<ul class="plays">${sn.plays.slice().reverse().map(p => `<li class="${p[4] ? "score" : ""}" style="${p[5] === "them" ? tvars(g, "them") : ""}"><span class="pq">${esc(perLabel(g, p[0]))}${p[7] ? `<span class="gcl">${esc(p[7])}</span>` : ""}${p[6] ? `<small>${esc(new Date(p[6]).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}))}</small>` : ""}</span><span class="ps">${ha.home === "us" ? p[1] + "-" + p[2] : p[2] + "-" + p[1]}</span><span class="pt">${p[5] ? `<span class="ptm">${esc(p[5] === "us" ? "GHS" : (g.oi && g.oi.abbr) || oppInfo(g.opp, g).abbr)}</span> ` : ""}${p[5] === "us" ? face(player(g, "us", "us" + p[8])) : ""}${p[4] ? "<b>" + esc(unent(p[3])) + "</b>" : esc(unent(p[3]))}</span></li>`).join("")}</ul>` : `<p class="small">Plays show up here once the game starts.</p>`}</div>
+      <div class="card" id="pubplays"><h3 style="font-size:22px;margin-bottom:4px">${sn.more ? "Last " + sn.plays.length + " plays" : "Play-by-play"}</h3>${sn.plays.length ? `<ul class="plays">${sn.plays.slice().reverse().map(p => `<li class="${p[4] ? "score" : ""}" style="${p[5] === "them" ? tvars(g, "them") : ""}"><span class="pq">${esc(perLabel(g, p[0]))}${p[7] ? `<span class="gcl">${esc(p[7])}</span>` : ""}${p[6] ? `<small>${esc(new Date(p[6]).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}))}</small>` : ""}</span><span class="ps">${ha.home === "us" ? p[1] + "-" + p[2] : p[2] + "-" + p[1]}</span><span class="pt">${p[5] ? `<span class="ptm">${esc(p[5] === "us" ? "GHS" : (g.oi && g.oi.abbr) || oppInfo(g.opp, g).abbr)}</span> ` : ""}${p[5] === "us" ? face(player(g, "us", "us" + p[8]), "", true) : ""}${p[4] ? "<b>" + esc(unent(p[3])) + "</b>" : esc(unent(p[3]))}</span></li>`).join("")}</ul>` : `<p class="small">Plays show up here once the game starts.</p>`}</div>
       ${sn.sponsor ? `<div class="card" style="text-align:center"><div class="kicker">Tonight's game is brought to you by</div><h2 style="margin-top:4px">${esc(sn.sponsor)}</h2></div>` : ""}
       <p class="pubnote">${review ? "Final score. The stat keeper is checking the box score against the official book, so player numbers may still change." : fin ? "Final box score." : `${ov.tag === "board" ? "The score, clock and team fouls come straight from the gym scoreboard. " : ov.tag === "unofficial" ? "The gym scoreboard's feed is down, so the score is the stat keeper's until it's back. " : ""}${ov.tag === "board" ? "The box score updates" : "Stats update"} about every ${esc(String(sn.every || 30))} seconds, so they can run a little ahead of or behind the video.${PS.delay ? ` This page holds each update ${PS.delay} seconds to match the stream.` : ""}`} Last update ${esc(new Date(sn.upd).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}))}${fin ? "" : ` (${esc(agoWords(sn.upd))})`}.</p></div>`;
   }
