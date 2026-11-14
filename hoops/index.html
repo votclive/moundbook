@@ -672,6 +672,16 @@ button.lnk{border:0;background:none;padding:0;font:inherit;color:inherit;text-al
 .ldr{border:1px solid #DADADA;border-radius:10px;padding:8px 10px}.ldr .kicker{margin-bottom:2px}
 .ldr1,.ldrr{display:flex;justify-content:space-between;gap:6px;font-size:13px}.ldr1{font-size:15px;font-weight:700}.ldr1 b{color:var(--green)}
 .fromn{display:block;margin-top:2px}.anet td{text-align:center}table.stt td,table.stt th{white-space:nowrap}table.stt td.l{white-space:normal;min-width:120px}
+.mspop{position:fixed;right:12px;bottom:12px;z-index:60;display:flex;flex-direction:column;gap:8px;width:min(440px,calc(100vw - 24px))}
+.msp{background:var(--f3);color:var(--black);border:2px solid var(--black);border-radius:12px;padding:10px 12px;box-shadow:0 6px 24px rgba(0,0,0,.35);display:grid;gap:6px;justify-items:start}
+.msp b{font-size:19px;line-height:1.25}
+.mscard{border-left:6px solid var(--f3)}
+.mscard ul,.msl{margin:4px 0 0;padding-left:20px}
+.mscard li,.msl li{margin:3px 0}
+.clubl{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.clubl .chip{display:inline-flex;align-items:center;gap:6px;font-weight:500}
+.prin{width:72px;padding:4px 6px;text-align:right}
+table.rect tr.sub td{background:transparent;padding-top:10px}
 .sttiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:6px;margin:4px 0 0}
 .sttile{background:#F1F4F2;border-radius:8px;padding:6px 8px;display:flex;flex-direction:column}.sttile span{font-size:11px;font-weight:700;color:#5A5A5A;text-transform:uppercase}.sttile b{font-size:17px}
 .glchart .court{max-width:300px}
@@ -736,7 +746,7 @@ button.lnk{border:0;background:none;padding:0;font:inherit;color:inherit;text-al
    One device scores a game; everyone else signed in follows it live on the Announcer page. Each device's own saved copy is the
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
-const BS_VERSION = "0.14.0";
+const BS_VERSION = "0.15.0";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -2174,7 +2184,7 @@ function viewAnn(){
   };
   const b = booth(g.id);
   return h + `<div class="ann stack">${head}
-      ${hl.length ? `<div class="lastplay">${hl.map(x => `<div>${x}</div>`).join("")}</div>` : ""}${g.status === "live" && lastAt ? `<div class="ago small">Last play ${agoWords(lastAt)}</div>` : ""}${dueRead(g, R)}
+      ${hl.length ? `<div class="lastplay">${hl.map(x => `<div>${x}</div>`).join("")}</div>` : ""}${g.status === "live" && lastAt ? `<div class="ago small">Last play ${agoWords(lastAt)}</div>` : ""}${dueRead(g, R)}${msPanel(g, R)}
     <div class="ann-cols">${side(sd.left)}${side(sd.right)}</div>
     <div class="lead" style="grid-template-columns:1fr">${leadCard(g, R, "pts", "Points")}</div>
     <div class="ann-cols"><div class="card"><h3 style="font-size:22px;margin-bottom:4px">Last plays</h3>${playList(g, R, 10, false, p => (["FG", "FT"].includes(p.e.t) && p.e.m) || ["PF", "TF", "TMO", "PER", "NOTE"].includes(p.e.t))}</div>
@@ -2340,7 +2350,7 @@ function drawBroadcast(pre){
   const g = cur(), view = $("#view"), k = (g ? g.id : "-") + "|" + (S.settings.flip ? 1 : 0);
   let root = $(".bc", view);
   if(!root || root.dataset.k !== k){
-    view.innerHTML = `<div data-bc="pre"></div><div class="bc ann" data-k="${esc(k)}"><div data-bc="bar"></div><div data-bc="signal"></div>${g ? `<div data-bc="cap"></div><div data-bc="bug"></div><div data-bc="last"></div>
+    view.innerHTML = `<div data-bc="pre"></div><div class="bc ann" data-k="${esc(k)}"><div data-bc="bar"></div><div data-bc="signal"></div>${g ? `<div data-bc="cap"></div><div data-bc="bug"></div><div data-bc="last"></div><div data-bc="ms"></div>
       <div class="bcgrid"><div data-bc="left"></div><aside class="bcrail">
         <div class="card bcpad"><h3>Game notes</h3><textarea data-bcpad="${esc(g.id)}" rows="6" placeholder="Storylines, stat drops, the sponsor read, who to thank. Saves as you type.">${esc(booth(g.id).bnotes || "")}</textarea><p class="small" data-bc="padnote"></p></div>
         <div class="card" data-bc="drops"></div>
@@ -2360,6 +2370,7 @@ function drawBroadcast(pre){
   // Jim's scoreboard is the compact one and stays pinned at the top while he scrolls the spotting boards.
   put("bug", bug(g, R, {meta, quiet:!!signalFlag(g), per:fin ? "FINAL" : g.status === "live" ? nowLabel(g, R) : "PREGAME"}) + foulBar(g, R));
   put("last", hl.length || (g.status === "live" && lastAt) ? `<div class="lastplay">${hl.map(x => `<div>${x}</div>`).join("")}${g.status === "live" && lastAt ? `<div class="small" style="font-weight:500">Last play ${agoWords(lastAt)}</div>` : ""}</div>` : "");
+  put("ms", msPanel(g, R));
   const sd = sides(g);
   put("left", bcBoard(g, R, sd.left)); put("right", bcBoard(g, R, sd.right));
   put("box", `<div class="bchead"><h3>Box score</h3><span class="small">Every stat, both teams. Fouls: 3 yellow, 4 orange, 5 red.</span></div>${bcBox(g, R, sd.left)}${bcBox(g, R, sd.right)}${lineupCard(g, R, clockStats(g, R), "card bcbox")}`);
@@ -3695,13 +3706,142 @@ function gameLogHtml(team, p, sh){
     ${n ? (canCoach() ? playerMore(team, p, rows) : "") + table + vs + chart + `<p class="small" style="margin:8px 0 0">Newest first. Tap a game for its box score, an opponent for just those games, or a shot to see when it was. Shooting leaves out points-only games.</p>` : `<p style="margin:0">No games yet this season. A game counts here once it's over.</p>`}
     <div class="row" style="margin-top:10px">${n && canCoach() ? `<button class="btn" data-act="plpdf" data-team="${team}" data-pid="${esc(pid)}" data-opp="${esc(sh.opp || "")}">Player PDF</button>` : ""}<button class="btn" data-close>Close</button></div>`;
 }
+/* ---------- school records and milestones (0.15.0) ----------
+   The record boards in the gym (Kevin and Jim checked the typed copy, Nov 2026) come built in, and a Coach can fix or add
+   to them on Stats > Records. They ride with the rosters (S.teams[team].records, .club, .prior), so every device has them
+   with no new rules. prior: each kid's career totals from before this season, typed in by a Coach; career milestones and
+   career records only count a kid once that stat has a number. During a game the PA page and the broadcast page show
+   what's coming up (a kid within reach of a milestone or a record) and pop up the moment one falls. */
+const RS = {pts:"Points", reb:"Rebounds", ast:"Assists", tpm:"Threes", stl:"Steals", blk:"Blocks", ppg:"Points a game", rpg:"Rebounds a game", apg:"Assists a game", fgp:"FG%", ftp:"FT%", wins:"Team wins", tpts:"Team points", t3:"Team threes"};
+const RK = {game:"Single game", season:"Season", career:"Career"};
+const rsd = (k, s, v, t, who, yr, opp = "") => ({id:k + "-" + s, k, s, v, t, who, yr, opp});
+const REC_SEED = {
+  boys:[rsd("game", "pts", 50, "50", "Phillip Mason", "'86-'87"), rsd("season", "pts", 689, "689", "Butch Savage", "'67-'68"), rsd("career", "pts", 1549, "1,549", "Mike Clark", "'81-'82"), rsd("season", "ppg", 23.4, "23.4", "Clint Mason", "'91-'92"),
+    rsd("game", "reb", 35, "35", "Terry Savage", "'74-'75"), rsd("season", "reb", 434, "434", "Terry Savage", "'74-'75"), rsd("career", "reb", 893, "893", "Nolan Carson", "'20-'24"), rsd("season", "rpg", 15.8, "15.8", "Nolan Carson", "'23-'24"),
+    rsd("season", "apg", 9.3, "9.3", "Ronny Carlisle", "'67-'68"), rsd("game", "blk", 6, "6", "Derek Taylor", "'21-'22"), rsd("season", "blk", 45, "45", "Keifus Coleman", "'18-'19"), rsd("career", "blk", 73, "73", "Keifus Coleman", "'15-'19"),
+    rsd("game", "tpm", 7, "7", "Geoffrey Sanders", "'05-'06"), rsd("season", "tpm", 69, "69", "Jake Downard", "'17-'18"), rsd("career", "tpm", 97, "97", "Jayce Mangrum", "'19-'23"),
+    rsd("game", "stl", 7, "7", "Reagan Conquest", "'19-'20"), rsd("season", "stl", 64, "64", "DJ Jackson", "'22-'23"), rsd("career", "stl", 134, "134", "DJ Jackson", "'20-'23"),
+    rsd("season", "fgp", 62, "62%", "Nolan Carson", "'21-'22"), rsd("season", "ftp", 88.8, "88.8%", "Kenton Coleman", "'04-'05"), rsd("season", "wins", 26, "26-10", "Team", "'83-'84"),
+    rsd("game", "tpts", 110, "110", "Team", "'86-'87", "White House"), rsd("game", "t3", 13, "13", "Team", "'21-'22", "Sycamore")],
+  girls:[rsd("game", "pts", 41, "41", "Amanda Bennett", "'17-'18"), rsd("season", "pts", 437, "437", "Amanda Bennett", "'17-'18"), rsd("career", "pts", 1422, "1,422", "Amanda Bennett", "'17-'18"), rsd("season", "ppg", 16.2, "16.2", "Amanda Bennett", "'17-'18"),
+    rsd("game", "reb", 17, "17", "Abigail Stacey / Makenlee Jones", "'21-'22"), rsd("season", "reb", 222, "222", "Kayla Jarrell", "'15-'16"), rsd("career", "reb", 531, "531", "Kayla Jarrell", "'15-'16"), rsd("career", "rpg", 7.93, "7.93", "Kayla Jarrell", "'12-'16"),
+    rsd("season", "apg", 5.44, "5.44", "Caitlin Turner", "'15-'16"), rsd("game", "blk", 16, "16", "Abigail Stacey", "'21-'22"), rsd("season", "blk", 164, "164", "Haley Ralph", "'16-'17"), rsd("career", "blk", 294, "294", "Haley Ralph", "'14-'18"),
+    rsd("game", "tpm", 7, "7", "Amanda Bennett / Logan Henry", "'17 / '23"), rsd("season", "tpm", 60, "60", "Amanda Bennett", "'17-'18"), rsd("career", "tpm", 206, "206", "Amanda Bennett", "'14-'18"),
+    rsd("game", "stl", 11, "11", "Makenlee Jones", "'22-'23"), rsd("season", "stl", 82, "82", "Makenlee Jones", "'22-'23"), rsd("career", "stl", 202, "202", "Makenlee Jones", "'20-'24"),
+    rsd("season", "fgp", 48.8, "48.8%", "Hailey Blair", "'19-'20"), rsd("season", "ftp", 80, "80%", "Kayla Jarrell", "'14-'15"), rsd("season", "wins", 30, "30-6", "Team", "'85-'86"),
+    rsd("game", "tpts", 79, "79", "Team", "'85-'86", "Madison"), rsd("game", "t3", 12, "12", "Team", "'14-'15", "White House")]};
+const CLUB_SEED = {boys:[["Butch Savage", "1968"], ["Gary Bedwell", "1969"], ["Mike Clark", "1982"], ["Doug Kennedy", "1986"], ["Kevin Evans", "1988"], ["Phillip Mason", "1988"], ["Clint Mason", "1992"], ["Mike Story", "1998"], ["Kenton Coleman", "2005"], ["Nick Young", "2014"]].map(([who, yr]) => ({who, yr})),
+  girls:[["Ronda Hall", "1990"], ["Kara Hodge", "2000"], ["Nina Dever", "2010"], ["Rylee Butler", "2011"], ["Kayla Jarrell", "2016"], ["Amanda Bennett", "2018"]].map(([who, yr]) => ({who, yr}))};
+const recsOf = team => ((S.teams[team] || {}).records || REC_SEED[team] || []);
+const clubOf = team => ((S.teams[team] || {}).club || CLUB_SEED[team] || []);
+const priorOf = (team, pid) => (((S.teams[team] || {}).prior || {})[pid] || {});
+function recSave(team, f){ if(!canCoach()) return; const T = S.teams[team]; if(!T.records) T.records = JSON.parse(JSON.stringify(REC_SEED[team])); if(!T.club) T.club = JSON.parse(JSON.stringify(CLUB_SEED[team])); f(T); S.teamsRev++; save(); Sync.dirtyTeams(); render(); }
+// The counting stats a milestone follows, how big a season and a career step is, and how close counts as "coming up".
+const MS_STAT = [["pts", "points", l => l.pts], ["reb", "rebounds", l => l.oreb + l.dreb], ["ast", "assists", l => l.ast], ["tpm", "threes", l => l.tpm], ["stl", "steals", l => l.stl], ["blk", "blocks", l => l.blk]];
+const MS_STEP = {pts:100, reb:100, ast:50, tpm:25, stl:25, blk:25}, MS_CSTEP = {pts:500, reb:250, ast:100, tpm:50, stl:50, blk:50}, MS_NEAR = {pts:10, reb:5, ast:3, tpm:2, stl:2, blk:2}, MS_HI = {pts:12, reb:8, ast:5, tpm:3, stl:3, blk:3};
+const MS_C = {};
+// Our season before a game (every counted game before it): each player's totals and best game in each stat.
+function msBase(team, g){
+  const key = g ? g.date + (g.time || "") : "~", gs = seasonGames(team).filter(x => (!g || x.id !== g.id) && (x.date + (x.time || "")) < key), sig = team + key + gs.map(x => x.id + ":" + gSig(x)).join();
+  if(MS_C[team] && MS_C[team].sig === sig) return MS_C[team];
+  const sl = {}, hi = {}, n = {}; for(const x of gs){ const R = replay(x); for(const [pid, ln] of Object.entries(R.box.us)){ if(!ln.gp) continue; sl[pid] = sl[pid] ? sumLines([sl[pid], ln]) : {...ln}; n[pid] = (n[pid] || 0) + 1;
+    const h = hi[pid] || (hi[pid] = {}); for(const [k, , f] of MS_STAT) h[k] = Math.max(h[k] || 0, f(ln)); } }
+  for(const pid in sl) sl[pid].g = n[pid];
+  return MS_C[team] = {sig, gs, sl, hi};
+}
+// Milestones and records for our players in a game (or before the next one: g null), from their season before it plus
+// tonight's line. Each: {id, pid, done (it fell tonight) or need (how many to go), txt}. pre: wider "within reach".
+function msOf(team, g, R, pre){
+  if(g && (g.practice || g.scrim || g.deleted)) return [];
+  const B = msBase(team, g), recs = recsOf(team), out = [], ros = g ? roster(g, "us") : ((S.teams[team] || {}).roster || []), gid = g ? g.id : "next", live = g && g.status !== "final";
+  const nm = p => `#${p.num}${p.name ? " " + p.name : ""}`, by = r => `${r.who}${r.yr ? ", " + r.yr : ""}${r.opp ? " vs " + r.opp : ""}`;
+  const win = k => MS_NEAR[k] * (pre ? 2 : 1);
+  for(const p of ros){ const pid = p.pid, tn = (R && R.box.us[pid]) || LINE(), sb = B.sl[pid] || LINE(), pr = priorOf(team, pid);
+    for(const [k, w, f] of MS_STAT){ const t = f(tn), s0 = f(sb), now = s0 + t, id = x => `${gid}:${pid}:${k}:${x}`;
+      const steps = (scope, from, to, st) => { for(let m = (Math.floor(from / st) + 1) * st; m <= to; m += st) out.push({id:id(scope + m), pid, done:true, txt:k === "pts" && scope === "c" && m === 1000 ? `${nm(p)} joins the 1,000-point club` : `${nm(p)}: ${m.toLocaleString()} ${scope === "c" ? "career" : "season"} ${w}`});
+        const nx = (Math.floor(to / st) + 1) * st; if(nx - to <= win(k) && (live || pre)) out.push({id:id(scope + nx), pid, need:nx - to, txt:`${nm(p)} needs ${nx - to} for ${k === "pts" && scope === "c" && nx === 1000 ? "the 1,000-point club" : nx.toLocaleString() + " " + (scope === "c" ? "career" : "season") + " " + w}`}); };
+      const rec = (r, scope, from, to) => { const v = r.v;
+        if(to > v && from <= v) out.push({id:id("r" + scope), pid, done:true, txt:`${nm(p)} breaks the school ${scope} record for ${w}: ${to} (was ${r.t}, ${by(r)})`});
+        else if(to === v && from < v) out.push({id:id("t" + scope), pid, done:true, txt:`${nm(p)} ties the school ${scope} record for ${w}: ${v} (${by(r)})`});
+        else if(to < v && v - to <= win(k) && (live || pre)) out.push({id:id("n" + scope), pid, need:v - to, txt:`${nm(p)} is ${v - to} from the school ${scope} record for ${w} (${r.t}, ${by(r)})`}); };
+      if(s0 || t) steps("s", s0, now, MS_STEP[k]);
+      const sr = recs.find(r => r.k === "season" && r.s === k); if(sr) rec(sr, "season", s0, now);
+      if(pr[k] != null && pr[k] !== ""){ const c0 = +pr[k] + s0, cn = c0 + t; steps("c", c0, cn, MS_CSTEP[k]); const cr = recs.find(r => r.k === "career" && r.s === k); if(cr) rec(cr, "career", c0, cn); }
+      if(g){ const gr = recs.find(r => r.k === "game" && r.s === k); if(gr && t) rec(gr, "single-game", 0, t);
+        const h = (B.hi[pid] || {})[k] || 0; if(sb.g >= 3 && t > h && t >= MS_HI[k]) out.push({id:id("hi"), pid, done:true, txt:`${nm(p)}: a season-high ${t} ${w} (was ${h})`}); } } }
+  if(g && R){ const t3 = Object.values(R.box.us).reduce((s, l) => s + l.tpm, 0) + R.team.us.tpm, us = {pid:"", num:"", name:""};
+    for(const [s, v, w, near] of [["tpts", R.sc.us, "points", 10], ["t3", t3, "threes", 2]]){ const r = recs.find(x => x.k === "game" && x.s === s); if(!r || !v) continue;
+      if(v > r.v) out.push({id:`${gid}:team:${s}`, pid:"", done:true, txt:`${usName(g)} break the school single-game record for team ${w}: ${v} (was ${r.t}, ${by(r)})`});
+      else if(v === r.v) out.push({id:`${gid}:team:${s}t`, pid:"", done:true, txt:`${usName(g)} tie the school single-game record for team ${w}: ${v} (${by(r)})`});
+      else if(r.v - v <= near && live) out.push({id:`${gid}:team:${s}n`, pid:"", need:r.v - v, txt:`${usName(g)} are ${r.v - v} from the school single-game record for team ${w} (${r.t}, ${by(r)})`}); } }
+  return out.sort((a, b) => (a.done ? 0 : 1) - (b.done ? 0 : 1) || (a.need || 0) - (b.need || 0));
+}
+// Read-it marks: each device keeps its own (the PA's laptop and Jim's each clear theirs).
+function msRead(){ if(!ui.msok){ try{ ui.msok = JSON.parse(localStorage.getItem(KEY + ".msok") || "{}"); }catch(e){ ui.msok = {}; } } return ui.msok; }
+function msMark(id){ const m = msRead(); m[id] = Date.now(); try{ localStorage.setItem(KEY + ".msok", JSON.stringify(m)); }catch(e){} }
+// On the PA page and Jim's page: a pop-up for each milestone or record that fell tonight (until it's marked read), and
+// "Coming up" for whoever's within reach (before the tip: within reach tonight).
+function msPanel(g, R){
+  if(!g || g.practice || g.scrim) return "";
+  const pre = g.status === "pre" || !g.ev.some(e => !e.v && !PREGAME(e)), all = msOf(g.team, g, R, pre), ok = msRead(), done = all.filter(m => m.done && !ok[m.id]), near = all.filter(m => m.need);
+  const pop = done.length ? `<div class="mspop" role="alert" aria-live="assertive">${done.slice(0, 4).map(m => `<div class="msp"><span class="kicker">Just now</span><b>${esc(m.txt)}</b><button class="btn sm" data-act="msok" data-id="${esc(m.id)}">Read it ✓</button></div>`).join("")}${done.length > 4 ? `<div class="small">And ${done.length - 4} more.</div>` : ""}</div>` : "";
+  const list = near.length ? `<div class="card mscard"><h3>${pre ? "Within reach tonight" : "Coming up"}</h3><ul>${near.slice(0, 8).map(m => `<li>${esc(m.txt)}</li>`).join("")}</ul>${near.length > 8 ? `<p class="small" style="margin:0">And ${near.length - 8} more.</p>` : ""}</div>` : "";
+  return pop + list;
+}
+/* ---- Stats > Records ---- */
+// The school's records (a Coach can fix or add), the 1,000-point club, each kid's career totals from before this season,
+// and the record watch: our leaders against each record now, and every milestone within reach in the next game.
+function recordsView(S0){
+  const team = S0.team, edit = canCoach(), recs = recsOf(team), B = msBase(team, null), L = B.sl, ros = sortRoster((S.teams[team] || {}).roster || []);
+  const grp = ["game", "season", "career"].map(k => { const rs = recs.filter(r => r.k === k); return rs.length ? `<tr class="sub"><td class="l" colspan="${edit ? 6 : 5}"><b>${RK[k]}</b></td></tr>` + rs.map(r => `<tr><td class="l">${esc(RS[r.s] || r.s)}</td><td><b>${esc(r.t)}</b></td><td class="l">${esc(r.who)}</td><td class="l">${esc(r.yr)}</td><td class="l">${esc(r.opp ? "vs " + r.opp : "")}</td>${edit ? `<td><button class="btn sm" data-act="recedit" data-team="${team}" data-id="${esc(r.id)}">Edit</button></td>` : ""}</tr>`).join("") : ""; }).join("");
+  const club = clubOf(team);
+  // The record watch: for each season record, our leader now (totals, or averages and percentages with enough games).
+  const ps = Object.entries(L).map(([pid, a]) => ({p:ros.find(x => x.pid === pid) || {num:"?", name:""}, a}));
+  const lead = (f, min) => ps.filter(x => !min || min(x.a)).map(x => ({...x, v:f(x.a)})).filter(x => x.v != null && x.v > 0).sort((a, b) => b.v - a.v)[0];
+  const wf = {pts:a => a.pts, reb:a => a.oreb + a.dreb, ast:a => a.ast, tpm:a => a.tpm, stl:a => a.stl, blk:a => a.blk, ppg:a => a.pts / a.g, rpg:a => (a.oreb + a.dreb) / a.g, apg:a => a.ast / a.g, fgp:a => a.fga ? 100 * a.fgm / a.fga : null, ftp:a => a.fta ? 100 * a.ftm / a.fta : null};
+  const fmt = (s, v) => /pg$/.test(s) ? fx1(v) : /p$/.test(s) ? fx1(v) + "%" : String(v);
+  const pace = (v, rv) => v > rv ? "<b>broke it</b>" : v === rv ? "<b>tied it</b>, 1 more breaks it" : `needs ${rv + 1 - v} to break it`;
+  const wrow = (cat, who, now, r, how) => `<tr><td class="l">${esc(cat)}</td><td class="l">${who}</td><td><b>${now}</b></td><td>${esc(r.t)}</td><td class="l">${how}</td></tr>`;
+  const sea = recs.filter(r => r.k === "season" && wf[r.s]).map(r => { const x = lead(wf[r.s], /pg|p$/.test(r.s) ? a => a.g >= 3 && (r.s !== "fgp" || a.fga >= 30) && (r.s !== "ftp" || a.fta >= 15) : null); if(!x) return "";
+    return wrow(RS[r.s], `#${esc(x.p.num)} ${esc(x.p.name || "")}`, fmt(r.s, x.v), r, /pg|p$/.test(r.s) ? (x.v > r.v ? "<b>ahead of the record</b>" : `${fmt(r.s, +(r.v - x.v).toFixed(2))} off it`) : pace(x.v, r.v)); }).filter(Boolean);
+  // Career records: each player with a career number typed in below, the leader against the record.
+  const car = recs.filter(r => r.k === "career" && MS_STEP[r.s]).map(r => { const f = MS_STAT.find(m => m[0] === r.s)[2], x = ros.filter(p => { const v = priorOf(team, p.pid)[r.s]; return v != null && v !== ""; }).map(p => ({p, v:+priorOf(team, p.pid)[r.s] + (L[p.pid] ? f(L[p.pid]) : 0)})).sort((a, b) => b.v - a.v)[0];
+    return x ? wrow("Career " + RS[r.s].toLowerCase(), `#${esc(x.p.num)} ${esc(x.p.name || "")}`, x.v.toLocaleString(), r, pace(x.v, r.v)) : ""; }).filter(Boolean);
+  const wr = recs.find(r => r.k === "season" && r.s === "wins"), wins = S0.all.filter(g => result(g) === "W").length, losses = S0.all.filter(g => result(g) === "L").length;
+  const watch = [...sea, ...car, wr && S0.all.length ? wrow("Team wins", esc(usName({team})), `${wins}-${losses}`, wr, pace(wins, wr.v)) : ""].filter(Boolean).join("");
+  const next = msOf(team, null, null, true).filter(m => m.need), cpre = (pid, k) => { const v = priorOf(team, pid)[k]; return v == null ? "" : v; };
+  const pt = ros.map(p => `<tr><td class="l">#${esc(p.num)} ${esc(p.name || "")}</td>${MS_STAT.map(([k]) => `<td><input type="number" min="0" inputmode="numeric" class="prin" data-prior="${team}|${esc(p.pid)}|${k}" value="${esc(cpre(p.pid, k))}" ${edit ? "" : "disabled"} aria-label="${esc(p.name || "#" + p.num)} career ${k} before this season"></td>`).join("")}<td>${(() => { const v = cpre(p.pid, "pts"); return v === "" ? "–" : (+v + ((L[p.pid] || {}).pts || 0)).toLocaleString(); })()}</td></tr>`).join("");
+  return `<div class="card"><div class="stblk"><div class="kicker">Record watch</div>${watch ? `<div class="scroll-x"><table class="pin stt"><tr><th class="l">Record</th><th class="l">Our leader</th><th>Now</th><th>School record</th><th class="l"></th></tr>${watch}</table></div>` : noData("Once games are played, our leader in each record's stat shows here.")}
+      ${next.length ? `<div class="kicker" style="margin-top:12px">Within reach next game</div><ul class="msl">${next.map(m => `<li>${esc(m.txt)}</li>`).join("")}</ul>` : ""}
+      <p class="small" style="margin:4px 0 0">During a game the PA page and the broadcast page show what's coming up and pop up the moment a record or milestone falls. Season steps: every ${MS_STEP.pts} points and rebounds, ${MS_STEP.ast} assists, ${MS_STEP.tpm} threes, steals and blocks. "Coming up": within ${MS_NEAR.pts} points, ${MS_NEAR.reb} rebounds, ${MS_NEAR.ast} assists or ${MS_NEAR.tpm} of the rest. Averages and percentages are shown here only.</p></div>
+    <div class="stblk"><div class="row between"><div class="kicker">School records · ${team === "girls" ? "Girls" : "Boys"}</div>${edit ? `<div class="row"><button class="btn sm" data-act="recedit" data-team="${team}" data-id="">Add a record</button>${(S.teams[team] || {}).records ? `<button class="btn sm" data-act="recseed" data-team="${team}">Back to the gym board</button>` : ""}</div>` : ""}</div>
+      <div class="scroll-x"><table class="pin stt rect"><tr><th class="l">Category</th><th>Record</th><th class="l">Holder</th><th class="l">Year</th><th class="l"></th>${edit ? "<th></th>" : ""}</tr>${grp}</table></div>
+      <p class="small" style="margin:4px 0 0">From the record board in the gym. ${edit ? "Edit fixes one; a new record set this season goes in here once it's official." : "A Coach or Admin can change them."}</p></div>
+    <div class="stblk"><div class="row between"><div class="kicker">1,000-point club</div>${edit ? `<button class="btn sm" data-act="clubadd" data-team="${team}">Add</button>` : ""}</div>
+      <div class="clubl">${club.map((c, i) => `<span class="chip">${esc(c.who)} <b>${esc(c.yr)}</b>${edit ? ` <button class="lnk" data-act="clubdel" data-team="${team}" data-i="${i}" aria-label="Take ${esc(c.who)} off" title="Take off">✕</button>` : ""}</span>`).join("")}</div></div>
+    <div class="stblk"><div class="kicker">Career totals before this season</div>
+      <div class="scroll-x"><table class="pin stt"><tr><th class="l">Player</th><th>PTS</th><th>REB</th><th>AST</th><th>3PM</th><th>STL</th><th>BLK</th><th>Career PTS now</th></tr>${pt || `<tr><td class="l" colspan="8">No players on the roster yet.</td></tr>`}</table></div>
+      <p class="small" style="margin:4px 0 0">Varsity totals from earlier seasons. Career milestones (the 1,000-point club too) and career records count a player once that box has a number, even 0. ${edit ? "Saves as you type, on every device." : "A Coach or Admin fills these in."}</p></div></div>`;
+}
+function recSheet(team, id){
+  const r = recsOf(team).find(x => x.id === id) || {k:"season", s:"pts", t:"", who:"", yr:"", opp:""}, o = (v, l, cur) => `<option value="${v}" ${v === cur ? "selected" : ""}>${esc(l)}</option>`;
+  openSheet({rec:{team, id}, html:() => `<h3>${id ? "Fix a record" : "Add a record"}</h3><form id="rform" class="stack"><div class="row">
+    <label class="fld"><span>Kind</span><select name="k">${Object.entries(RK).map(([k, l]) => o(k, l, r.k)).join("")}</select></label>
+    <label class="fld"><span>Stat</span><select name="s">${Object.entries(RS).map(([k, l]) => o(k, l, r.s)).join("")}</select></label>
+    <label class="fld" style="width:120px"><span>Record</span><input type="text" name="t" value="${esc(r.t)}" placeholder="689, 23.4, 62% or 26-10" required></label></div>
+    <div class="row"><label class="fld" style="flex:1;min-width:180px"><span>Holder</span><input type="text" name="who" value="${esc(r.who)}" placeholder="Team, or the player's name"></label>
+    <label class="fld" style="width:120px"><span>Year</span><input type="text" name="yr" value="${esc(r.yr)}" placeholder="'26-'27"></label>
+    <label class="fld" style="width:160px"><span>Opponent</span><input type="text" name="opp" value="${esc(r.opp)}" placeholder="Single games"></label></div>
+    <div class="row"><button class="btn primary" type="submit">Save</button><button class="btn" type="button" data-close>Cancel</button>${id ? `<button class="btn dark" type="button" data-act="recdel">Remove</button>` : ""}</div></form>`});
+}
+
 /* ---------- Stats in depth (0.14.0) ----------
    Every number here comes from plays the book already has: no new taps. A season view is a list of games (the season's
    counted games through the picks at the top of Stats), each taken apart once (dig) and kept until the game changes.
    Anything that needs the game clock counts only clock games: games where the board's (or a typed) clock is on at least
    9 plays in 10, so a game with no clock never waters down a per-minute number, and those numbers say how many games
    they come from. Anything that needs who was on the floor counts only plays with five of ours on it (subs tapped). */
-const ST_SECS = [["team", "Team"], ["players", "Players"], ["shooting", "Shooting"], ["flow", "Game flow"], ["lineups", "Lineups"], ["scout", "Scouting"]];
+const ST_SECS = [["team", "Team"], ["players", "Players"], ["shooting", "Shooting"], ["flow", "Game flow"], ["lineups", "Lineups"], ["scout", "Scouting"], ["records", "Records"]];
 const STAT_T = new Set(["FG", "FT", "REB", "AST", "STL", "BLK", "TO", "PF", "TF"]);
 const DIG = new WeakMap();
 const gSig = g => [g.ev.length, g.rev || 0, g.upd || 0, g.status, g.scrim ? 1 : 0, g.qlen || 0].join(":");
@@ -4535,7 +4675,7 @@ function viewSeason(){
   const sum = any || ui.stComp ? `<div class="small" style="margin-top:6px;font-weight:600">${n} of ${S0.all.length} game${S0.all.length === 1 ? "" : "s"} · ${w}-${l}${n ? ` · ${fx1(S0.ds.reduce((s, d) => s + d.sc.us, 0) / n)}-${fx1(S0.ds.reduce((s, d) => s + d.sc.them, 0) / n)} a game` : ""}${ui.stComp ? " · competitive minutes only" : ""}</div>` : teamRecord(team);
   const csv = `<div class="row" style="margin-top:10px"><p class="small" style="margin:0;flex:1 1 260px">Season numbers count games that are over. Shooting percentages leave out points-only games. ⏱ needs the game clock, 🔁 needs subs tapped.</p><button class="btn sm" data-act="seasoncsv" data-team="${team}">Season CSV</button><button class="btn sm" data-act="allcsv" data-team="${team}">All games CSV</button></div>`;
   const empty = `<div class="card"><p style="margin:0">${S0.all.length ? "No games match these picks." : "No games over yet. A game counts here once it's over."}</p></div>`;
-  const body = sec === "scout" ? scoutCard(S0) : !n ? empty : `<div class="card">${{
+  const body = sec === "records" ? recordsView(S0) : sec === "scout" ? scoutCard(S0) : !n ? empty : `<div class="card">${{
     team:() => stLeaders(S0, L) + `<div class="stblk">${teamLineOf(S0)}</div>` + resultsChart(S0) + trendCard(S0) + ffTable(S0) + restTable(S0) + groupTable(S0, L) + teamHighs(S0) + oppTable(S0) + districtCard(team) + csv,
     players:() => playersTable(S0, L) + rangeChart(S0, L) + scatterChart(S0, L) + compareCard(S0, L) + assistNet(S0) + csv,
     shooting:() => shotChartCard(S0, L) + howTeam(S0) + ftTeam(S0) + rimCard(S0),
@@ -4543,7 +4683,7 @@ function viewSeason(){
     lineups:() => unitsCard(S0) + rotationCard(S0) + minutesCard(S0, L) + benchCard(S0) + foulCard(S0, L) + bigCard(S0) + `<p class="small" style="margin:12px 0 0">Each player on and off the floor (+/-, shares, rebounding, defense): Players, On the floor.</p>`}[sec]()}</div>`;
   return `<div class="stack stv"><div class="card rcard"><div class="row between"><div class="tc-head" style="margin:0"><img src="bobcat-head.png" alt=""><div><div class="kicker">2026-27 · Season stats</div><h2>${esc(T.name)}</h2></div></div>
       <div class="row">${["boys", "girls"].map(t => `<button class="btn sm" data-act="stteam" data-v="${t}" aria-pressed="${t === team}">${t === "girls" ? "Girls" : "Boys"}</button>`).join("")}</div></div>
-      ${filterBar(S0)}${sum}
+      ${sec === "records" ? "" : filterBar(S0) + sum}
       <div class="stnav" role="group" aria-label="Stats section">${ST_SECS.map(([k, lb]) => `<button data-act="stsec" data-v="${k}" aria-pressed="${k === sec}">${lb}</button>`).join("")}</div></div>${body}</div>`;
 }
 /* ---- The player page: more on top of the game log ---- */
@@ -4646,6 +4786,7 @@ function viewSetup(){
   return `<div class="stack" style="max-width:880px">${Sync.panel()}
     <div class="card stack"><h3 style="font-size:22px">Game rules</h3><div class="row" style="align-items:flex-end">${num("bonus","Bonus on foul #",15)}${num("to60","60s timeouts",9)}${num("to30","30s timeouts",9)}${num("qlen","Quarter (min)",20)}${num("otlen","OT (min)",10)}</div>
       <p class="small" style="margin:0">TSSAA follows NFHS: team fouls reset every quarter, the 5th puts the other team in the bonus (2 shots), overtime counts with the 4th quarter. 3 sixty-second and 2 thirty-second timeouts, plus one more per overtime.${edit ? "" : " A coach or an Admin changes these."}</p></div>
+    ${edit ? `<div class="card stack"><h3 style="font-size:22px">School records</h3><p class="small" style="margin:0">The gym's record boards and the 1,000-point club are built in. Fix or add to them, and type in each player's career totals from before this season, on Stats, Records. The PA and broadcast pages call out a record or milestone when it's close and the moment it falls.</p><div class="row"><button class="btn" data-act="gorec">Open Records</button></div></div>` : ""}
     <div class="card stack"><h3 style="font-size:22px">This device</h3>
       <div class="row"><span>Home team on the</span><button class="btn sm" data-act="flip" data-v="left" aria-pressed="${!st.flip}">Left</button><button class="btn sm" data-act="flip" data-v="right" aria-pressed="${!!st.flip}">Right</button></div>
       <p class="small" style="margin:0">Left matches our scorer's table. Each screen sets its own: the Scorer screen, the PA page and the broadcast page all have a ⇄ Sides button. The fan page always shows home on the left.</p></div>
@@ -5432,6 +5573,13 @@ document.addEventListener("click", async ev => {
     case "stview": ui.stView = a.dataset.v; render(); break;
     case "stcomp": ui.stComp = !ui.stComp; render(); break;
     case "stfclear": ui.stf = {}; render(); break;
+    case "recedit": if(canCoach()) recSheet(a.dataset.team, a.dataset.id || ""); break;
+    case "recdel": { const sh = ui.sheet; if(!sh || !sh.rec || !canCoach() || !confirm("Remove this record? Every device loses it.")) break; const {team, id} = sh.rec; closeSheet(); recSave(team, T => { T.records = T.records.filter(r => r.id !== id); }); break; }
+    case "recseed": if(canCoach() && confirm("Put the records and the 1,000-point club back the way the gym boards have them? Every device gets them.")){ const T = S.teams[a.dataset.team]; delete T.records; delete T.club; S.teamsRev++; save(); Sync.dirtyTeams(); render(); } break;
+    case "clubadd": if(canCoach()) openSheet({club:{team:a.dataset.team}, html:() => `<h3>Add to the 1,000-point club</h3><form id="cform" class="stack"><div class="row"><label class="fld" style="flex:1;min-width:180px"><span>Name</span><input type="text" name="who" required></label><label class="fld" style="width:120px"><span>Year they graduated</span><input type="text" name="yr" placeholder="2027"></label></div><div class="row"><button class="btn primary" type="submit">Add</button><button class="btn" type="button" data-close>Cancel</button></div></form>`}); break;
+    case "clubdel": { const team = a.dataset.team, i = +a.dataset.i, c = clubOf(team)[i]; if(c && canCoach() && confirm(`Take ${c.who} off the 1,000-point club list?`)) recSave(team, T => { T.club.splice(i, 1); }); break; }
+    case "msok": msMark(a.dataset.id); render(); break;
+    case "gorec": if(canCoach()){ ui.tab = "stats"; ui.stSec = "records"; saveUi(); render(); window.scrollTo(0, 0); } break;
     case "plpdf": if(canCoach()) playerPdf(a.dataset.team, a.dataset.pid, a.dataset.opp || ""); break;
     case "glopp": if(ui.sheet){ ui.sheet.opp = a.dataset.opp; ui.glSel = null; const top = ($("#sheet .sheet") || {}).scrollTop || 0; renderSheet(); const nb = $("#sheet .sheet"); if(nb) nb.scrollTop = top; } break;
     case "logbox": { const x = S.games[a.dataset.gid]; if(!x) break; closeSheet(); ui.gid = x.id; ui.follow = false; ui.tab = "box"; saveUi(); render(); window.scrollTo(0, 0); break; }
@@ -5611,6 +5759,8 @@ document.addEventListener("change", ev => {
     if(pressing) document.addEventListener("pointerup", () => setTimeout(softRender, 0), {once:true}); else setTimeout(softRender, 0); } }
   if(t.hasAttribute("data-bnotes")){ const g = S.games[t.dataset.gid], k = t.dataset.bnotes === "bnotes" ? "bnotes" : "notes"; if(g){ setBooth(g, b => { b[k] = t.value; }, [k]); toast(k === "bnotes" ? "Broadcast notes saved." : "PA notes saved."); noteStep(g, k, t, k === "bnotes" ? "Broadcast notes" : "PA notes"); afterPress(softRender); } }
   if(t.hasAttribute("data-bcpad")){ bcPadSave(t, true); const gg = S.games[t.dataset.bcpad]; if(gg){ padStep(gg, t); afterPress(render); } }
+  if(t.dataset.prior && canCoach()){ const [team, pid, k] = t.dataset.prior.split("|"), T = S.teams[team]; if(T){ const v = t.value.trim(), o = ((T.prior || (T.prior = {}))[pid] || (T.prior[pid] = {}));
+    if(v === "") delete o[k]; else { const n = parseInt(v, 10); if(isNaN(n) || n < 0){ t.value = o[k] ?? ""; return; } o[k] = n; } S.teamsRev++; save(); Sync.dirtyTeams(); afterPress(softRender); } }   // a tap that ended the typing still lands
   if(t.dataset.set && (t.dataset.set === "pubSec" ? canAdmin() : canCoach())){ const v = parseInt(t.value, 10); if(!isNaN(v)){ S.settings[t.dataset.set] = v; S.teamsRev++; save(); Sync.dirtyTeams(); render(); } }
   if(t.id === "restore-file" && t.files[0]){ const r = new FileReader(); r.onload = () => restore(r.result); r.readAsText(t.files[0]); t.value = ""; }
 });
@@ -5638,6 +5788,12 @@ document.addEventListener("submit", ev => {
     const hx = k => { const v = String(d.get(k) || "").trim(); return hexOk(v) ? v.toUpperCase() : hexOk("#" + v) ? ("#" + v).toUpperCase() : ""; };
     S.opps[okey(name)] = {name, mascot:String(d.get("mascot") || "").trim(), girls:String(d.get("girls") || "").trim(), abbr:String(d.get("abbr") || "").trim().toUpperCase().slice(0, 4), c1:hx("c1"), c2:hx("c2"), upd:Date.now()};
     S.teamsRev++; save(); Sync.dirtyTeams(); closeSheet(); render(); toast(name + " saved."); return; }
+  if(f.id === "rform" && s && s.rec){ if(!canCoach()) return; const d = new FormData(f), k = String(d.get("k")), st = String(d.get("s")), t = String(d.get("t") || "").trim(), v = parseFloat(t.replace(/,/g, ""));
+    if(!RK[k] || !RS[st] || isNaN(v)){ toast("Type the record as a number, like 689, 23.4, 62% or 26-10."); return; }
+    const r = {id:k + "-" + st, k, s:st, v, t, who:String(d.get("who") || "").trim(), yr:String(d.get("yr") || "").trim(), opp:String(d.get("opp") || "").trim()}, O = s.rec.id || r.id;
+    closeSheet(); recSave(s.rec.team, T => { const L = T.records.filter(x => x.id !== r.id || x.id === O), at = L.findIndex(x => x.id === O); if(at >= 0) L[at] = r; else L.push(r); T.records = L; }); toast("Saved. Every device gets it."); return; }
+  if(f.id === "cform" && s && s.club){ if(!canCoach()) return; const d = new FormData(f), who = String(d.get("who") || "").trim(); if(!who) return;
+    closeSheet(); recSave(s.club.team, T => { T.club.push({who, yr:String(d.get("yr") || "").trim()}); }); return; }
   if(f.id === "tform" && s){ const v = new FormData(f).get("t"); closeSheet(); s.onSave(String(v)); return; }
   if(f.id === "bcpform" && s && s.bc){ const d = new FormData(f), note = String(d.get("note") || "").trim(), say = String(d.get("say") || "").trim();
     // His phonetic spelling is his own note (bcSayKey): one Undo takes back whatever this Save changed.
