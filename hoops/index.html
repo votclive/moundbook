@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="script-src-attr 'none'; object-src 'none'; base-uri 'self'">
+<!-- The page's lock: the only script that may run is the one in this file (named by the SHA-256 of its text) and files
+     from this folder (fb.js). Text that turns up in the page from a roster, a game or the cloud can never run as code.
+     After ANY edit to the script, run "python3 hoops/stamp.py hoops": with a stale hash the browser runs nothing. -->
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-/OT2Oua2UaDp+eyTInvObW3aK1lXXNWrUY60A+/nwIQ='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#094A28">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -734,6 +737,8 @@ table.rect tr.sub td{background:transparent;padding-top:10px}
   .board,.board *{background:#fff!important;color:#000!important;text-shadow:none!important;border-color:#000!important}
   main{padding:0} .card{border:0;padding:0}
 }
+#nostart{visibility:hidden;animation:nostart 0s linear 5s forwards;margin:24px;font:600 18px/1.4 system-ui,sans-serif}
+@keyframes nostart{to{visibility:visible}}
 </style>
 </head>
 <body>
@@ -746,6 +751,9 @@ table.rect tr.sub td{background:transparent;padding-top:10px}
 <div id="fu"></div>
 <div id="sheet"></div>
 <div class="toast" id="toast" role="status" hidden></div>
+<!-- Shows only if the script below never runs (after 5 seconds): the page's lock refuses a script whose stamp is stale, and
+     words beat a blank page. The script's first line takes it away. -->
+<p id="nostart">Brier Stats didn't start. Close this page and open it again. If it keeps happening, the latest update didn't load: let Coach know.</p>
 
 <script>
 "use strict";
@@ -753,7 +761,8 @@ table.rect tr.sub td{background:transparent;padding-top:10px}
    One device scores a game; everyone else signed in follows it live on the Announcer page. Each device's own saved copy is the
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
-const BS_VERSION = "0.16.11";
+{ const n = document.getElementById("nostart"); if(n) n.remove(); }   // the script is running: see #nostart
+const BS_VERSION = "0.16.12";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -2819,15 +2828,15 @@ function visList(g){
     // typed there holds him): the book keeps him on this one (paFold), and the row says so instead of promising he comes out.
     const to = off && !used && vis.find(x => x.pid === p.pid), sat = to && book.some(x => x !== p && paNum(x.num) === paNum(to.num) && x.name && x.name !== (g.paIn || {})[paNum(to.num)] && !sameKid(x.name, to.name)), kept = to && !p.byPA && book.some(x => x !== p && paNum(x.num) === paNum(to.num) && x.name && x.name !== (g.paIn || {})[paNum(to.num)]), stuck = to && (sat || kept || g.status !== "pre");
     const held = (tag, why, who = v ? v.name : nm) => `<span class="visbook"><span><b>${esc(who || "#" + n)}</b> <span class="tag">${tag}</span></span><span class="small">${why}</span></span>`;
-    return `<div class="visrow">${v ? `<input type="text" inputmode="numeric" name="visnum:${k}" data-vis="num" data-gid="${g.id}" data-vid="${v.pid}" data-num="${esc(n)}" value="${esc(n)}" aria-label="Number" title="Change the number">` : `<span class="visn" title="In the scorer's book">${esc(n)}</span>`}${nm && !fromPA
+    return `<div class="visrow">${v ? `<input type="text" inputmode="numeric" name="visnum:${esc(k)}" data-vis="num" data-gid="${g.id}" data-vid="${esc(v.pid)}" data-num="${esc(n)}" value="${esc(n)}" aria-label="Number" title="Change the number">` : `<span class="visn" title="In the scorer's book">${esc(n)}</span>`}${nm && !fromPA
       ? `<span class="visbook"><span><b>${esc(nm)}</b> <span class="tag" title="The scorer named #${esc(n)} on the iPad. That name wins; the scorer fixes it there.">Scorer's book</span></span>${v && v.name && nameKey(v.name) !== nameKey(nm) ? `<span class="small">Yours, ${esc(v.name)}, isn't used.</span>` : ""}</span>`
       : moved ? held(`Book: #${esc(moved.num)}`, `The scorer has this player as #${esc(moved.num)}.`)
       : gone ? held("Not in the book", `The scorer took #${esc(n)} out, so the PA page leaves this one out.`)
       : two ? held("Not in the book", `The book's #${esc(n)} is ${esc(p.name)}, who has plays in it.`)
       : stuck ? held(`Book: #${esc(n)}`, `${sat || kept ? `The scorer's book has another player on #${esc(to.num)}` : "The game has started"}, so the book keeps this one on #${esc(n)}. The scorer fixes it on the iPad.`)
       : off ? held("Off your list", used ? `The book keeps #${esc(n)}: ${g.status === "final" ? "the game is final" : "the scorer has used this player"}.` : "It comes out of the scorer's book in a moment.")
-      : `<input type="text" name="visname:${k}" data-vis="name" data-gid="${g.id}" data-vid="${v ? v.pid : ""}" data-pid="${p ? p.pid : ""}" data-num="${esc(n)}" value="${esc(v ? v.name || "" : "")}" placeholder="${p ? "In the book with no name" : "Full name"}" aria-label="Name for #${esc(n)}"${fromPA ? ` title="In the scorer's book from your list. A fix here goes into the book too, until the scorer changes it."` : ""}>`}<input type="text" name="vissay:${k}" data-vissay="1" data-gid="${g.id}" data-vid="${v ? v.pid : ""}" data-num="${esc(n)}" value="${esc(say)}" placeholder="Phonetic" aria-label="Phonetic spelling for #${esc(n)}">${v
-      ? `<button class="btn sm" type="button" data-act="visdel" data-gid="${g.id}" data-vid="${v.pid}" title="Take #${esc(n)} off your list" aria-label="Take #${esc(n)} off your list">✕</button>` : `<span></span>`}</div>`; }).join("");
+      : `<input type="text" name="visname:${esc(k)}" data-vis="name" data-gid="${g.id}" data-vid="${esc(v ? v.pid : "")}" data-pid="${p ? p.pid : ""}" data-num="${esc(n)}" value="${esc(v ? v.name || "" : "")}" placeholder="${p ? "In the book with no name" : "Full name"}" aria-label="Name for #${esc(n)}"${fromPA ? ` title="In the scorer's book from your list. A fix here goes into the book too, until the scorer changes it."` : ""}>`}<input type="text" name="vissay:${esc(k)}" data-vissay="1" data-gid="${g.id}" data-vid="${esc(v ? v.pid : "")}" data-num="${esc(n)}" value="${esc(say)}" placeholder="Phonetic" aria-label="Phonetic spelling for #${esc(n)}">${v
+      ? `<button class="btn sm" type="button" data-act="visdel" data-gid="${g.id}" data-vid="${esc(v.pid)}" title="Take #${esc(n)} off your list" aria-label="Take #${esc(n)} off your list">✕</button>` : `<span></span>`}</div>`; }).join("");
   return `<div class="vis" style="${tvars(g, "them")}"><div class="row between"><span class="kicker">Their players · ${esc(g.opp)} · ${vis.length} on your list${book.length ? ` · ${book.length} in the scorer's book${named ? ` (${named} named)` : ""}` : ""}</span>
       <span class="row">${!nums.length && lk ? `<button class="btn sm primary" data-act="libuse" data-gid="${g.id}">Use the saved roster (${lk})</button>` : ""}${prior ? `<button class="btn sm" data-act="viscopy" data-gid="${g.id}" data-from="${prior.id}">Use their roster from ${esc(fmtDate(prior.date))} (${paRoster(prior, "them").length})</button>` : ""}<button class="btn sm" data-act="vispaste" data-gid="${g.id}">Paste their roster</button>${libOk(g) ? `<button class="btn sm" data-act="libopen" data-team="${g.team}" data-opp="${esc(okey(g.opp))}" title="Names, numbers and phonetic spellings for every game against ${esc(g.opp)}">Edit saved roster${lk ? ` (${lk})` : ""}</button>` : ""}</span>
       ${fromLib ? `<div class="flag small" style="margin:0;flex-basis:100%"><span>From the saved ${esc(g.opp)} roster.${flows ? " Fixes and new players here go back into it for next time; taking one off tonight's list doesn't." : ""}</span>${g.status === "pre" ? `<button class="btn sm" data-act="visclear" data-gid="${g.id}">Clear tonight's list</button>` : ""}</div>` : ""}</div>
@@ -3002,7 +3011,7 @@ function libBook(g, pairs){ const p = libFlow(g, pairs); libApply(p.now); sayPut
 function libMerge(r, first){ const cl = (r && r.e) || {}, m = S.lib.e = S.lib.e || {}, ow = S.libOwe = S.libOwe || {}, fix = {};
   if(first){ const has = new Set(Object.values(cl).map(e => e && e.t + "|" + e.o)), used = new Set(Object.values(S.booth || {}).flatMap(b => Object.keys((b && b.visBy) || {})));
     Object.keys(m).forEach(k => { const x = m[k]; if(x && (x.at || 0) <= 1 && !cl[k] && has.has(x.t + "|" + x.o)){ delete m[k]; delete ow[k]; if(!used.has(k) && k in (S.sayOwe || {})){ delete S.say[k]; delete S.sayOwe[k]; } } }); }
-  Object.entries(cl).forEach(([k, y]) => { if(!y || typeof y !== "object" || !y.t) return; const x = m[k], o = ow[k] && typeof ow[k] === "object" ? ow[k] : null;
+  Object.entries(cl).forEach(([k, y]) => { if(!y || typeof y !== "object" || !y.t || idBad(k)) return; const x = m[k], o = ow[k] && typeof ow[k] === "object" ? ow[k] : null;
     if(!x){ m[k] = libNorm({...y}); return; }
     const e = libNorm({...x}), c = libNorm({...y}), up = [];
     LF.forEach(f => { const a = e.f[f], b = c.f[f], owed = o ? f in o : k in ow;
@@ -3020,9 +3029,9 @@ function libSheetHtml(t, o){
   const name = libName(t, o), kids = sortRoster(libRoster(t, o, true).filter(e => !e.del)), seen = {}, dup = new Set();
   kids.forEach(e => { if(seen[e.num]) dup.add(e.num); seen[e.num] = 1; });
   // A row's boxes have no grey examples (only the add row has them), so an empty box never reads as data.
-  const box = (e, f, lbl, x = "") => { const v = f === "say" ? S.say[e.pid] || "" : e[f] || ""; return `<input type="text" class="l${f}" name="lib:${e.pid}:${f}" data-lib="${e.pid}" data-f="${f}" value="${esc(v)}"${v && (f === "name" || f === "say") ? ` title="${esc(v)}"` : ""} aria-label="${lbl} for #${esc(e.num)}"${x}>`; };
+  const box = (e, f, lbl, x = "") => { const v = f === "say" ? S.say[e.pid] || "" : e[f] || ""; return `<input type="text" class="l${f}" name="lib:${e.pid}:${f}" data-lib="${esc(e.pid)}" data-f="${f}" value="${esc(v)}"${v && (f === "name" || f === "say") ? ` title="${esc(v)}"` : ""} aria-label="${lbl} for #${esc(e.num)}"${x}>`; };
   const yr = (v, at) => `<select class="lgrade" ${at}>${["", "Fr", "So", "Jr", "Sr"].map(y => `<option value="${y}" ${y === (v || "") ? "selected" : ""}>${y || "–"}</option>`).join("")}</select>`;
-  const row = e => `<div class="librow${dup.has(e.num) ? " dup" : ""}">${box(e, "num", "Number", ' inputmode="numeric"')}${box(e, "name", "Name")}${box(e, "say", "Phonetic spelling")}${box(e, "pos", "Position")}${yr(e.grade, `name="lib:${e.pid}:grade" data-lib="${e.pid}" data-f="grade" aria-label="Year for #${esc(e.num)}"`)}${box(e, "ht", "Height")}<button class="btn sm ldel" type="button" data-act="libdel" data-pid="${e.pid}" title="Take #${esc(e.num)} off the saved roster" aria-label="Take #${esc(e.num)} off the saved roster">✕</button></div>`;
+  const row = e => `<div class="librow${dup.has(e.num) ? " dup" : ""}">${box(e, "num", "Number", ' inputmode="numeric"')}${box(e, "name", "Name")}${box(e, "say", "Phonetic spelling")}${box(e, "pos", "Position")}${yr(e.grade, `name="lib:${e.pid}:grade" data-lib="${esc(e.pid)}" data-f="grade" aria-label="Year for #${esc(e.num)}"`)}${box(e, "ht", "Height")}<button class="btn sm ldel" type="button" data-act="libdel" data-pid="${e.pid}" title="Take #${esc(e.num)} off the saved roster" aria-label="Take #${esc(e.num)} off the saved roster">✕</button></div>`;
   return `<div class="row between" style="align-items:flex-start"><div><div class="kicker">${t === "girls" ? "Girls" : "Boys"} · saved roster</div><h3>${esc(name)}</h3></div>${undoBtn()}</div>
     <p class="small" style="margin:0 0 8px">A new game against ${esc(name)} starts with these players on the Scorer screen and in the PA's Prep. A name fixed here is fixed on tonight's list too. Each box saves as you leave it${Sync.live() ? " and goes to everyone signed in" : ""}. Phonetic spellings show only on the PA and broadcast pages.</p>
     ${dup.size ? `<div class="flag"><span>Two players here wear ${[...dup].map(n => "#" + esc(n)).join(", ")}. Change one number, or take one off with ✕.</span></div>` : ""}
@@ -3398,7 +3407,7 @@ function viewScript(){
   const night = ui.night, games = nightGames(night);
   const dates = [...new Set(Object.values(S.games).filter(x => !x.deleted && !x.practice).map(x => x.date))].sort();
   let h = ANN_ONLY && !Sync.live() ? Sync.panel() : "";
-  h += `<div class="annbar no-print">${annModes()}<select data-night style="width:auto;max-width:340px">${dates.map(d => `<option value="${d}" ${d === night ? "selected" : ""}>${esc(fmtDate(d))} · ${esc([...new Set(nightGames(d).map(x => x.opp))].join(", "))}${nightGames(d).some(x => x.ha === "Away") ? " (away)" : ""}</option>`).join("")}<option value="practice" ${night === "practice" ? "selected" : ""}>Practice game</option></select>
+  h += `<div class="annbar no-print">${annModes()}<select data-night style="width:auto;max-width:340px">${dates.map(d => `<option value="${esc(d)}" ${d === night ? "selected" : ""}>${esc(fmtDate(d))} · ${esc([...new Set(nightGames(d).map(x => x.opp))].join(", "))}${nightGames(d).some(x => x.ha === "Away") ? " (away)" : ""}</option>`).join("")}<option value="practice" ${night === "practice" ? "selected" : ""}>Practice game</option></select>
     <button class="btn sm" data-act="scriptedit">Edit the script</button><button class="btn sm" data-act="scriptcaps" aria-pressed="${ui.caps !== false}" title="Show the script in capital letters, on this device">ALL CAPS${ui.caps !== false ? " ✓" : ""}</button><button class="btn sm dark" data-act="emerg">Emergency cards</button><button class="btn sm" data-act="scriptclear" ${games.some(x => (booth(x.id).done || []).length) ? "" : "disabled"} title="Every line for this night back to unread (Undo puts them back)">Uncheck everything</button>${saySwitch()}${undoBtn()}
     <span class="small">${Sync.live() ? "Shared with everyone signed in." : "Saved on this device."}</span></div>`;
   if(!games.length) return h + `<div class="card">No games that night.</div>`;
@@ -4493,7 +4502,7 @@ function ftTeam(S0){
   const F = ftOf(S0).T; if(!F.us.one[1] && !F.them.one[1]) return "";
   const s = ([m, n]) => n ? `${m}-${n} <span class="small">${pc(m, n)}</span>` : "–", qs = qCols(S0);
   const rows = qs.map(k => [qLbl(k)].concat(["us", "them"].map(tm => s(F[tm].q[k] || [0, 0])))).concat([["1st shot of a trip", s(F.us.one), s(F.them.one)], ["2nd shot", s(F.us.two), s(F.them.two)], ["In the bonus", s(F.us.bon), s(F.them.bon)], ["Shooting fouls (no bonus)", s(F.us.nob), s(F.them.nob)], ["And-ones", s(F.us.and1), s(F.them.and1)], ["Technicals", s(F.us.tech), s(F.them.tech)]]);
-  return `<div class="stblk"><div class="kicker">Free throws</div>${stTable(["", "Us", "Opponents"], rows)}<p class="small" style="margin:4px 0 0">A trip is one player's free throws in a row. The bonus is from the team fouls at the time (${S.settings.bonus} a quarter).</p></div>`;
+  return `<div class="stblk"><div class="kicker">Free throws</div>${stTable(["", "Us", "Opponents"], rows)}<p class="small" style="margin:4px 0 0">A trip is one player's free throws in a row. The bonus is from the team fouls at the time (${esc(S.settings.bonus)} a quarter).</p></div>`;
 }
 // Rim protection: how the other teams shoot at the rim and in the paint against us, and our blocks.
 function rimCard(S0){
@@ -5274,7 +5283,7 @@ async function saveBackup(g){
    a correction later sends it again and the script replaces that game's file. The script runs as Coach and checks the
    sender's Brier Stats sign-in with Firestore, so only Coach and scorers can save, and only into its own folder. Finals from
    before this device first saw the link stay as they were. Each device keeps what it sent in its own key. */
-const DRIVE_GS = "// Brier Stats: automatic backup to Google Drive.\n// Set up once, on a laptop signed in to the Google account whose Drive should keep the backups:\n//   1. At script.google.com, start a New project, select everything in the editor and paste this whole file over it.\n//   2. Deploy > New deployment > the gear > Web app. Execute as: Me. Who has access: Anyone. Deploy, then allow access.\n//   3. Copy the Web app URL and paste it into Brier Stats: Setup > Google Drive backup.\n// After every final, the device scoring the game sends the same file Save backup makes. It lands in the\n// \"Brier Stats backups\" folder, one file per game; a correction after the final replaces that game's file.\n// Only someone signed in to Brier Stats as Coach or a scorer can save, and only a Brier Stats backup into that folder.\nconst PROJECT = \"moundbook-ghs\";\nconst FOLDER = \"Brier Stats backups\";\n\nfunction doPost(e){\n  const lock = LockService.getScriptLock();\n  let locked = false;\n  try{\n    const req = JSON.parse(e.postData.contents);\n    const email = scorer(req.token);\n    lock.waitLock(30000); locked = true;\n    const folder = home();\n    if(req.test) return reply({ok:true, folder:folder.getUrl(), owner:Session.getEffectiveUser().getEmail(), email:email});\n    const name = String(req.name || \"\"), data = String(req.data || \"\"), upd = Number(req.upd) || 0;\n    if(!/^brier-stats-backup-[\\w.-]{1,160}\\.json$/.test(name)) throw new Error(\"That isn't a Brier Stats backup.\");\n    if(data.length > 9e6) throw new Error(\"That backup is too big for one file.\");\n    if(JSON.parse(data).brierstats !== 1) throw new Error(\"That isn't a Brier Stats backup.\");\n    let f = null;\n    for(const it = folder.getFilesByName(name); it.hasNext();){ const x = it.next(); if(!x.isTrashed()){ f = x; break; } }\n    // Two devices can send the same game: the copy with the newer edit stays.\n    if(f && Number(f.getDescription()) > upd) return reply({ok:true, url:f.getUrl(), kept:true});\n    if(f) f.setContent(data); else f = folder.createFile(name, data, \"application/json\");\n    f.setDescription(String(upd));\n    return reply({ok:true, url:f.getUrl()});\n  }catch(err){\n    return reply({ok:false, error:String(err && err.message || err)});\n  }finally{\n    if(locked) lock.releaseLock();\n  }\n}\n\n// Opening the link in a browser shows it's running.\nfunction doGet(){ return reply({ok:true, app:\"Brier Stats backup\"}); }\n\n// The sign-in Brier Stats sends with each backup. Firestore checks it: a made-up or expired one is turned away, and\n// its rules let each person read only their own role. Coach is the Mound Book owner; scorers are on the Brier Stats list.\nfunction scorer(token){\n  const c = claims(token);\n  if(role(\"members/\" + c.uid, token) === \"owner\" || role(\"hoopsMembers/\" + c.uid, token) === \"scorer\") return c.email;\n  throw new Error(\"Only Coach and scorers can save backups.\");\n}\nfunction claims(token){\n  let part = String(token || \"\").split(\".\")[1];\n  if(!part) throw new Error(\"Sign in to Brier Stats first.\");\n  while(part.length % 4) part += \"=\";\n  const c = JSON.parse(Utilities.newBlob(Utilities.base64DecodeWebSafe(part)).getDataAsString());\n  if(c.aud !== PROJECT || c.iss !== \"https://securetoken.google.com/\" + PROJECT || !c.sub || c.exp * 1000 < Date.now())\n    throw new Error(\"Sign in to Brier Stats again.\");\n  return {uid:c.sub, email:c.email || \"\"};\n}\nfunction role(path, token){\n  const r = UrlFetchApp.fetch(\"https://firestore.googleapis.com/v1/projects/\" + PROJECT + \"/databases/(default)/documents/\" + path,\n    {headers:{Authorization:\"Bearer \" + token}, muteHttpExceptions:true});\n  if(r.getResponseCode() !== 200) return \"\";\n  const f = JSON.parse(r.getContentText()).fields || {};\n  return f.role && f.role.stringValue || \"\";\n}\n\n// The backups folder: the one this script made, or one by that name, or a new one.\nfunction home(){\n  const props = PropertiesService.getScriptProperties(), id = props.getProperty(\"folder\");\n  if(id){ try{ const f = DriveApp.getFolderById(id); if(!f.isTrashed()) return f; }catch(e){} }\n  let f = null;\n  for(const it = DriveApp.getFoldersByName(FOLDER); it.hasNext();){ const x = it.next(); if(!x.isTrashed()){ f = x; break; } }\n  if(!f) f = DriveApp.createFolder(FOLDER);\n  props.setProperty(\"folder\", f.getId());\n  return f;\n}\n\nfunction reply(o){ return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }\n";
+const DRIVE_GS = "// Brier Stats: automatic backup to Google Drive.\n// Set up once, on a laptop signed in to the Google account whose Drive should keep the backups:\n//   1. At script.google.com, start a New project, select everything in the editor and paste this whole file over it.\n//   2. Deploy > New deployment > the gear > Web app. Execute as: Me. Who has access: Anyone. Deploy, then allow access.\n//   3. Copy the Web app URL and paste it into Brier Stats: Setup > Google Drive backup.\n// After every final, the device scoring the game sends the same file Save backup makes. It lands in the\n// \"Brier Stats backups\" folder, one file per game; a correction after the final replaces that game's file.\n// Only someone signed in to Brier Stats as Coach or a scorer can save, and only a Brier Stats backup into that folder.\nconst PROJECT = \"moundbook-ghs\";\nconst FOLDER = \"Brier Stats backups\";\n\nfunction doPost(e){\n  const lock = LockService.getScriptLock();\n  let locked = false;\n  try{\n    const req = JSON.parse(e.postData.contents);\n    const email = scorer(req.token);\n    lock.waitLock(30000); locked = true;\n    const folder = home();\n    if(req.test) return reply({ok:true, folder:folder.getUrl(), owner:Session.getEffectiveUser().getEmail(), email:email});\n    const name = String(req.name || \"\"), data = String(req.data || \"\"), upd = Math.min(Number(req.upd) || 0, Date.now() + 60000);   // never from the future: that would shut out every later backup of the game\n    if(!/^brier-stats-backup-[\\w.-]{1,160}\\.json$/.test(name)) throw new Error(\"That isn't a Brier Stats backup.\");\n    if(data.length > 9e6) throw new Error(\"That backup is too big for one file.\");\n    if(JSON.parse(data).brierstats !== 1) throw new Error(\"That isn't a Brier Stats backup.\");\n    let f = null;\n    for(const it = folder.getFilesByName(name); it.hasNext();){ const x = it.next(); if(!x.isTrashed()){ f = x; break; } }\n    // Two devices can send the same game: the copy with the newer edit stays.\n    if(f && Number(f.getDescription()) > upd) return reply({ok:true, url:f.getUrl(), kept:true});\n    if(f) f.setContent(data); else f = folder.createFile(name, data, \"application/json\");\n    f.setDescription(String(upd));\n    return reply({ok:true, url:f.getUrl()});\n  }catch(err){\n    return reply({ok:false, error:String(err && err.message || err)});\n  }finally{\n    if(locked) lock.releaseLock();\n  }\n}\n\n// Opening the link in a browser shows it's running.\nfunction doGet(){ return reply({ok:true, app:\"Brier Stats backup\"}); }\n\n// The sign-in Brier Stats sends with each backup. Firestore checks it: a made-up or expired one is turned away, and\n// its rules let each person read only their own role. Coach is the Mound Book owner; scorers are on the Brier Stats list.\nfunction scorer(token){\n  const c = claims(token);\n  if(role(\"members/\" + c.uid, token) === \"owner\" || role(\"hoopsMembers/\" + c.uid, token) === \"scorer\") return c.email;\n  throw new Error(\"Only Coach and scorers can save backups.\");\n}\nfunction claims(token){\n  let part = String(token || \"\").split(\".\")[1];\n  if(!part) throw new Error(\"Sign in to Brier Stats first.\");\n  while(part.length % 4) part += \"=\";\n  const c = JSON.parse(Utilities.newBlob(Utilities.base64DecodeWebSafe(part)).getDataAsString());\n  if(c.aud !== PROJECT || c.iss !== \"https://securetoken.google.com/\" + PROJECT || !c.sub || c.exp * 1000 < Date.now())\n    throw new Error(\"Sign in to Brier Stats again.\");\n  return {uid:c.sub, email:c.email || \"\"};\n}\nfunction role(path, token){\n  const r = UrlFetchApp.fetch(\"https://firestore.googleapis.com/v1/projects/\" + PROJECT + \"/databases/(default)/documents/\" + path,\n    {headers:{Authorization:\"Bearer \" + token}, muteHttpExceptions:true});\n  if(r.getResponseCode() !== 200) return \"\";\n  const f = JSON.parse(r.getContentText()).fields || {};\n  return f.role && f.role.stringValue || \"\";\n}\n\n// The backups folder: the one this script made, or one by that name, or a new one.\nfunction home(){\n  const props = PropertiesService.getScriptProperties(), id = props.getProperty(\"folder\");\n  if(id){ try{ const f = DriveApp.getFolderById(id); if(!f.isTrashed()) return f; }catch(e){} }\n  let f = null;\n  for(const it = DriveApp.getFoldersByName(FOLDER); it.hasNext();){ const x = it.next(); if(!x.isTrashed()){ f = x; break; } }\n  if(!f) f = DriveApp.createFolder(FOLDER);\n  props.setProperty(\"folder\", f.getId());\n  return f;\n}\n\nfunction reply(o){ return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }\n";
 const Drive = (() => {
   const KEYD = "brierstats.drive", QUIET = 20000, FOLDER = "Brier Stats backups";
   let D = null, busy = false; try{ D = JSON.parse(localStorage.getItem(KEYD) || "null"); }catch(e){}
@@ -5336,7 +5345,7 @@ const Drive = (() => {
   function card(){
     const last = Object.entries(D.g).filter(([id]) => S.games[id]).sort((a, b) => b[1].at - a[1].at)[0], lg = last && S.games[last[0]];
     return `<p style="margin:0">${on() ? "<b>On.</b> " : ""}After every final, the device scoring the game saves the same file as Save backup into the <b>${FOLDER}</b> folder in Coach's Google Drive, one file per game. A correction after the final replaces that game's file.${on() ? "" : " An Admin sets it up once, on a laptop, in about five minutes."}</p>
-      ${on() && D.folder ? `<p class="small" style="margin:0">Tested from this device: <a href="${esc(D.folder)}" target="_blank" rel="noopener">open the folder</a>${D.owner ? " in " + esc(D.owner) + "'s Drive" : ""}.</p>` : ""}
+      ${on() && D.folder ? `<p class="small" style="margin:0">Tested from this device: <a href="${esc(gLink(D.folder))}" target="_blank" rel="noopener">open the folder</a>${D.owner ? " in " + esc(D.owner) + "'s Drive" : ""}.</p>` : ""}
       ${on() && lg ? `<p class="small" style="margin:0">Last sent from this device: ${esc(usName(lg))} ${gameTitle(lg)}, ${esc(new Date(last[1].at).toLocaleString([], {month:"short", day:"numeric", hour:"numeric", minute:"2-digit"}))}.</p>` : ""}
       ${coach() ? `<div class="row"><button class="btn${on() ? "" : " primary"}" data-act="drvsetup">${on() ? "Change or test it" : "Set it up"}</button></div>`
         : !Sync.live() ? `<p class="small" style="margin:0">It needs this device signed in and live.</p>` : on() ? "" : `<p class="small" style="margin:0">An Admin turns it on.</p>`}`;
@@ -5371,7 +5380,7 @@ const Drive = (() => {
 // The FINAL banner's word on the Drive copy.
 function driveTag(g){
   const s = Drive.state(g); if(!s) return "";
-  if(s.k === "ok") return s.url ? ` <a class="small" href="${esc(s.url)}" target="_blank" rel="noopener" style="color:inherit;text-underline-offset:3px">Saved to Drive ✓</a>` : ` <span class="small">Saved to Drive ✓</span>`;
+  if(s.k === "ok") return s.url ? ` <a class="small" href="${esc(gLink(s.url))}" target="_blank" rel="noopener" style="color:inherit;text-underline-offset:3px">Saved to Drive ✓</a>` : ` <span class="small">Saved to Drive ✓</span>`;
   if(s.k === "err") return ` <button class="btn sm" data-act="drivenow" title="${esc(s.msg)}">Send to Drive</button>`;
   return ` <span class="small">${s.k === "wait" ? "Drive: no signal yet" : "Drive: saving soon"}</span>`;
 }
@@ -6375,9 +6384,17 @@ const rzRe = (m, g) => { const o = (m.rzOut || []).filter(k => (g.them || []).so
   return {was:g, ch:{}, out:o, lib:d.length ? {now:Object.fromEntries(d.map(k => [k, {del:1}])), was:Object.fromEntries(d.map(k => [k, {del:0}]))} : null}; };
 // Ids go into the page as they are (data-gid, data-id, data-pid). The app makes them from letters, digits and dashes, so a game
 // from the cloud or from a backup file with a quote or an angle bracket in one isn't this app's writing: it's left out.
-const idBad = v => v != null && /[<>"]/.test(String(v));
-const plainIds = (id, g) => !idBad(id) && !idBad(g.id) && !(g.ev || []).some(e => e && (idBad(e.id) || idBad(e.pid) || idBad(e.ref)))
-  && !["us", "them"].some(tm => (g[tm] || []).some(p => p && idBad(p.pid)));
+const idBad = v => v != null && (/[<>"]/.test(String(v)) || ["__proto__", "constructor", "prototype"].includes(String(v)));
+// And the few fields every screen adds up or prints as they are must be what they should be: a play's team and points,
+// the game's team and date. (One play with text where its points go would put that text in every score on every screen;
+// one with no team stops replay() cold.) A game that fails stays out of this book, like one with a bad id.
+const plainIds = (id, g) => !idBad(id) && g.id === id && (g.deleted === true || ((g.team === "boys" || g.team === "girls") && typeof g.date === "string" && /^(\d{4}-\d\d-\d\d)?$/.test(g.date) && typeof g.opp === "string" && (!g.time || typeof g.time === "string")))
+  && (g.ev == null || Array.isArray(g.ev)) && !(g.ev || []).some(e => !e || typeof e !== "object" || idBad(e.id) || idBad(e.pid) || idBad(e.ref) || (e.tm !== "us" && e.tm !== "them") || (e.p != null && typeof e.p !== "number"))
+  && !["us", "them"].some(tm => g[tm] != null && (!Array.isArray(g[tm]) || g[tm].some(p => !p || typeof p !== "object" || idBad(p.pid))));
+// The rosters doc (Coaches and Admins write it) and a backup's rosters: a player id that would break a tag keeps it out.
+const teamsBad = t => !t || typeof t !== "object" || Object.values(t).some(x => x && x.roster != null && (!Array.isArray(x.roster) || x.roster.some(p => !p || typeof p !== "object" || idBad(p.pid))));
+// A link the Drive script answered with: only Google Drive's own pages are ever opened.
+const gLink = u => /^https:\/\/(drive|docs)\.google\.com\//.test(String(u || "")) ? String(u) : "";
 function restore(text){
   let o; try{ o = JSON.parse(text); }catch(e){ toast("That file isn't a Brier Stats backup."); return; }
   if(!o || !o.brierstats || !o.games){ toast("That file isn't a Brier Stats backup."); return; }
@@ -6394,13 +6411,17 @@ function restore(text){
   if(o.scriptSaves && Array.isArray(o.scriptSaves.list) && (o.scriptSaves.upd || 0) > ((S.scriptSaves && S.scriptSaves.upd) || 0)){ S.scriptSaves = o.scriptSaves; Sync.dirtyScriptSaves(); }
   if(o.booth) for(const [id, b] of Object.entries(o.booth)) if(!id.startsWith("_") && (!S.booth[id] || (b.upd || 0) > (S.booth[id].upd || 0))) S.booth[id] = b;
   // Saved rosters: each field's newer change wins, as when two devices meet.
-  if(o.lib && o.lib.e){ const up = {}; Object.entries(o.lib.e).forEach(([k, y]) => { if(!y || !y.t) return; const x = S.lib.e[k], c = libNorm({...y});
+  if(o.lib && o.lib.e){ const up = {}; Object.entries(o.lib.e).forEach(([k, y]) => { if(!y || typeof y !== "object" || !y.t || idBad(k)) return; const x = S.lib.e[k], c = libNorm({...y});
       if(!x){ S.lib.e[k] = c; up[k] = LF; return; } const e = libNorm({...x}), fs = LF.filter(f => c.f[f] > e.f[f]); if(!fs.length) return;
       fs.forEach(f => { e[f] = c[f]; e.f[f] = c.f[f]; }); e.at = Math.max(e.at, c.at); S.lib.e[k] = e; up[k] = fs; });
     if(Object.keys(up).length){ libChanged(); libOwe(up); } }
   // Jim's notes: like name notes, a backup fills in what's missing and never replaces a note this device has.
   if(o.bc && o.bc.n) for(const [k, v] of Object.entries(o.bc.n)) if(v && !bcNote(k)) setBcNote(k, v);
-  if(o.teams && confirm("Also replace the rosters, opponents' colors and settings with the ones in the backup?")){ S.teams = keepNoPub(S.teams, o.teams); if(o.settings) Object.assign(S.settings, o.settings); if(o.opps) S.opps = o.opps; S.teamsRev++; Sync.dirtyTeams(); }
+  if(o.teams && !teamsBad(o.teams) && confirm("Also replace the rosters, opponents' colors and settings with the ones in the backup?")){ S.teams = keepNoPub(S.teams, o.teams);
+    // Never from a file: the Drive link and the fan page's switch and speed (ADMIN_SET). A crafted backup could point every
+    // device's backups, and the sign-in token that goes with them, at someone else's script. An Admin sets those in Setup.
+    if(o.settings && typeof o.settings === "object"){ const set = {...o.settings}; ADMIN_SET.forEach(k => delete set[k]); Object.assign(S.settings, set); }
+    if(o.opps && typeof o.opps === "object") S.opps = o.opps; S.teamsRev++; Sync.dirtyTeams(); }
   // A game the other device was still scoring stays its game until this one takes it over.
   const theirs = Object.values(S.games).filter(g => !g.practice && !g.deleted && g.status === "live" && g.writer && g.writer !== S.dev).length;
   save(); render(); toast("Restored " + n + " games." + (kept.length ? ` ${kept.length} reset after this backup ${kept.length > 1 ? "keep their resets" : "keeps its reset"}: ${kept.map(([m]) => m.opp).join(", ")}.` : "") + (theirs ? ` ${theirs} unfinished game${theirs > 1 ? "s were" : " was"} being scored on the other device: open it and tap Take over to keep scoring here.` : ""), theirs ? 6000 : 2500);
@@ -6478,7 +6499,7 @@ const PS = {phase:"loading", err:"", season:{}, off:false, gid:null, picked:fals
 function pubToday(off){ const d = new Date(); if(off) d.setDate(d.getDate() + off); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
 function pubPick(){
   const q = new URLSearchParams(location.search).get("g"), rows = Object.entries(PS.season).filter(([, r]) => r && !r.off && !r.nb);
-  if(q && PS.season[q]) return q;
+  if(q && Object.hasOwn(PS.season, q)) return q;
   // A live row nobody has touched in 3 hours is a game whose scorer forgot Final, not tonight's game.
   const live = rows.filter(([, r]) => r.status === "live" && Date.now() - (r.upd || 0) < 3 * 3600e3).sort((a, b) => (b[1].upd || 0) - (a[1].upd || 0))[0];
   if(live) return live[0];
@@ -7076,6 +7097,7 @@ const Sync = (() => {
       if(snap.metadata && snap.metadata.hasPendingWrites) return;
       if(!snap.exists()){ st.adminSet = {}; if(canCoach()){ st.teamsDirty = true; kick(300); } return; }
       const r = snap.data(), rv = r.rev || 0, base = S.teamsBase;
+      if(r.teams && teamsBad(r.teams)) return;   // a player id that would break a tag: this copy stays out (see plainIds)
       st.adminSet = r.settings || {};   // the Drive link and the fan page switch and speed, as the cloud has them
       if(canCoach() && rv === st.teamsSent && JSON.stringify(r.teams) === st.teamsSentJ){ S.teamsBase = rv; save(); return; }   // our own write coming back
       // A device that has never synced (a practice iPad with test rosters, a phone reset) never overwrites rosters already
