@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="script-src-attr 'none'; object-src 'none'; base-uri 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#094A28">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -3565,7 +3566,10 @@ function viewPlays(){
     ${playList(g, R, 0, canEdit(g), keep)}</div>`;
 }
 // Every play with its time of day, for a spreadsheet.
-const csvCell = v => /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : v;
+// One CSV cell. Text a spreadsheet would run as a formula (a name typed as "=..." or "@...") gets a leading apostrophe, so it
+// stays text; numbers and things like "+5" are left alone.
+const csvCell = v => { if(typeof v === "string" && /^[=@\t\r]|^[+-](?![\d.]+$)/.test(v)) v = "'" + v;
+  return /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : v; };
 function playsCsv(g, pid){
   const R = replay(g), ha = homeAway(g), q = csvCell;
   const rows = [["game_id","date","opponent","period","time_of_day",tmName(g, ha.home) + "_score",tmName(g, ha.away) + "_score","team","num","player","play","removed","added_later","game_clock"]];
@@ -4809,7 +4813,7 @@ function viewOpps(){
 function pubLink(){ return new URL("live/", location.href.split(/[?#]/)[0]).href; }
 function viewSetup(){
   const st = S.settings, edit = canCoach(), dis = edit ? "" : "disabled", adis = canAdmin() ? "" : "disabled";
-  const num = (k, lbl, max) => `<label class="fld" style="width:130px"><span>${lbl}</span><input type="number" min="0" max="${max}" data-set="${k}" value="${st[k]}" ${dis}></label>`;
+  const num = (k, lbl, max) => `<label class="fld" style="width:130px"><span>${lbl}</span><input type="number" min="0" max="${max}" data-set="${k}" value="${esc(st[k])}" ${dis}></label>`;
   return `<div class="stack" style="max-width:880px">${Sync.panel()}
     <div class="card stack"><h3 style="font-size:22px">Game rules</h3><div class="row" style="align-items:flex-end">${num("bonus","Bonus on foul #",15)}${num("to60","60s timeouts",9)}${num("to30","30s timeouts",9)}${num("qlen","Quarter (min)",20)}${num("otlen","OT (min)",10)}</div>
       <p class="small" style="margin:0">TSSAA follows NFHS: team fouls reset every quarter, the 5th puts the other team in the bonus (2 shots), overtime counts with the 4th quarter. 3 sixty-second and 2 thirty-second timeouts, plus one more per overtime.${edit ? "" : " A coach or an Admin changes these."}</p></div>
@@ -5187,6 +5191,8 @@ const Drive = (() => {
     : e && e.name === "TypeError" ? "Couldn't reach the Drive script. Check the signal, and that it's deployed as a Web app that Anyone can open."
     : e && e.name === "AbortError" ? "The Drive script took too long to answer." : String(e && e.message || e);
   async function post(body){
+    // The sign-in token rides along, so it goes to a Google Apps Script web app and nowhere else, whatever the setting says.
+    if(!on()) throw new Error("The Drive backup link isn't a Google Apps Script web app link. Check it under Setup, Google Drive backup.");
     const ac = new AbortController(), t = setTimeout(() => ac.abort(), 60000);
     try{
       // Plain text keeps it a simple request: Apps Script answers no preflight.
@@ -5951,9 +5957,9 @@ function reconSheet(g){
     const gap = tm => R.sc[tm] - off[tm], tms = ["us", "them"];
     const pts = tm => sortRoster(roster(g, tm)).filter(p => (R.box[tm][p.pid] || {}).pts).map(p => `<span class="rvp">#${esc(p.num)} ${esc(p.name ? pShort(p) : "")} <b>${R.box[tm][p.pid].pts}</b></span>`).join("") || `<span class="small">No points</span>`;
     return `<h3>Check against the paper book</h3>
-      <p style="margin:0 0 8px">The paper book is official. ${b ? `The gym scoreboard ended at <b>${esc(usName(g))} ${b.us}, ${esc(g.opp)} ${b.them}</b>.` : "There's no scoreboard final for this game (away, or no feed)."} Type the official final if the paper book says something else.</p>
+      <p style="margin:0 0 8px">The paper book is official. ${b ? `The gym scoreboard ended at <b>${esc(usName(g))} ${esc(b.us)}, ${esc(g.opp)} ${esc(b.them)}</b>.` : "There's no scoreboard final for this game (away, or no feed)."} Type the official final if the paper book says something else.</p>
       <form id="rvform" class="stack"><table class="glance rvt"><tr><th class="l"></th><th>Book (players' points)</th><th>Official final</th><th>Off by</th></tr>
-      ${tms.map(tm => `<tr><td class="l">${esc(tmName(g, tm))}</td><td><b>${R.sc[tm]}</b></td><td><input type="number" name="${tm}" min="0" max="250" inputmode="numeric" value="${off[tm]}" ${done ? "disabled" : ""}></td><td class="${gap(tm) ? "rvbad" : ""}" data-gap="${tm}">${gap(tm) ? (gap(tm) > 0 ? "+" : "") + gap(tm) : "✓"}</td></tr>`).join("")}</table>
+      ${tms.map(tm => `<tr><td class="l">${esc(tmName(g, tm))}</td><td><b>${R.sc[tm]}</b></td><td><input type="number" name="${tm}" min="0" max="250" inputmode="numeric" value="${esc(off[tm])}" ${done ? "disabled" : ""}></td><td class="${gap(tm) ? "rvbad" : ""}" data-gap="${tm}">${gap(tm) ? (gap(tm) > 0 ? "+" : "") + gap(tm) : "✓"}</td></tr>`).join("")}</table>
       ${tms.map(tm => `<div class="small"><b>${esc(tmName(g, tm))}:</b> ${pts(tm)}</div>`).join("")}
       ${done ? `<div class="flag ok"><b>Signed off${rv.how === "accept" ? " with a difference" : ""}</b>${rv.note ? `: ${esc(rv.note)}` : "."} The fan page says Final.</div>
         <div class="row"><button class="btn" type="button" data-act="rvagain">Check it again</button><button class="btn" type="button" data-close>Close</button></div>`
@@ -6254,12 +6260,17 @@ function lastThem(g){ return Object.values(S.games).filter(x => x.id !== g.id &&
 // book and, where still taken off, the saved roster.
 const rzRe = (m, g) => { const o = (m.rzOut || []).filter(k => (g.them || []).some(p => p.pid === k)), d = o.filter(k => (S.lib.e[k] || {}).del);
   return {was:g, ch:{}, out:o, lib:d.length ? {now:Object.fromEntries(d.map(k => [k, {del:1}])), was:Object.fromEntries(d.map(k => [k, {del:0}]))} : null}; };
+// Ids go into the page as they are (data-gid, data-id, data-pid). The app makes them from letters, digits and dashes, so a game
+// from the cloud or from a backup file with a quote or an angle bracket in one isn't this app's writing: it's left out.
+const idBad = v => v != null && /[<>"]/.test(String(v));
+const plainIds = (id, g) => !idBad(id) && !idBad(g.id) && !(g.ev || []).some(e => e && (idBad(e.id) || idBad(e.pid) || idBad(e.ref)))
+  && !["us", "them"].some(tm => (g[tm] || []).some(p => p && idBad(p.pid)));
 function restore(text){
   let o; try{ o = JSON.parse(text); }catch(e){ toast("That file isn't a Brier Stats backup."); return; }
   if(!o || !o.brierstats || !o.games){ toast("That file isn't a Brier Stats backup."); return; }
   let n = 0;
   const rzd = [];
-  for(const [id, g] of Object.entries(o.games)){ const m = S.games[id]; if(!m || (g.rev || 0) > (m.rev || 0)){ S.games[id] = g; n++; Sync.dirty(id); }
+  for(const [id, g] of Object.entries(o.games)){ if(!g || !plainIds(id, g)) continue; const m = S.games[id]; if(!m || (g.rev || 0) > (m.rev || 0)){ S.games[id] = g; n++; Sync.dirty(id); }
     else if(!m.deleted && !m.ev.length && (m.rz || 0) > (g.rz || 0) && (g.ev || []).length) rzd.push([m, g]); }
   // A game Coach reset after this backup was made keeps its reset (a backup never puts an older copy over a newer one), but
   // Coach can have its plays back from here, the way the reset's Undo puts them back, on every device.
@@ -6288,6 +6299,13 @@ function restore(text){
    writes only on a change and every 30 seconds while the clock runs: a running clock with no word for 40 seconds, a
    relay that says the receiver lost the board, or the iPad saying the feed was lost (brd 2), shows the book's score
    marked unofficial. delay (ms) holds every board change that long, for a page next to the video stream. */
+// The public collection is written by any scorer's sign-in (and the relay's), and the fan page and the score bug print parts
+// of it as they come (a play's words, the numbers). So what's read from it is cleaned on the way in: an angle bracket
+// in any text becomes its look-alike, and nothing in it can ever turn into a tag on a fan's phone.
+const pubSafe = v => typeof v === "string" ? v.replace(/</g, "\u2039").replace(/>/g, "\u203a") : Array.isArray(v) ? v.map(pubSafe)
+  : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [pubSafe(k), pubSafe(x)])) : v;
+// The board's doc: its four numbers are numbers, or they're nothing.
+const boardDoc = d => { if(!d) return d; const o = {...d}; for(const k of ["home", "vis", "hf", "vf"]) if(o[k] != null && typeof o[k] !== "number") o[k] = null; return o; };
 function boardFeed(fb, db, onDoc){
   const st = {un:null, list:[], offs:[], D:0, first:true};
   function want(on, D){
@@ -6295,7 +6313,7 @@ function boardFeed(fb, db, onDoc){
     if(on && !st.un){ st.first = true; st.list = [];
       st.un = fb.onSnapshot(fb.doc(db, "hoopsPublic", "_board"), {includeMetadataChanges:true}, snap => {
         if(snap.metadata.fromCache || !snap.exists()) return;
-        const d = snap.data(), now = Date.now(), last = st.list[st.list.length - 1];
+        const d = boardDoc(snap.data()), now = Date.now(), last = st.list[st.list.length - 1];
         if(!d || d.v !== 1 || (last && last.d.n === d.n && last.d.sent === d.sent)) return;
         let recv = now;
         // The doc there when this page started listening was written at its at (a clock stopped in a timeout can sit
@@ -6386,7 +6404,7 @@ const PubRead = (() => {
       // Unlocked with no signal, the emptied cache says "no season": what the phone had stays up under the flag. That, or the
       // same season heard again after a lock: the game on screen gets its listener back (stop() took it), or it freezes.
       const j = JSON.stringify(d.exists() ? d.data() : {}); if(PS.phase === "live" && (j === PS.seasonJ || (off && !d.exists()))){ watch(); return; } PS.seasonJ = j;
-      const r = d.exists() ? d.data() : {}; PS.season = r.games || {}; PS.off = !!r.off; PS.phase = "live"; PS.err = "";
+      const r = d.exists() ? pubSafe(d.data()) : {}; PS.season = r.games || {}; PS.off = !!r.off; PS.phase = "live"; PS.err = "";
       // A game back before tip-off (Coach reset it): the copy this phone holds goes, and its listener with it (a new one
       // starts when the game does, and gets the new copy).
       for(const [id, x] of Object.entries(PS.season)) if(x && x.status === "pre"){ delete PS.snap[id]; if(PS.due) delete PS.due[id]; if(PS.watching === id){ PS.unG(); PS.unG = null; PS.watching = null; } }
@@ -6407,7 +6425,7 @@ const PubRead = (() => {
     PS.watching = null; PS.board.want(false);
     if(!id || !row || row.status === "pre" || row.nb) return;
     PS.watching = id;
-    PS.unG = PS.fb.onSnapshot(PS.fb.doc(PS.db, "hoopsPublic", id), d => { if(!d.exists()) return; let sn; try{ sn = JSON.parse(d.data().j); }catch(e){ return; }
+    PS.unG = PS.fb.onSnapshot(PS.fb.doc(PS.db, "hoopsPublic", id), d => { if(!d.exists()) return; let sn; try{ sn = pubSafe(JSON.parse(d.data().j)); }catch(e){ return; }
       if(sn.status === "live" && sn.brk && sn.q > (sn.quarters || 4) && sn.sc.us !== sn.sc.them) sn.status = "final";
       const apply = () => { if((PS.season[id] || {}).status === "pre") return; PS.snap[id] = sn;
         if(PS.watching === id) PS.board.want(sn.status === "live" && sn.brd === 1, PS.delay * 1000); render(); };
@@ -6425,7 +6443,7 @@ const PubRead = (() => {
   async function stats(){
     if(!PS.db || PS.statsBusy || (PS.statsAt && Date.now() - PS.statsAt < 600e3)) return;
     PS.statsBusy = true;
-    try{ const d = await PS.fb.getDoc(PS.fb.doc(PS.db, "hoopsPublic", "_stats")); PS.stats = d.exists() ? JSON.parse(d.data().j) : {t:{}}; PS.statsErr = false; }
+    try{ const d = await PS.fb.getDoc(PS.fb.doc(PS.db, "hoopsPublic", "_stats")); PS.stats = d.exists() ? pubSafe(JSON.parse(d.data().j)) : {t:{}}; PS.statsErr = false; }
     catch(e){ PS.statsErr = true; }
     finally{ PS.statsBusy = false; PS.statsAt = Date.now(); render(); }
   }
@@ -6447,7 +6465,7 @@ const BugRead = (() => {
       const fb = await import(new URL("fb.js", document.baseURI).href);
       const app = fb.initializeApp(FB, "brierbug"), db = fb.initializeFirestore(app, {localCache:fb.memoryLocalCache()});
       Object.assign(BS, {fb, db, board:boardFeed(fb, db, render)});
-      fb.onSnapshot(fb.doc(db, "hoopsPublic", "_bug"), d => { let b = null; try{ b = d.exists() ? JSON.parse(d.data().j) : null; }catch(e){}
+      fb.onSnapshot(fb.doc(db, "hoopsPublic", "_bug"), d => { let b = null; try{ b = d.exists() ? pubSafe(JSON.parse(d.data().j)) : null; }catch(e){}
         BS.bug = b; BS.phase = "live"; BS.board.want(!!b && b.status === "live" && b.brd === 1, 0); full(); render(); }, () => { BS.phase = "error"; render(); });
       // The board's clock ticks in place; anything else the board changes redraws the bug.
       setInterval(() => { if(!BS.board.on()) return; const v = BS.board.view(), k = v ? [v.fresh, v.home, v.vis, v.hf, v.vf, v.q, v.run].join() : "";
@@ -6461,7 +6479,7 @@ const BugRead = (() => {
     const id = BS.bug && BS.bug.id; if(id === BS.gid) return;
     if(BS.unF){ BS.unF(); BS.unF = null; } BS.gid = id; BS.full = null; BS.had = BS.gone = false; if(!id) return;
     // The game's public copy going away, or back to before tip-off, means the game was reset (maybe on another device).
-    BS.unF = BS.fb.onSnapshot(BS.fb.doc(BS.db, "hoopsPublic", id), d => { let sn = null; try{ sn = d.exists() ? JSON.parse(d.data().j) : null; }catch(e){}
+    BS.unF = BS.fb.onSnapshot(BS.fb.doc(BS.db, "hoopsPublic", id), d => { let sn = null; try{ sn = d.exists() ? pubSafe(JSON.parse(d.data().j)) : null; }catch(e){}
       BS.full = sn; if(sn && sn.status !== "pre") BS.had = true; BS.gone = BS.had && (!sn || sn.status === "pre"); render(); }, () => {});
   }
   // A made-up game, to size and place the source in OBS before a real one starts.
@@ -6680,13 +6698,13 @@ function viewPublic(){
   const rows = Object.entries(PS.season).filter(([, r]) => r).map(([id, r]) => [id, ov(id, r)]).sort((a, b) => (a[1].date + a[1].time).localeCompare(b[1].date + b[1].time));
   if(PS.view === "stats") return viewStats(rows);
   const row = ov(PS.gid, PS.season[PS.gid]), night = row ? rows.filter(([, r]) => r.date === row.date) : [];
-  if(night.length > 1) h += `<div class="pubgames">${night.map(([id, r]) => `<button class="btn${id === PS.gid ? " primary" : ""}" data-act="pubpick" data-gid="${id}">${pubRowName(r)}${r.off ? ` · <b>${esc((OFF_WORDS[r.off] || "Off").toUpperCase())}</b>` : r.status === "live" ? ` · <b>LIVE</b>` : r.status === "final" ? (r.nb ? " · Forfeit" : ` · Final ${r.us}-${r.them}`) : r.time ? " · " + esc(fmtTime(r.time)) : ""}</button>`).join("")}</div>`;
+  if(night.length > 1) h += `<div class="pubgames">${night.map(([id, r]) => `<button class="btn${id === PS.gid ? " primary" : ""}" data-act="pubpick" data-gid="${esc(id)}">${pubRowName(r)}${r.off ? ` · <b>${esc((OFF_WORDS[r.off] || "Off").toUpperCase())}</b>` : r.status === "live" ? ` · <b>LIVE</b>` : r.status === "final" ? (r.nb ? " · Forfeit" : ` · Final ${r.us}-${r.them}`) : r.time ? " · " + esc(fmtTime(r.time)) : ""}</button>`).join("")}</div>`;
   const sn = PS.gid && PS.snap[PS.gid];
-  if(PS.suggest && PS.suggest !== PS.gid && PS.season[PS.suggest]) h += `<div class="pubsuggest"><button class="btn primary" data-act="pubpick" data-gid="${PS.suggest}">${pubRowName(PS.season[PS.suggest])} is LIVE · watch ›</button></div>`;
+  if(PS.suggest && PS.suggest !== PS.gid && PS.season[PS.suggest]) h += `<div class="pubsuggest"><button class="btn primary" data-act="pubpick" data-gid="${esc(PS.suggest)}">${pubRowName(PS.season[PS.suggest])} is LIVE · watch ›</button></div>`;
   // A link to one game (texted on Friday, a bookmark) that isn't the game on now: another night's game that's live gets the
   // same bar (tonight's other game already has its button up top).
   const lvNow = !PS.suggest && row && row.status !== "live" ? rows.find(([id, r]) => id !== PS.gid && r.status === "live" && r.date !== row.date && Date.now() - (r.upd || 0) < 3 * 3600e3) : null;
-  if(lvNow) h += `<div class="pubsuggest"><button class="btn primary" data-act="pubpick" data-gid="${lvNow[0]}">LIVE NOW: ${pubRowName(lvNow[1])} · watch ›</button></div>`;
+  if(lvNow) h += `<div class="pubsuggest"><button class="btn primary" data-act="pubpick" data-gid="${esc(lvNow[0])}">LIVE NOW: ${pubRowName(lvNow[1])} · watch ›</button></div>`;
   // Called off tonight, while the page shows another game (or the plain link opened on something else).
   const offNow = rows.filter(([id, r]) => r.off && r.date === pubToday() && id !== PS.gid);
   if(offNow.length) h += `<div class="flag bad" style="margin-top:8px"><span>${offNow.map(([, r]) => `<b>${pubRowName(r)}</b> tonight is <b>${esc((OFF_WORDS[r.off] || "off").toUpperCase())}</b>`).join(". ")}.</span></div>`;
@@ -6737,7 +6755,7 @@ function viewPublic(){
       const won = r.ff ? r.ff === "W" : r.us > r.them, box = r.status !== "pre" && !r.nb;
       const res = r.off ? `<b>${esc(OFF_WORDS[r.off] || "")}</b>` : r.status === "final" ? `<b class="${won ? "w" : ""}">${won ? "W" : "L"}${r.us + r.them ? " " + r.us + "-" + r.them : ""}${r.ff ? " (forfeit)" : ""}</b>` : r.status === "live" ? `<b>LIVE${PS.snap[id] ? " " + r.us + "-" + r.them : ""}</b>` : r.date < today ? "No live stats" : esc(fmtTime(r.time));
       const inner = `<span class="s1">${esc(fmtDate(r.date))} · ${r.team === "girls" ? "Girls" : "Boys"} · <b>${r.ha === "Away" ? "at" : "vs"} ${esc(r.opp)}</b>${r.district ? ' <span class="tag">District</span>' : ""}</span><span class="s2">${res}${box ? '<span class="small"> · Box score ›</span>' : ""}</span>`;
-      return box ? `<button class="srow" data-act="pubpick" data-gid="${id}">${inner}</button>` : `<div class="srow">${inner}</div>`; }).join("")}</div></details>`;
+      return box ? `<button class="srow" data-act="pubpick" data-gid="${esc(id)}">${inner}</button>` : `<div class="srow">${inner}</div>`; }).join("")}</div></details>`;
   }
   return h;
 }
@@ -6836,7 +6854,7 @@ const Sync = (() => {
       snap.docChanges().forEach(ch => {
         const r = ch.doc.data(), id = ch.doc.id, l = S.games[id];
         if(ch.type === "removed"){ if(l && !st.dirty.has(id)){ delete S.games[id]; delete S.unsent[id]; changed = true; } return; }
-        if(!r || !r.id) return;
+        if(!r || !r.id || !plainIds(id, r)) return;
         if(ch.type === "modified") HEARD[id] = Date.now();
         // A reset (rz: when Coach last reset the game) splits its copies in two, and one from before never merges with one
         // from after. A copy here from before takes the cloud's whole: its plays go, owed or kept from a takeover too. When
@@ -7252,11 +7270,15 @@ const Sync = (() => {
   const LVL = {viewer:{role:"viewer", tier:""}, scorer:{role:"scorer", tier:""}, coach:{role:"scorer", tier:"coach"}, admin:{role:"scorer", tier:"admin"}};
   const LVL_NAME = {viewer:"Viewer", scorer:"Scorer", coach:"Coach", admin:"Admin"};
   const lvlOf = m => ({owner:"admin", coach:"coach", scorer:"scorer"})[roleOf(m)] || "viewer";
-  const ASK = {scorer:"Make them a scorer? Scorers score games, keep the table, the notes and the PA's prep, and can take over scoring from another device. A fill-in PA needs Scorer plus a PA pass (the button on their row); parents and the AD only need Viewer.",
+  // A request's name and email are whatever the asker typed (the rules don't check them yet), so they're shown cut to size.
+  const clipTo = (v, n) => { const s = String(v || ""); return s.length > n ? s.slice(0, n) + "…" : s; };
+  const whoHtml = r => `<b>${esc(clipTo(r.name || r.email, 60))}</b> ${esc(clipTo(r.email, 80))}`;
+  const ASK = {viewer:"Make them a Viewer? Viewers see the rosters, the notes, the table and every game, and change nothing.",
+    scorer:"Make them a scorer? Scorers score games, keep the table, the notes and the PA's prep, and can take over scoring from another device. A fill-in PA needs Scorer plus a PA pass (the button on their row); parents and the AD only need Viewer.",
     coach:"Make them a coach? Coaches change rosters, the schedule, opponents and game rules, let people in, and see Stats and the PA and broadcast pages. Only Admins delete or reset games.",
     admin:"Make them an Admin? Admins can do everything: delete and reset games, the fan page switch, the Drive backup, and make or remove other Admins."};
   async function approve(uid, lvl){ const {fb, db} = st; const r = st.reqs.find(x => x.uid === uid) || st.mems.find(x => x.uid === uid) || {};
-    const b = fb.writeBatch(db); b.set(fb.doc(db, "hoopsMembers", uid), {...LVL[lvl], email:r.email || "", name:r.name || "", at:Date.now()}); b.delete(fb.doc(db, "hoopsRequests", uid)); await b.commit(); }
+    const b = fb.writeBatch(db); b.set(fb.doc(db, "hoopsMembers", uid), {...LVL[lvl], email:String(r.email || "").slice(0, 120), name:String(r.name || "").slice(0, 80), at:Date.now()}); b.delete(fb.doc(db, "hoopsRequests", uid)); await b.commit(); }
   function authMsg(e){ const c = (e && e.code) || ""; if(c.includes("invalid-credential") || c.includes("wrong-password") || c.includes("user-not-found")) return "That email and password don't match. Same account as Mound Book, if you have one."; if(c.includes("email-already")) return "That email already has an account. Sign in instead."; if(c.includes("weak-password")) return "Password needs at least 6 characters."; if(c.includes("network")) return "No signal. Try again when you have some."; if(c.includes("too-many")) return "Too many tries. Wait a minute."; return (e && e.message) || "Didn't work."; }
   // Someone asking to get in shows on Coach's screen whatever tab he's on, not only under Setup: on game night a substitute
   // PA or a new laptop shouldn't wait until he happens to open Setup. Later hides it until someone new asks.
@@ -7267,7 +7289,7 @@ const Sync = (() => {
     if(!r){ if(el) el.remove(); return; }
     if(!el){ el = document.createElement("div"); el.id = "askin"; el.className = "askin no-print"; el.setAttribute("role", "status"); document.body.appendChild(el); }
     const more = st.reqs.length - 1;
-    el.innerHTML = `<span><b>${esc(r.name || r.email)}</b>${r.name ? " " + esc(r.email) : ""} is asking to get in${more ? ` (and ${more} more)` : ""}.</span><span class="row"><button class="btn sm primary" data-act="sy-approve" data-uid="${esc(r.uid)}" data-lvl="viewer">Viewer</button><button class="btn sm" data-act="sy-deny" data-uid="${esc(r.uid)}">No</button><button class="btn sm" data-act="sy-later" data-uid="${esc(r.uid)}">Later</button></span>`;
+    el.innerHTML = `<span><b>${esc(clipTo(r.name || r.email, 60))}</b>${r.name ? " " + esc(clipTo(r.email, 80)) : ""} is asking to get in${more ? ` (and ${more} more)` : ""}.</span><span class="row"><button class="btn sm primary" data-act="sy-approve" data-uid="${esc(r.uid)}" data-lvl="viewer">Viewer</button><button class="btn sm" data-act="sy-deny" data-uid="${esc(r.uid)}">No</button><button class="btn sm" data-act="sy-later" data-uid="${esc(r.uid)}">Later</button></span>`;
   }
   function panel(){
     let h = `<div class="card stack"><h3 style="font-size:22px">Live sync</h3>`;
@@ -7287,10 +7309,10 @@ const Sync = (() => {
       h += `<p style="margin:0">Signed in as <b>${esc(st.email)}</b> · ${ROLE_NAME[st.role] || "Viewer"}. ${st.dirty.size ? st.dirty.size + " game(s) waiting to send." : pubOwed() ? "A fix is still on its way to the fan page." : "Everything's sent."}</p><div class="row"><button class="btn" data-act="sy-out">Sign out</button></div>`;
       if(boss(st.role)){
         const row = (who, btns) => `<div class="row between" style="border-bottom:1px solid var(--grey);padding:6px 0"><span>${who}</span><span class="row">${btns}</span></div>`;
-        h += `<div><div class="kicker" style="margin-bottom:4px">Asking to get in</div>${st.reqs.length ? st.reqs.map(r => row(`<b>${esc(r.name || r.email)}</b> ${esc(r.email)}`, `<button class="btn sm primary" data-act="sy-approve" data-uid="${r.uid}" data-lvl="viewer">Viewer</button><button class="btn sm" data-act="sy-approve" data-uid="${r.uid}" data-lvl="scorer">Scorer</button><button class="btn sm" data-act="sy-approve" data-uid="${r.uid}" data-lvl="coach">Coach</button><button class="btn sm" data-act="sy-deny" data-uid="${r.uid}">No</button>`)).join("") : `<p style="margin:0">Nobody waiting.</p>`}</div>
+        h += `<div><div class="kicker" style="margin-bottom:4px">Asking to get in</div>${st.reqs.length ? st.reqs.map(r => row(whoHtml(r), `<button class="btn sm primary" data-act="sy-approve" data-uid="${r.uid}" data-lvl="viewer">Viewer</button><button class="btn sm" data-act="sy-approve" data-uid="${r.uid}" data-lvl="scorer">Scorer</button><button class="btn sm" data-act="sy-approve" data-uid="${r.uid}" data-lvl="coach">Coach</button><button class="btn sm" data-act="sy-deny" data-uid="${r.uid}">No</button>`)).join("") : `<p style="margin:0">Nobody waiting.</p>`}</div>
           <div><div class="kicker" style="margin-bottom:4px">Let in</div>${st.mems.length ? st.mems.map(m => { const l = lvlOf(m), mine = m.uid === st.uid, hands = st.role === "owner" || l !== "admin";
             const pass = l === "scorer" ? `<button class="btn sm" data-act="sy-pass" data-uid="${m.uid}" aria-pressed="${paPass(m.uid)}" title="Opens the PA page and the broadcast page for this Scorer">PA pass${paPass(m.uid) ? " ✓" : ""}</button>` : "";
-            return row(`<b>${esc(m.name || m.email)}</b> ${esc(m.email)} · ${LVL_NAME[l]}${l === "scorer" && paPass(m.uid) ? " + PA pass" : ""}${mine ? " (you)" : ""}`, mine || !hands ? "" : pass + ["viewer", "scorer", "coach", "admin"].filter(x => x !== l && (x !== "admin" || st.role === "owner")).map(x => `<button class="btn sm" data-act="sy-approve" data-uid="${m.uid}" data-lvl="${x}">Make ${x === "admin" ? "Admin" : x}</button>`).join("") + `<button class="btn sm dark" data-act="sy-remove" data-uid="${m.uid}">Remove</button>`); }).join("") : `<p style="margin:0">Just you so far.</p>`}</div>
+            return row(`${whoHtml(m)} · ${LVL_NAME[l]}${l === "scorer" && paPass(m.uid) ? " + PA pass" : ""}${mine ? " (you)" : ""}`, mine || !hands ? "" : pass + ["viewer", "scorer", "coach", "admin"].filter(x => x !== l && (x !== "admin" || st.role === "owner")).map(x => `<button class="btn sm" data-act="sy-approve" data-uid="${m.uid}" data-lvl="${x}">Make ${x === "admin" ? "Admin" : x}</button>`).join("") + `<button class="btn sm dark" data-act="sy-remove" data-uid="${m.uid}">Remove</button>`); }).join("") : `<p style="margin:0">Just you so far.</p>`}</div>
           <p class="small" style="margin:0">Admins can do everything. Mound Book's owner and its admins are Admins here too, whatever their row says. To make one less, make them a coach in Mound Book first, then change them here. Coaches: rosters, the schedule, opponents, game rules, letting people in, Stats and the PA and broadcast pages. Scorers: scoring, the table and notes. A Scorer with a PA pass also gets the PA and broadcast pages (a fill-in PA). Viewers watch the box score and plays.${st.role === "owner" ? "" : " Only an Admin makes or changes an Admin."}</p>`;
       }
     }
@@ -7307,7 +7329,10 @@ const Sync = (() => {
       else if(act === "sy-mode"){ st.mode = a.dataset.m; render(); }
       else if(act === "sy-out"){ clear(); await fb.signOut(st.auth); S.sync = false; S.role = null; save(); }
       else if(act === "sy-reset"){ const e = ($("#sy-auth [name=email]") || {}).value; if(!e){ toast("Type your email first."); return; } await fb.sendPasswordResetEmail(st.auth, e.trim()); toast("Check your email for a reset link."); }
-      else if(act === "sy-approve"){ const l = a.dataset.lvl; if(!LVL[l] || (ASK[l] && !confirm(ASK[l]))) return; await approve(a.dataset.uid, l); toast("Done."); }
+      else if(act === "sy-approve"){ const l = a.dataset.lvl, r = st.reqs.find(x => x.uid === a.dataset.uid);
+        // Someone new: say who's asking, and that the app can't vouch for the name (anyone can make an account).
+        const ask = r ? `${clipTo(r.name || r.email, 60)}${r.name ? " (" + clipTo(r.email, 80) + ")" : ""} is asking to get in. Anyone can make an account and type any name and email, so only say yes if you know they just asked.\n\n` : "";
+        if(!LVL[l] || (ASK[l] && !confirm(ask + ASK[l]))) return; await approve(a.dataset.uid, l); toast("Done."); }
       else if(act === "sy-deny") await fb.deleteDoc(fb.doc(db, "hoopsRequests", a.dataset.uid));
       else if(act === "sy-later"){ later.add(a.dataset.uid); askCard(); }
       else if(act === "sy-pass"){ if(!boss(st.role)) return; const p = {...(S.settings.paPass || {})}, uid = a.dataset.uid, m = st.mems.find(x => x.uid === uid) || {};
@@ -7381,7 +7406,7 @@ const Board = (() => {
   const fl = s => Math.max(0, Math.floor(s * 10 + 1e-6) / 10);
   function heard(snap){
     if(snap.metadata.fromCache || !snap.exists()) return;          // this iPad's last copy, not word from the Mac
-    const d = snap.data(), now = Date.now();
+    const d = boardDoc(snap.data()), now = Date.now();
     if(!d || d.v !== 1 || (st.d && d.n === st.d.n && d.sent === st.d.sent)) return;
     const prev = st.d; st.d = d; st.err = "";
     // The doc as it stood when this iPad started listening is the board as it was last written (it can sit for minutes in
