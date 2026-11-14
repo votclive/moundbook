@@ -753,7 +753,7 @@ table.rect tr.sub td{background:transparent;padding-top:10px}
    One device scores a game; everyone else signed in follows it live on the Announcer page. Each device's own saved copy is the
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
-const BS_VERSION = "0.16.7";
+const BS_VERSION = "0.16.8";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -800,7 +800,7 @@ const SCHEDULE = [
      left the book before the tip with only taps taken back, and the next kid the PA's list puts on that number takes it
      (or he does, back on it). A tap stamped ed was changed after it was made (the later stamp wins where two copies of
      the game meet: mergeEv).
-   S.booth[gid]: {table:{us:[pid], them:[pid]}, said:[pid], notes, info:{usCoach, oppCoach, officials, sponsor, honors},
+   S.booth[gid]: {table:{us:[pid], them:[pid]}, said:[pid], notes, info:{usCoach, oppCoach, usAssistants, oppAssistants, officials, sponsor, honors},
      start:{us:[pid], them:[pid]}, done:[script line id], upd}: players waiting at the scorer's table, which of them the
      announcer has called, the booth's notes, and what the PA script needs (the starters the PA introduces, who coaches and
      officiates, tonight's sponsor, which script lines are read). Not stats, so the scorer and the announcer both change it.
@@ -2348,7 +2348,7 @@ function bcTonight(g){
   // Our season leaders from the finals in the book: points, rebounds and assists a game.
   const sl = g.practice ? {} : seasonLines(g.team), lead = (f, w) => { const x = Object.entries(sl).filter(([, s]) => s.g && f(s) > 0).map(([pid, s]) => [player(g, "us", pid), f(s) / s.g]).filter(([p]) => p).sort((a, b) => b[1] - a[1])[0]; return x ? `${pShort(x[0]) || "#" + x[0].num} ${x[1].toFixed(1)} ${w}` : ""; };
   const season = [lead(s => s.pts, "ppg"), lead(s => s.oreb + s.dreb, "rpg"), lead(s => s.ast, "apg")].filter(Boolean).join(" · ");
-  const rows = [["Season leaders", season], ["Our coach", i.usCoach], ["Their coach", i.oppCoach], ["Officials", i.officials], ["Sponsor", i.sponsor], ["Anthem", i.anthem], ["Halftime", i.honors], ["PA notes", b.notes]].filter(r => String(r[1] || "").trim());
+  const rows = [["Season leaders", season], ["Our coach", i.usCoach], ["Our assistants", i.usAssistants], ["Their coach", i.oppCoach], ["Their assistants", i.oppAssistants], ["Officials", i.officials], ["Sponsor", i.sponsor], ["Anthem", i.anthem], ["Halftime", i.honors], ["PA notes", b.notes]].filter(r => String(r[1] || "").trim());
   return rows.length ? `<dl class="bcinfo">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join("")}</dl>` : `<p class="small" style="margin:0">Coaches, officials, the sponsor and the halftime honors show up here once the PA fills in Prep.</p>`;
 }
 function bcBar(g){
@@ -2556,7 +2556,7 @@ function boothMark(gid, f, keys, on){ const g = S.games[gid]; if(g) setBooth(g, 
 function markStep(g, label, f, keys, on){ const gid = g.id; boothMark(gid, f, keys, on); undoable(label, () => boothMark(gid, f, keys, !on), () => boothMark(gid, f, keys, on)); }
 // One Prep box at a time, so an undo never takes back what someone else typed in another box.
 function infoPut(gid, k, v){ const g = S.games[gid]; if(g) setBooth(g, b => { b.info = {...(b.info || {}), [k]:v}; }, ["info"]); }
-const INFO_LABEL = {admin:"Game administrator", shelter:"Shelter", aed:"AED", usCoach:"Our coach", oppCoach:"Their coach", officials:"Officials", sponsor:"Sponsor", anthem:"Anthem", record:"Our record", honors:"Halftime recognition"};
+const INFO_LABEL = {admin:"Game administrator", shelter:"Shelter", aed:"AED", usCoach:"Our coach", oppCoach:"Their coach", usAssistants:"Our assistants", oppAssistants:"Their assistants", officials:"Officials", sponsor:"Sponsor", anthem:"Anthem", record:"Our record", honors:"Halftime recognition"};
 // The PA's five for one team, undoable without touching the other team's.
 function startPut(gid, tm, l){ const g = S.games[gid]; if(g) setBooth(g, b => { b.start = {us:[], them:[], ...(b.start || {}), [tm]:l.slice()}; }, ["start"]); }
 function startStep(g, tm, l, label){ const was = (((booth(g.id).start || {})[tm]) || []).slice(), gid = g.id; startPut(gid, tm, l); undoable(label, () => startPut(gid, tm, was), () => startPut(gid, tm, l)); }
@@ -3132,7 +3132,7 @@ const SCRIPT_AT = {top:"Top of the night", game:"Every game", end:"End of the ni
 // [token, what it says, sample]. opt: says nothing when empty instead of showing a [box].
 const TOKENS = [["school","The school"],["tonight","Tonight's games, with tip times"],["level","varsity girls / varsity boys"],["us","Lady Cats / Bobcats"],["usFull","Greenbrier Lady Cats"],
   ["opp","The opponent"],["oppFull","Opponent and mascot (in a game line, the girls or boys name, whoever is playing; in a top-of-the-night or end line, the plain mascot)"],["oppMascot","Their mascot (same rule as oppFull)"],
-  ["oppFullGirls","Opponent and girls team name, always (Watertown Lady Purple Tigers)"],["oppMascotGirls","Their girls team name, always"],["usGirls","Our girls team name, always"],["tip","Tip-off time"],["usCoach","Our head coach"],["oppCoach","Their head coach"],["officials","Tonight's officials"],
+  ["oppFullGirls","Opponent and girls team name, always (Watertown Lady Purple Tigers)"],["oppMascotGirls","Their girls team name, always"],["usGirls","Our girls team name, always"],["tip","Tip-off time"],["usCoach","Our head coach"],["usAssistants","Our assistant coaches"],["oppAssistants","Their assistant coaches"],["oppCoach","Their head coach"],["officials","Tonight's officials"],
   ["sponsor","Tonight's sponsor"],["honors","Halftime recognition"],["anthem","Who sings the anthem"],["anthemBy",", performed by … (blank if nobody's named)",1],
   ["oppStarters","Their five, one per line"],["usStarters","Our five, one per line"],["score","Live score, leader first"],["leaders","Each team's top scorer"],
   ["record","Our record once the game is final",1],["nextGame","Who plays next tonight",1],["nextHome","Our next home game",1],
@@ -3161,6 +3161,8 @@ function infoOf(g){
   const prior = Object.values(S.games).filter(x => x.id !== g.id && !x.deleted && x.team === g.team && x.date <= g.date && S.booth[x.id] && S.booth[x.id].info).sort((a, b) => b.date.localeCompare(a.date));
   if(!out.usCoach){ const p = prior.find(x => S.booth[x.id].info.usCoach); if(p) out.usCoach = S.booth[p.id].info.usCoach; }
   if(!out.oppCoach){ const p = prior.find(x => okey(x.opp) === okey(g.opp) && S.booth[x.id].info.oppCoach); if(p) out.oppCoach = S.booth[p.id].info.oppCoach; }
+  if(!out.usAssistants){ const p = prior.find(x => S.booth[x.id].info.usAssistants); if(p) out.usAssistants = S.booth[p.id].info.usAssistants; }
+  if(!out.oppAssistants){ const p = prior.find(x => okey(x.opp) === okey(g.opp) && S.booth[x.id].info.oppAssistants); if(p) out.oppAssistants = S.booth[p.id].info.oppAssistants; }
   if(!out.officials){ const p = Object.values(S.games).find(x => x.id !== g.id && !x.deleted && x.date === g.date && (x.time || "") < (g.time || "") && S.booth[x.id] && (S.booth[x.id].info || {}).officials); if(p) out.officials = S.booth[p.id].info.officials; }
   return out;
 }
@@ -3280,7 +3282,7 @@ function tokenValue(k, g, games, night){
     case "oppFullGirls": return nightOpps(g ? [g] : girlsFirst(games), oppGirls, true);
     case "oppMascotGirls": return nightOpps(g ? [g] : girlsFirst(games), oppGirls, false);
     case "tip": return g ? timeWords(g.time) : first ? timeWords(first.time) : "";
-    case "usCoach": case "oppCoach": case "officials": case "honors": return esc((i[k] || "").trim());
+    case "usCoach": case "oppCoach": case "usAssistants": case "oppAssistants": case "officials": case "honors": return esc((i[k] || "").trim());
     case "sponsor": return g ? esc((i.sponsor || "").trim()) : nightInfo("sponsor");
     case "anthem": return esc((g ? i.anthem : fi.anthem) || "");
     case "anthemBy": { const a = ((g ? i.anthem : fi.anthem) || "").trim(); return a ? ", performed by " + esc(a) : ""; }
@@ -3296,7 +3298,7 @@ function tokenValue(k, g, games, night){
   }
   return null;
 }
-const TOKEN_MISS = {oppMascot:"their mascot? (Rosters, Opponents)", oppMascotGirls:"their girls team name? (Rosters, Opponents)", shelter:"where to shelter?", admin:"game administrator?", aed:"AED location?", usCoach:"our coach?", oppCoach:"their coach?", officials:"officials?", sponsor:"sponsor?", honors:"who's being honored?", anthem:"anthem singer?", oppStarters:"pick their 5 starters", usStarters:"pick our 5 starters", score:"score after the tip", leaders:"leaders after the tip"};
+const TOKEN_MISS = {oppMascot:"their mascot? (Rosters, Opponents)", oppMascotGirls:"their girls team name? (Rosters, Opponents)", shelter:"where to shelter?", admin:"game administrator?", aed:"AED location?", usCoach:"our coach?", oppCoach:"their coach?", usAssistants:"our assistants?", oppAssistants:"their assistants?", officials:"officials?", sponsor:"sponsor?", honors:"who's being honored?", anthem:"anthem singer?", oppStarters:"pick their 5 starters", usStarters:"pick our 5 starters", score:"score after the tip", leaders:"leaders after the tip"};
 function fillScript(text, g, games, night){
   return fmtMarks(esc(text)).replace(/\{([A-Za-z]+)\}/g, (m, raw) => {
     const k = TOKEN_KEY[raw.toLowerCase()] || raw, v = tokenValue(k, g, games, night);
@@ -3413,7 +3415,7 @@ function viewScript(){
     const pick = tm => { const st = startersOf(g, tm), bk = bookFive(g, tm), mine = ((booth(g.id).start || {})[tm] || []).map(pid => (paPlayer(g, tm, pid) || {}).pid).filter(Boolean), off = mine.length > 0 && bk.length === 5 && (mine.length !== 5 || bk.some(p => !mine.includes(p)));
       return `<div style="${tvars(g, tm)}"><div class="row between" style="margin:6px 0 4px"><span class="kicker">${esc(tmName(g, tm))} starters · ${st.length} of 5</span><button class="btn sm" data-act="saypick" data-gid="${g.id}" data-tm="${tm}" title="Phonetic spellings for ${esc(tmName(g, tm))}">Phonetics</button></div>${off ? `<div class="flag" style="margin-bottom:6px"><span>The scorer's book starts ${bk.map(p => "#" + esc((player(g, tm, p) || {}).num)).join(" ")}, so the intro reads those five, not your picks.</span><button class="btn sm primary" data-act="usebook" data-gid="${g.id}" data-tm="${tm}">Use the book's five</button></div>` : ""}<div class="bench" style="margin:0">${sortRoster(paRoster(g, tm)).map(p => `<button class="chip${st.includes(p.pid) ? " at" : ""}" data-act="starter" data-gid="${g.id}" data-tm="${tm}" data-pid="${p.pid}" title="${st.includes(p.pid) ? "Starting. Click to take off" : "Click to start"} #${esc(p.num)}" aria-pressed="${st.includes(p.pid)}"><b>${esc(p.num)}</b>${esc(pShort(p))}</button>`).join("") || `<span class="small">No roster yet${tm === "them" ? ": add their players above, or the scorer adds them on the Scorer screen" : ""}.</span>`}</div></div>`; };
     return `<div style="border-top:2px solid var(--black);padding-top:8px"><h3 style="font-size:20px">${esc(usName(g))} ${gameTitle(g)}${g.time ? " · " + esc(fmtTime(g.time)) : ""}</h3>
-      <div class="infogrid" style="margin-top:6px">${fld("usCoach", "Our head coach (name only)", "Dana Jones")}${fld("oppCoach", "Their head coach (name only)", "Pat Smith")}${fld("officials", "Officials", "Bob Lee, Tim Ray and Ann Cole")}${fld("sponsor", "Sponsor", "Greenbrier Pharmacy")}${fld("anthem", "Anthem sung by", "the GHS Chorus")}${fld("record", "Our record before tonight", "12-5, 3-1 district")}</div>
+      <div class="infogrid" style="margin-top:6px">${fld("usCoach", "Our head coach (name only)", "Dana Jones")}${fld("oppCoach", "Their head coach (name only)", "Pat Smith")}${fld("usAssistants", "Our assistant coaches", "Sam Lee and Jo Park")}${fld("oppAssistants", "Their assistant coaches", "Chris Day and Lee Fox")}${fld("officials", "Officials", "Bob Lee, Tim Ray and Ann Cole")}${fld("sponsor", "Sponsor", "Greenbrier Pharmacy")}${fld("anthem", "Anthem sung by", "the GHS Chorus")}${fld("record", "Our record before tonight", "12-5, 3-1 district")}</div>
       <label class="fld" style="margin-top:6px"><span>Halftime recognition (read word for word)</span><textarea rows="2" data-info="${g.id}:honors" placeholder="Please welcome our seniors and their families to center court…">${esc(i.honors || "")}</textarea></label>
       ${visList(g)}${pick("them")}${pick("us")}<p class="small" style="margin:6px 0 0">Pick five, or let the scorer's starting lineup fill these in. Year, height and position come from Rosters; the phonetic spellings from each team's Phonetics.</p></div>`; }).join("")}</div></details>`;
   // The script, in reading order. The first unchecked line is "up next".
@@ -3446,7 +3448,7 @@ function scriptEditor(){
       <input type="text" data-sf="cue" value="${esc(x.cue || "")}" placeholder="When to read it">
       <div class="row" style="gap:4px"><button type="button" class="btn sm" data-act="segfmt" data-w="**" title="Bold the words you picked"><b>B</b></button><button type="button" class="btn sm" data-act="segfmt" data-w="*" title="Italicize the words you picked"><i>I</i></button></div>
       <textarea data-sf="text" rows="3"${ui.caps !== false ? ' style="text-transform:uppercase"' : ""}>${esc(x.text || "")}</textarea>
-      <label class="row small">Only when this is filled in: <select data-sf="need" style="width:auto"><option value="">(always read it)</option>${["sponsor","honors","anthem","officials","oppCoach","usCoach"].map(k => `<option ${x.need === k ? "selected" : ""}>${k}</option>`).join("")}</select></label></div>`).join("")}
+      <label class="row small">Only when this is filled in: <select data-sf="need" style="width:auto"><option value="">(always read it)</option>${["sponsor","honors","anthem","officials","oppCoach","usCoach","oppAssistants","usAssistants"].map(k => `<option ${x.need === k ? "selected" : ""}>${k}</option>`).join("")}</select></label></div>`).join("")}
     <div class="row"><button type="button" class="btn" data-act="segadd">+ Add a line</button><button type="button" class="btn" data-act="segreset">Start over from the default</button></div>
     <div class="row" style="margin-top:10px"><button type="button" class="btn primary" data-act="segsave">Save and close</button><button type="button" class="btn" data-act="segdrop">Close without saving</button></div>
     <p class="small" style="margin:6px 0 0">Closing this any other way (tapping outside it, Esc) saves it too.</p>`});
