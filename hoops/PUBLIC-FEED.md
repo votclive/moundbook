@@ -23,3 +23,12 @@ Each write costs one read for every listener, so listen to one game doc at a tim
 - `sh`: charted shots `[team, boxRow, x, y, made, period, points, clock]`, x and y in thousandths of the half court (x across, 0 to 1000; y from the baseline, 0 to 1000 = half court); clock is the game clock when it was taken as the board shows it ("5:49", "0:45.3"), or "" without one (added in 0.13.0, so older copies have 7 entries)
 - `fw`: the flow, one per scoring play: `[period, clockLeft (-1 if none), us, them]`
 - `ql [period seconds, OT seconds]`, `fl` (lead changes, ties, biggest leads, current run), `x` (bench, 2nd-chance, off-TO, paint points), `brd` (1 board live, 2 lost), `rv`, `sponsor`, `every`, `upd`
+
+## Reading it safely (0.16.3)
+
+Any scorer's sign-in (and the scoreboard relay's) can write these documents, so a reader should treat every value as somebody else's writing:
+
+- A play's `text` is already HTML-escaped text (an apostrophe arrives as `&#39;`). Decode it and show it as text, or strip anything that looks like a tag before putting it in a page. Never put it into a page as HTML as it comes.
+- Names (`opp`, `usName`, `event`, `sponsor`, the box rows' names) are plain text: escape them when they go into HTML.
+- Numbers are meant to be numbers: check they are (`Number.isFinite`) before printing or doing arithmetic.
+- Brier Stats' own fan page and score bug do this on the way in (`pubSafe` in `index.html`): an angle bracket in any text becomes a look-alike (‹ ›), so nothing in a copy can turn into a tag.

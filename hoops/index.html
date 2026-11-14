@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="script-src-attr 'none'; object-src 'none'; base-uri 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#094A28">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -752,7 +753,7 @@ table.rect tr.sub td{background:transparent;padding-top:10px}
    One device scores a game; everyone else signed in follows it live on the Announcer page. Each device's own saved copy is the
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
-const BS_VERSION = "0.16.2";
+const BS_VERSION = "0.16.3";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -764,6 +765,7 @@ const OBS = !PUB && /[?&#]bug\b/.test(location.search + location.hash);
 const BC_ONLY = !PUB && !ANN_ONLY && /[?&#]broadcast\b/.test(location.search + location.hash);   // Jim's broadcast page
 
 /* ---------- schedule (from the 2026-27 master sheet in the social kit) ---------- */
+const SEASON = "2026-27";
 const SCHEDULE = [
  ["2026-11-16","19:30","boys","Watertown","Away",0,"Hall of Fame (preseason)"],["2026-11-17","18:00","girls","White House Heritage","Away",0,"Hall of Fame (preseason)"],
  ["2026-11-17","19:30","boys","White House Heritage","Away",0,"Hall of Fame (preseason)"],["2026-11-19","18:00","girls","Wilson Central","Away",0,"Hall of Fame (preseason)"],
@@ -1069,7 +1071,8 @@ function pShort(p){ return p ? String(p.name || "").trim().replace(/\s+/g, " ") 
 // A published play's words come escaped (the desk's play line is HTML), so the fan page undoes that once before it
 // escapes them again: "Ja'Kobe", not "Ja&#39;Kobe".
 const unent = s => String(s ?? "").replace(/&(amp|lt|gt|quot|#39);/g, (m, k) => ({amp:"&", lt:"<", gt:">", quot:'"', "#39":"'"}[k]));
-function sortRoster(a){ return a.slice().sort((x, y) => (parseInt(x.num, 10) || 0) - (parseInt(y.num, 10) || 0) || String(x.num).localeCompare(String(y.num))); }
+const byNum = (a, b) => (parseInt(a.num, 10) || 0) - (parseInt(b.num, 10) || 0);
+function sortRoster(a){ return a.slice().sort((x, y) => byNum(x, y) || String(x.num).localeCompare(String(y.num))); }
 function homeAway(g){ return g.ha === "Away" ? {home:"them", away:"us"} : {home:"us", away:"them"}; }
 // Which team sits on which side of the screen. Home on the left, the way our table sees the floor, unless this device
 // swapped it (S.settings.flip, never synced: the scorer, the PA and Jim each set their own). The fan page never flips.
@@ -1077,7 +1080,6 @@ function sides(g){ const ha = homeAway(g); return !PUB && S.settings.flip ? {lef
 function flipBtn(){ return `<button class="btn sm no-print" data-act="flip" aria-pressed="${!!S.settings.flip}" title="Swap which side of the screen each team is on (this device only)">⇄ Sides</button>`; }
 function fmtDate(d){ try{ return new Date(d + "T12:00:00").toLocaleDateString(undefined, {weekday:"short", month:"short", day:"numeric"}); }catch(e){ return d; } }
 function fmtTime(t){ if(!t) return ""; const [h, m] = t.split(":").map(Number); return ((h + 11) % 12 + 1) + ":" + String(m).padStart(2, "0") + (h >= 12 ? " PM" : " AM"); }
-function initials(n){ return String(n || "").split(/[\s-]+/).filter(w => /^[A-Za-z]/.test(w)).slice(0, 3).map(w => w[0].toUpperCase()).join("") || "?"; }
 /* ---------- names that fit ----------
    Every name shows whole. After each redraw, every .fit on the page starts at its own size and comes down (not below its
    data-min, else 12px) until it fits on its line; still too long at that size, it wraps (fitx). A line score lets a long
@@ -1153,7 +1155,6 @@ window.addEventListener("resize", () => { cancelAnimationFrame(fitRaf); fitRaf =
 if(document.fonts){ document.fonts.ready.then(fitNames); document.fonts.addEventListener("loadingdone", fitNames); }
 // A name too long for a narrow column: the school's own abbreviation (the one on its badge and play chips; pass the game so
 // the fan page uses the one its copy carries), not just its first letters.
-function shortName(n, g){ return String(n).length > 11 ? oppInfo(n, g && g.opp === n ? g : null).abbr : n; }
 function badge(g, tm){ return tm === "us" ? `<img src="bobcat-head.png" alt="">` : `<span class="init">${esc(oppInfo(g.opp, g).abbr.slice(0, 4))}</span>`; }
 
 /* ---------- opponents and team colors ----------
@@ -1321,7 +1322,7 @@ function kList(f, m){
   if(f === "table"){ const t = {us:[], them:[]}; live.forEach(([k, e]) => { if(t[e.tm]) t[e.tm].push(k); }); return t; }
   if(f !== "vis") return live.map(([k]) => k);
   const by = new Map(); live.forEach(([k, e]) => { by.set(paNum(e.num) || k, {pid:k, ...kVis(e)}); });
-  return [...by.values()].sort((a, b) => (parseInt(a.num, 10) || 0) - (parseInt(b.num, 10) || 0) || a.num.localeCompare(b.num));
+  return [...by.values()].sort((a, b) => byNum(a, b) || a.num.localeCompare(b.num));
 }
 // What a change did to a plain list, id by id (setBooth stamps it). A visitor replaced in one change by a new id under the
 // same number (paFold giving the list the book's id) points at it (to).
@@ -1494,12 +1495,12 @@ function stat(tm, pid, k){
       if(m && S.settings.extra) ui.fu.push({k:"ast", tm, shooter:pid, ref:e.id});
       if(!m && S.settings.extra) ui.fu.push({k:"reb", miss:tm});
       renderFu(); break; }
-    case "reb": e = rec({tm, pid, t:"REB", o: R.lastMiss === tm}); break;
-    case "ast": e = rec({tm, pid, t:"AST"}); break;
+    case "reb": rec({tm, pid, t:"REB", o: R.lastMiss === tm}); break;
+    case "ast": rec({tm, pid, t:"AST"}); break;
     case "stl": {
       // Turnover already tapped on the other side? The steal goes with it instead of asking (and counting) it again.
       const last = lastPlay(g);
-      if(last && last.t === "TO" && last.tm === OTHER(tm) && last.pid && !linked(g, "STL", last.id)){ e = rec({tm, pid, t:"STL", ref:last.id}); break; }
+      if(last && last.t === "TO" && last.tm === OTHER(tm) && last.pid && !linked(g, "STL", last.id)){ rec({tm, pid, t:"STL", ref:last.id}); break; }
       e = rec({tm, pid, t:"STL"}); if(e){ ui.fu = [{k:"to", tm:OTHER(tm), ref:e.id}]; renderFu(); } break; }
     case "blk": {
       // The miss is already in the book: the block goes with it rather than adding a second shot.
@@ -1519,7 +1520,7 @@ function stat(tm, pid, k){
       const R2 = replay(g), ln = pid && R2.box[tm][pid];
       if(teamFouls(g, R2, tm) === S.settings.bonus) toast(tmName(g, OTHER(tm)) + " in the bonus.", 3000);
       // Bench and coach technicals add up over the night: from the second one, say so (the book tells the official book).
-      if(!pid && R2.team[tm].tf >= 2){ const n = R2.team[tm].tf; toast(`${tmName(g, tm)} bench: ${n === 2 ? "2nd" : n === 3 ? "3rd" : n + "th"} technical tonight. Tell the official book.${teamFouls(g, R2, tm) === S.settings.bonus ? " " + tmName(g, OTHER(tm)) + " in the bonus." : ""}`, 4500); }
+      if(!pid && R2.team[tm].tf >= 2){ const n = R2.team[tm].tf; toast(`${tmName(g, tm)} bench: ${ORD(n)} technical tonight. Tell the official book.${teamFouls(g, R2, tm) === S.settings.bonus ? " " + tmName(g, OTHER(tm)) + " in the bonus." : ""}`, 4500); }
       else if(ln && ln.tf >= 2) toast(pLabel(g, tm, pid) + ": 2nd technical. EJECTED. Get a sub to the table.", 4500);
       else if(ln && ln.pf >= 5) toast(pLabel(g, tm, pid) + " FOULED OUT. Get a sub to the table.", 4000);
       break; }
@@ -1896,7 +1897,7 @@ function renderFu(){
   else if(f.k === "blk") h = `<span class="ask">Whose shot got blocked?</span><button class="chip${f.p === 2 ? " at" : ""}" data-fu="bp" data-p="2">2PT</button><button class="chip${f.p === 3 ? " at" : ""}" data-fu="bp" data-p="3">3PT</button>${chips(f.tm, null)}<button class="chip skip" data-fu="skip">Skip</button>`;
   else if(f.k === "out"){ const p = player(g, f.tm, f.pin);
     h = `<span class="ask">#${esc(p.num)} ${esc(pShort(p))} in for</span>${chips(f.tm, null, sortRoster(roster(g, f.tm)).filter(x => R.court[f.tm].has(x.pid)).sort((a, b) => outNow(f.tm, b.pid) - outNow(f.tm, a.pid)))}<button class="chip skip" data-fu="skip">Cancel</button>`; }
-  el.innerHTML = `<div class="fu no-print${f.k === "loc" ? " loc" : ""}"><div class="wrap">${h}</div></div>`;
+  el.innerHTML = `<div class="fu no-print"><div class="wrap">${h}</div></div>`;
   document.body.classList.add("has-fu");
 }
 function fuPick(tm, pid){
@@ -2023,7 +2024,7 @@ function extrasOf(g, R){
 // possession. Each needs its stats logged: shooting needs the misses (Every stat), the turnover rate turnovers, the
 // rebound rate rebounds, and possessions all three. null where they weren't.
 function factorsOf(g, R){
-  const T = tm => sumLines(Object.values(R.box[tm]).concat([R.team[tm]])), t = {us:T("us"), them:T("them")}, out = {};
+  const T = tm => totalsOf(R, tm), t = {us:T("us"), them:T("them")}, out = {};
   const has = (...k) => R.plays.some(p => !p.void && k.includes(p.e.t)), reb = has("REB"), to = has("TO", "STL");
   for(const tm of ["us", "them"]){ const a = t[tm], o = t[OTHER(tm)], sh = !a.po && a.fga > 0, poss = a.fga - a.oreb + a.to + .44 * a.fta;
     out[tm] = {efg:sh ? (a.fgm + .5 * a.tpm) / a.fga : null, tov:sh && to ? a.to / (a.fga + .44 * a.fta + a.to) : null,
@@ -2068,6 +2069,8 @@ function headline(g, R, o = {}){
 function agoWords(at){ if(!at) return ""; const s = Math.max(0, Math.round((Date.now() - at) / 1000)); return s < 60 ? s + " s ago" : Math.round(s / 60) + " min ago"; }
 function lastAtOf(g){ for(let i = g.ev.length - 1; i >= 0; i--) if(!g.ev[i].v) return g.ev[i].at || 0; return 0; }
 // W or L, or "" while undecided. A forfeit ruling wins over the score; player stats still come from the plays.
+// W or L, counting a game that's over by the horns before the Final tap.
+const wlNow = g => result(g) || (replay(g).sc.us > replay(g).sc.them ? "W" : "L");
 function result(g){ if(!g || g.deleted || g.practice || g.scrim) return ""; if(g.forfeit === "W" || g.forfeit === "L") return g.forfeit; if(!gameOver(g)) return ""; const R = replay(g); return R.sc.us > R.sc.them ? "W" : "L"; }
 function resultWords(g){ const r = result(g);
   if(g && g.scrim && !g.deleted && gameOver(g)){ const R = replay(g); return `Scrimmage ${R.sc.us}-${R.sc.them}`; }   // no W or L: it isn't on the record
@@ -2079,19 +2082,19 @@ const OFF_WORDS = {ppd:"Postponed", cxl:"Cancelled"};
 // it; else nothing (a count that's missing games is worse than none).
 function recordOf(g){
   if(g.practice || g.scrim) return "";
-  const wl = x => result(x) || (replay(x).sc.us > replay(x).sc.them ? "W" : "L"), over = gameOver(g) || g.forfeit;
+  const over = gameOver(g) || g.forfeit;
   const typed = (infoOf(g).record || "").match(/(\d+)\s*-\s*(\d+)/);
-  if(typed){ let w = +typed[1], l = +typed[2]; if(over) wl(g) === "W" ? w++ : l++; return w + "-" + l; }
+  if(typed){ let w = +typed[1], l = +typed[2]; if(over) wlNow(g) === "W" ? w++ : l++; return w + "-" + l; }
   const before = Object.values(S.games).filter(x => !x.deleted && !x.practice && !x.scrim && !x.off && x.team === g.team && x.id !== g.id && (x.date + (x.time || "")) < (g.date + (g.time || "")));
   if(before.some(x => !gameOver(x) && !x.forfeit)) return "";
-  let w = 0, l = 0; for(const x of over ? before.concat([g]) : before) wl(x) === "W" ? w++ : l++;
+  let w = 0, l = 0; for(const x of over ? before.concat([g]) : before) wlNow(x) === "W" ? w++ : l++;
   return w + l ? w + "-" + l : "";
 }
 function lastMeeting(g){ const x = Object.values(S.games).filter(x => x.id !== g.id && x.team === g.team && okey(x.opp) === okey(g.opp) && result(x) && x.date < g.date).sort((a, b) => b.date.localeCompare(a.date))[0];
   return x ? `Last met ${fmtDate(x.date)}: ${resultWords(x)}` : ""; }
 function teamGlance(g, R, pre){
   const sd = sides(g), fl = (pre && pre.fl) || flowOf(R), x = (pre && pre.x) || extrasOf(g, R), rows = [];
-  const T = tm => R.box[tm] ? sumLines(Object.values(R.box[tm]).concat([R.team[tm]])) : LINE();
+  const T = tm => R.box[tm] ? totalsOf(R, tm) : LINE();
   const t = {us:T("us"), them:T("them")}, both = f => [f(sd.left), f(sd.right)];
   const sh = (tm, m, a) => t[tm].po ? "—" : `${t[tm][m]}-${t[tm][a]} ${pct(t[tm][m], t[tm][a])}`;
   rows.push(["FG", ...both(tm => sh(tm, "fgm", "fga"))], ["3PT", ...both(tm => sh(tm, "tpm", "tpa"))], ["FT", ...both(tm => sh(tm, "ftm", "fta"))]);
@@ -2163,7 +2166,7 @@ function viewAnn(){
   const meta = boardMeta(g, R);
   // The compact board, pinned to the top: the score, fouls and timeouts stay on screen while the PA scrolls to the notes or
   // the last plays, and the headline and the table sit above the fold.
-  const head = `<div class="bugcap"><span>${esc(usName(g))}${rec ? " (" + esc(rec) + ")" : ""} ${gameTitle(g)} · ${esc(gameSub(g))}</span>${met ? `<span>${esc(met)}</span>` : ""}</div>
+  const head = `<div class="bugcap"><span>${esc(usName(g))}${rec ? " (" + esc(rec) + ")" : ""} ${gameTitle(g)} · ${gameSub(g)}</span>${met ? `<span>${esc(met)}</span>` : ""}</div>
       <div class="annbug">${bug(g, R, {meta, quiet:!!signalFlag(g), per:fin ? "FINAL" : g.status === "live" ? nowLabel(g, R) : "PREGAME"})}${foulBar(g, R)}</div>
       <div class="linesc">${lineScore(g, R)}</div>`;
   // Points and fouls only (Kevin): no shooting, rebound or turnover glance here; Jim's page has those.
@@ -2271,7 +2274,7 @@ function bcBoard(g, R, tm){
     if(extra.length) h += `<div class="kicker bck">Noted, not on the roster</div>` + extra.map(([k, v]) => `<button class="bcrow" data-act="bcn" data-num="${esc(k.slice(pre.length))}"><span class="pnum">${esc(k.slice(pre.length))}</span><span class="bcwho"><span class="bcnote">${esc(v)}</span></span><span></span></button>`).join("");
     h += `<div class="row no-print" style="margin-top:6px"><button class="btn sm" data-act="bcn">+ Note for a number</button></div>`;
   }
-  const T = sumLines(Object.values(R.box[tm]).concat([R.team[tm]]));
+  const T = totalsOf(R, tm);
   if(g.ev.length) h += `<div class="bctot">${T.po ? "" : `FG ${T.fgm}-${T.fga} ${pct(T.fgm, T.fga)} · 3P ${T.tpm}-${T.tpa} · FT ${T.ftm}-${T.fta} · `}REB ${T.oreb + T.dreb} (${T.oreb} off) · TO ${T.to}</div>`;
   return h + `</section>`;
 }
@@ -2354,7 +2357,7 @@ function drawBroadcast(pre){
   if(!paOk()){ $("#view").innerHTML = pre + (Sync.live() ? "" : Sync.panel()) + paLock(); return; }
   followLive();
   const g = cur(), view = $("#view"), k = (g ? g.id : "-") + "|" + (S.settings.flip ? 1 : 0);
-  let root = $(".bc", view);
+  const root = $(".bc", view);
   if(!root || root.dataset.k !== k){
     view.innerHTML = `<div data-bc="pre"></div><div class="bc ann" data-k="${esc(k)}"><div data-bc="bar"></div><div data-bc="signal"></div>${g ? `<div data-bc="cap"></div><div data-bc="bug"></div><div data-bc="last"></div><div data-bc="ms"></div>
       <div class="bcgrid"><div data-bc="left"></div><aside class="bcrail">
@@ -2364,7 +2367,6 @@ function drawBroadcast(pre){
         <div class="card"><h3>Last plays</h3><div data-bc="plays"></div></div>
         <div class="card"><h3>Tonight</h3><div data-bc="tonight"></div></div>
       </aside><div data-bc="right"></div></div><div data-bc="box" id="bcbox" class="bcboxes"></div>` : `<div data-bc="none"></div>`}</div>`;
-    root = $(".bc", view);
   }
   const put = (part, html) => { const el = $(`[data-bc="${part}"]`, view); if(el) el.innerHTML = html; };
   put("pre", pre + (Sync.live() ? "" : Sync.panel()));
@@ -2372,7 +2374,7 @@ function drawBroadcast(pre){
   if(!g){ put("none", `<div class="card"><p style="margin:0">No game yet. Pick one above. Once the scorer starts a game, this page follows it.</p></div>`); return; }
   const R = replay(g), fin = g.status === "final", rec = g.practice ? "" : recordOf(g), met = g.practice ? "" : lastMeeting(g), lastAt = lastAtOf(g), hl = headline(g, R);
   const meta = boardMeta(g, R);
-  put("cap", `<div class="bugcap"><span>${esc(usName(g))}${rec ? " (" + esc(rec) + ")" : ""} ${gameTitle(g)} · ${esc(gameSub(g))}</span>${met ? `<span>${esc(met)}</span>` : ""}</div>`);
+  put("cap", `<div class="bugcap"><span>${esc(usName(g))}${rec ? " (" + esc(rec) + ")" : ""} ${gameTitle(g)} · ${gameSub(g)}</span>${met ? `<span>${esc(met)}</span>` : ""}</div>`);
   // Jim's scoreboard is the compact one and stays pinned at the top while he scrolls the spotting boards.
   put("bug", bug(g, R, {meta, quiet:!!signalFlag(g), per:fin ? "FINAL" : g.status === "live" ? nowLabel(g, R) : "PREGAME"}) + foulBar(g, R));
   put("last", hl.length || (g.status === "live" && lastAt) ? `<div class="lastplay">${hl.map(x => `<div>${x}</div>`).join("")}${g.status === "live" && lastAt ? `<div class="small" style="font-weight:500">Last play ${agoWords(lastAt)}</div>` : ""}</div>` : "");
@@ -3184,7 +3186,7 @@ function htWords(h){ const m = String(h || "").match(/^(\d)-(\d{1,2})$/); return
 // "At guard, a 6-foot-2 senior, number 3, Sam Wing (SAM-pul GARD)."
 function introHtml(g, tm){
   const rank = p => POS_ORDER[POS_WORD[(p.pos || "").toUpperCase()]] ?? 9;
-  const ps = startersOf(g, tm).map(pid => paPlayer(g, tm, pid)).filter(Boolean).sort((a, b) => rank(a) - rank(b) || (parseInt(a.num, 10) || 0) - (parseInt(b.num, 10) || 0));
+  const ps = startersOf(g, tm).map(pid => paPlayer(g, tm, pid)).filter(Boolean).sort((a, b) => rank(a) - rank(b) || byNum(a, b));
   if(!ps.length) return "";
   const lines = ps.map((p, i) => {
     const pos = POS_WORD[(p.pos || "").toUpperCase()], desc = [htWords(p.ht), YEAR_WORD[p.grade]].filter(Boolean).join(" "), bits = [];
@@ -3200,7 +3202,7 @@ function introHtml(g, tm){
 // School names on both sides: "Greenbrier 45, White House 40".
 function scoreWords(g){
   if(!g.ev.length) return "";
-  const R = replay(g), a = {n:"Greenbrier", v:R.sc.us}, b = {n:g.opp, v:R.sc.them};
+  const R = replay(g), a = {n:"Greenbrier", v:R.sc.us}, b = {n:esc(g.opp), v:R.sc.them};
   if(a.v === b.v) return `tied at ${a.v}`;
   const [hi, lo] = a.v > b.v ? [a, b] : [b, a];
   return `${hi.n} ${hi.v}, ${lo.n} ${lo.v}`;
@@ -3220,18 +3222,17 @@ function leaderWords(g){
 // (games this app never scored count too), else from the book, but only when every earlier game is final in the book.
 function recordWords(g){
   if(!gameOver(g) || g.practice || g.scrim) return "";
-  const wl = x => result(x) || (replay(x).sc.us > replay(x).sc.them ? "W" : "L");   // over by the horns counts before the Final tap
-  const won = wl(g) === "W", typed = (infoOf(g).record || "").match(/(\d+)\s*-\s*(\d+)(?:\D+(\d+)\s*-\s*(\d+))?/);
+  const won = wlNow(g) === "W", typed = (infoOf(g).record || "").match(/(\d+)\s*-\s*(\d+)(?:\D+(\d+)\s*-\s*(\d+))?/);
   let w = 0, l = 0, dw = 0, dl = 0;
   const before = Object.values(S.games).filter(x => !x.deleted && !x.practice && !x.scrim && !x.off && x.team === g.team && x.id !== g.id && (x.date + x.time) < (g.date + g.time));
   if(typed){ [w, l, dw, dl] = [1, 2, 3, 4].map(i => +typed[i] || 0); won ? w++ : l++;
     // No district record typed: count it from the book when every earlier district game is in it, else leave it out.
     if(g.district){ if(typed[3] != null) won ? dw++ : dl++;
-      else { const bd = before.filter(x => x.district); if(bd.every(x => gameOver(x) || x.forfeit)) for(const x of bd.concat([g])) wl(x) === "W" ? dw++ : dl++; } } }
+      else { const bd = before.filter(x => x.district); if(bd.every(x => gameOver(x) || x.forfeit)) for(const x of bd.concat([g])) wlNow(x) === "W" ? dw++ : dl++; } } }
   else {
     const open = before.filter(x => !gameOver(x) && !x.forfeit);
     if(open.length) return `<span class="miss">[record? ${open.length} earlier game${open.length > 1 ? "s aren't" : " isn't"} final in the book: type the record before tonight under Prep]</span>`;
-    for(const x of before.concat([g])){ const wx = wl(x) === "W"; wx ? w++ : l++; if(x.district) wx ? dw++ : dl++; }
+    for(const x of before.concat([g])){ const wx = wlNow(x) === "W"; wx ? w++ : l++; if(x.district) wx ? dw++ : dl++; }
   }
   return `The ${esc(usName(g))} are now ${w} and ${l}${dw + dl ? `, ${dw} and ${dl} in the district` : ""}.`;
 }
@@ -3489,6 +3490,8 @@ const boxCell = (ln, k) => cellOf(ln, k);
 function cellOf(ln, k){
   switch(k){ case "fg": return ln.po ? ln.fgm + "-—" : ln.fgm + "-" + ln.fga; case "tp": return ln.po ? ln.tpm + "-—" : ln.tpm + "-" + ln.tpa; case "ft": return ln.po ? ln.ftm + "-—" : ln.ftm + "-" + ln.fta; case "reb": return ln.oreb + ln.dreb; case "pm": return ln.pm > 0 ? "+" + ln.pm : ln.pm; default: return ln[k]; }
 }
+// A team's totals: every player's line plus the team line (team rebounds, bench technicals).
+const totalsOf = (R, tm) => sumLines(Object.values(R.box[tm]).concat([R.team[tm]]));
 function sumLines(lines){ const t = LINE(); for(const ln of lines) for(const k of Object.keys(t)) t[k] += ln[k] || 0; return t; }
 // fan: the fan page's columns, and a mark on who's on the floor while the game is live. pa: the PA page, points and fouls
 // only, with no team row or shooting line (they'd be empty).
@@ -3591,8 +3594,12 @@ function viewPlays(){
     ${playList(g, R, 0, canEdit(g), keep)}</div>`;
 }
 // Every play with its time of day, for a spreadsheet.
+// One CSV cell. Text a spreadsheet would run as a formula (a name typed as "=..." or "@...") gets a leading apostrophe, so it
+// stays text; numbers and things like "+5" are left alone.
+const csvCell = v => { if(typeof v === "string" && /^[=@\t\r]|^[+-](?![\d.]+$)/.test(v)) v = "'" + v;
+  return /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : v; };
 function playsCsv(g, pid){
-  const R = replay(g), ha = homeAway(g), q = v => /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : v;
+  const R = replay(g), ha = homeAway(g), q = csvCell;
   const rows = [["game_id","date","opponent","period","time_of_day",tmName(g, ha.home) + "_score",tmName(g, ha.away) + "_score","team","num","player","play","removed","added_later","game_clock"]];
   for(const p of R.plays){ const e = p.e, pl = e.pid ? player(g, e.tm, e.pid) : null; if(pid && e.pid !== pid) continue;
     rows.push([g.id, g.date, g.opp, perLabel(g, p.q), e.at ? new Date(e.at).toLocaleTimeString([], {hour:"numeric", minute:"2-digit", second:"2-digit"}) : "", p.sc[ha.home], p.sc[ha.away], e.t === "PER" ? "" : tmName(g, e.tm), pl ? pl.num : "", pl ? pl.name : "", playText(g, e).replace(/<[^>]+>/g, ""), p.void ? "yes" : "", e.ins ? "yes" : "", gcText(e, g, p.q)]); }
@@ -3629,14 +3636,13 @@ function viewShots(){
   // One column per team: a made/attempted that lumps both teams' shots together tells the coach nothing.
   const sd = sides(g), cols = ui.shotTm === "all" ? [sd.left, sd.right] : tms;
   const zone = f => cols.map(tm => { const z = placed.filter(s => s.e.tm === tm && f(s.e)); return `<td>${z.filter(s => s.e.m).length}/${z.length}</td>`; }).join("");
-  const paint = inPaint;
   const pl = sortRoster(tms.flatMap(tm => roster(g, tm)));
   return `<div class="card"><div class="row between"><div><div class="kicker">Shot chart</div><h2>${esc(usName(g))} ${gameTitle(g)}</h2></div>
       <div class="row"><select data-sel="shotTm" style="width:auto"><option value="all">Both teams</option><option value="us" ${ui.shotTm === "us" ? "selected" : ""}>${esc(usName(g))}</option><option value="them" ${ui.shotTm === "them" ? "selected" : ""}>${esc(g.opp)}</option></select>
       <select data-sel="shotPid" style="width:auto"><option value="">Everyone</option>${pl.map(p => `<option value="${p.pid}" ${ui.shotPid === p.pid ? "selected" : ""}>#${esc(p.num)} ${esc(p.name)}</option>`).join("")}</select>
       <select data-sel="shotQ" style="width:auto"><option value="">Every period</option>${Array.from({length:lq}, (_, i) => `<option value="${i + 1}" ${sq === i + 1 ? "selected" : ""}>${perLabel(g, i + 1)}</option>`).join("")}</select></div></div>
     <div class="row" style="align-items:flex-start;margin-top:10px;gap:20px"><div style="flex:1;min-width:260px;max-width:560px">${courtSvg(shots, "", g, null, {key:"shotSel", sel:picked.map(s => s.k)})}${shotPanel(picked.map(s => shotInfo(g, R, s)), placed.length)}</div>
-    <table style="max-width:340px"><tr><th class="l">Made/Att</th>${cols.map(tm => `<th class="tn" style="${tvars(g, tm)}"><span style="color:var(--tl,var(--green))">${esc(tmName(g, tm))}</span></th>`).join("")}</tr><tr><td>Paint</td>${zone(paint)}</tr><tr><td>Mid-range</td>${zone(e => !paint(e) && !isThree(e.x, e.y))}</tr><tr><td>Three</td>${zone(e => isThree(e.x, e.y))}</tr>
+    <table style="max-width:340px"><tr><th class="l">Made/Att</th>${cols.map(tm => `<th class="tn" style="${tvars(g, tm)}"><span style="color:var(--tl,var(--green))">${esc(tmName(g, tm))}</span></th>`).join("")}</tr><tr><td>Paint</td>${zone(inPaint)}</tr><tr><td>Mid-range</td>${zone(e => !inPaint(e) && !isThree(e.x, e.y))}</tr><tr><td>Three</td>${zone(e => isThree(e.x, e.y))}</tr>
     <tr class="tot"><td>Charted</td>${cols.map(tm => `<td>${placed.filter(s => s.e.tm === tm).length} of ${shots.filter(s => s.e.tm === tm).length}</td>`).join("")}</tr></table></div>
     ${shotsByPlayer(g, pool, cols)}
     <p class="small" style="margin-bottom:0">Dots are makes and X's are misses, each in its team's color. Tap one to see who shot it and when, or tap a player to see only their shots. Turn on <b>Shot spots</b> on the Scorer screen to tap where each shot came from.</p></div>`;
@@ -3644,7 +3650,6 @@ function viewShots(){
 // Under the Shots chart: every player who shot in the period picked, team by team, with made-attempted from everywhere
 // and from each zone of the charted ones. A row shows only that player's shots on the chart (the Everyone pick again).
 function shotsByPlayer(g, pool, cols){
-  const ma = ss => ss.length ? `${ss.filter(s => s.e.m).length}-${ss.length}` : "–";
   const rows = cols.flatMap(tm => sortRoster(roster(g, tm)).map(p => ({tm, p, ss:pool.filter(s => s.e.tm === tm && s.e.pid === p.pid)})).filter(r => r.ss.length));
   if(!rows.length) return "";
   return `<div class="scroll-x" style="margin-top:12px"><table class="pin shpl" style="max-width:640px"><tr><th class="l">By player</th><th>FG</th><th>3PT</th><th>Paint</th><th>Mid</th><th>Three</th></tr>
@@ -3665,7 +3670,7 @@ function viewGames(){
   }, rows = list.map(g => row(g));
   // Game night: tonight's games, both teams, sit on top, so between games the book opens the right one without scrolling the season.
   const today = pubToday(), tn = Object.values(S.games).filter(g => !g.deleted && !g.practice && g.date === today).sort((a, b) => (a.time || "").localeCompare(b.time || "") || a.team.localeCompare(b.team));
-  return `<div class="stack"><div class="row between"><div><div class="kicker">2026-27</div><h2>Game records</h2></div>
+  return `<div class="stack"><div class="row between"><div><div class="kicker">${SEASON}</div><h2>Game records</h2></div>
     <div class="row"><select data-sel="gfilter" style="width:auto"><option value="all">Boys &amp; girls</option><option value="boys" ${ui.gfilter === "boys" ? "selected" : ""}>Boys</option><option value="girls" ${ui.gfilter === "girls" ? "selected" : ""}>Girls</option></select>
     ${canCoach() ? `<button class="btn primary" data-act="newgame">+ New game</button>` : ""}${S.games.practice ? `<button class="btn" data-act="open" data-gid="practice">Practice game</button>` : ""}</div></div>
     ${tn.length ? `<div class="tonight"><div class="kicker">Tonight</div><div class="glist">${tn.map(g => row(g, true)).join("")}</div></div><div class="kicker">The season</div>` : ""}<div class="glist">${rows.join("") || `<p>No games yet.</p>`}</div></div>`;
@@ -3698,7 +3703,7 @@ function teamRecord(team){
   return `<div class="small" style="margin-top:6px;font-weight:600">Record ${r.all.join("-")}${r.district[0] + r.district[1] ? " · District " + r.district.join("-") : ""} · Home ${r.Home.join("-")} · Away ${r.Away.join("-")}${r.Neutral[0] + r.Neutral[1] ? " · Neutral " + r.Neutral.join("-") : ""}</div>`;
 }
 function seasonCsv(team){
-  const sl = seasonLines(team), q = v => /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : v;
+  const sl = seasonLines(team), q = csvCell;
   const rows = [["num","name","pos","year","height","gp","pts","ppg","fgm","fga","tpm","tpa","ftm","fta","oreb","dreb","reb","rpg","ast","apg","stl","blk","to","pf","tech","fg_pct","tp_pct","ft_pct"]];
   for(const p of sortRoster(S.teams[team].roster)){ const a = sl[p.pid]; if(!a) continue; const per = k => (a[k] / a.g).toFixed(1), pc = (m, n) => n ? (100 * m / n).toFixed(1) : "";
     rows.push([p.num, p.name, p.pos || "", p.grade || "", p.ht || "", a.g, a.pts, per("pts"), a.fgm, a.fga, a.tpm, a.tpa, a.ftm, a.fta, a.oreb, a.dreb, a.oreb + a.dreb, ((a.oreb + a.dreb) / a.g).toFixed(1), a.ast, per("ast"), a.stl, a.blk, a.to, a.pf, a.tf, pc(a.x.fgm, a.x.fga), pc(a.x.tpm, a.x.tpa), pc(a.x.ftm, a.x.fta)]); }
@@ -3707,7 +3712,7 @@ function seasonCsv(team){
 // Every counted game (seasonGames), one row per player per game, with every column the box score has. A player taken off
 // Rosters since still has his rows: each game keeps its own copy of the roster.
 function allGamesCsv(team){
-  const q = v => /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : v;
+  const q = csvCell;
   const rows = [["game_id","date","opponent","home_away","result","team_score","opp_score","num","name","pts","fgm","fga","tpm","tpa","ftm","fta","oreb","dreb","reb","ast","stl","blk","to","pf","tech","plus_minus"]];
   for(const g of seasonGames(team)){
     // +/- only from games with subs tapped, the way the box score shows it.
@@ -3720,7 +3725,6 @@ function allGamesCsv(team){
   return rows.map(r => r.map(q).join(",")).join("\n") + "\n";
 }
 // Wins and losses from the finals in the book (forfeits too), against one opponent (okey) or everyone.
-function winLoss(team, opp){ let w = 0, l = 0; for(const g of Object.values(S.games)) if(g.team === team && (!opp || okey(g.opp) === opp)){ const r = result(g); if(r === "W") w++; else if(r === "L") l++; } return [w, l]; }
 // The opponents in a season's counted games, A to Z, each with its games: {k (okey), name, gs}. The name is the one saved
 // under Opponents, else the spelling its games use most.
 function oppGroups(gs){ const m = new Map(); for(const g of gs){ const k = okey(g.opp); if(!m.has(k)) m.set(k, {k, gs:[]}); m.get(k).gs.push(g); }
@@ -3740,23 +3744,23 @@ function gameLogHtml(team, p, sh){
   const groups = oppGroups(all.map(r => r.g)); if(sh.opp && !groups.some(o => o.k === sh.opp)) sh.opp = "";
   const rows = all.filter(r => !sh.opp || okey(r.g.opp) === sh.opp), on = groups.find(o => o.k === sh.opp);
   const n = rows.length, t = sumLines(rows.map(r => r.ln)), x = sumLines(rows.filter(r => !r.ln.po).map(r => r.ln)), pmr = rows.filter(r => r.pm), pmt = pmr.reduce((s, r) => s + r.ln.pm, 0);
-  const pg = v => (v / n).toFixed(1), sg = v => (v > 0 ? "+" : "") + v, pgs = (m, a) => t.po ? pg(t[m]) : pg(t[m]) + "-" + pg(t[a]);
+  const pg = v => (v / n).toFixed(1), pgs = (m, a) => t.po ? pg(t[m]) : pg(t[m]) + "-" + pg(t[a]);
   const desc = [p.pos, p.grade, p.ht].filter(Boolean).join(" · ");
   const shots = rows.flatMap(r => r.R.shots.filter(s => s.e.tm === "us" && s.e.pid === pid).map(s => ({e:s.e, q:s.q, r, k:r.g.id + ":" + s.e.id, t:`${fmtDate(r.g.date)} ${r.g.ha === "Away" ? "at" : "vs"} ${r.g.opp}: ${s.e.m ? "made" : "missed"} ${s.e.p}`})));
-  const placed = shots.filter(s => s.e.x != null), paint = inPaint, picked = (ui.glSel || []).map(k => placed.find(s => s.k === k)).filter(Boolean);
+  const placed = shots.filter(s => s.e.x != null), picked = (ui.glSel || []).map(k => placed.find(s => s.k === k)).filter(Boolean);
   const zone = (lbl, f) => { const z = placed.filter(s => f(s.e)); return `${lbl} <b>${z.filter(s => s.e.m).length}/${z.length}</b>`; };
   const cells = (l, pm) => `<td>${l.pts}</td><td>${cellOf(l, "fg")}</td><td>${cellOf(l, "tp")}</td><td>${cellOf(l, "ft")}</td><td>${l.oreb + l.dreb}</td><td>${l.ast}</td><td>${l.stl}</td><td>${l.blk}</td><td>${l.to}</td><td>${l.pf}</td><td>${pm}</td>`;
   const line = r => `<tr><td class="l"><button class="glink" data-act="logbox" data-gid="${esc(r.g.id)}" title="Open the box score"><b>${esc(fmtDate(r.g.date))}</b><span>${r.g.ha === "Away" ? "at" : "vs"} ${esc(r.g.opp)}</span></button></td><td class="l">${esc(resultWords(r.g))}</td>${cells(r.ln, r.pm ? cellOf(r.ln, "pm") : "–")}</tr>`;
   const table = `<div class="scroll-x"><table class="pin glog"><tr><th class="l">Game</th><th class="l">Result</th><th>PTS</th><th>FG</th><th>3PT</th><th>FT</th><th>REB</th><th>AST</th><th>STL</th><th>BLK</th><th>TO</th><th>PF</th><th>+/-</th></tr>
     ${rows.map(line).join("")}
-    <tr class="tot"><td class="l">${on ? "vs " + esc(on.name) : "Season"}</td><td class="l">${n} game${n === 1 ? "" : "s"}</td>${cells(t, pmr.length ? sg(pmt) : "–")}</tr>
+    <tr class="tot"><td class="l">${on ? "vs " + esc(on.name) : "Season"}</td><td class="l">${n} game${n === 1 ? "" : "s"}</td>${cells(t, pmr.length ? pmText(pmt) : "–")}</tr>
     <tr><td class="l">A game</td><td></td><td>${pg(t.pts)}</td><td>${pgs("fgm", "fga")}</td><td>${pgs("tpm", "tpa")}</td><td>${pgs("ftm", "fta")}</td><td>${pg(t.oreb + t.dreb)}</td><td>${pg(t.ast)}</td><td>${pg(t.stl)}</td><td>${pg(t.blk)}</td><td>${pg(t.to)}</td><td>${pg(t.pf)}</td><td>${pmr.length ? (pmt > 0 ? "+" : "") + (pmt / pmr.length).toFixed(1) : "–"}</td></tr>
     <tr><td class="l">Shooting</td><td></td><td></td><td>${pct(x.fgm, x.fga)}</td><td>${pct(x.tpm, x.tpa)}</td><td>${pct(x.ftm, x.fta)}</td><td colspan="7"></td></tr></table></div>`;
   // Their line against each team, over the whole season: a row picks that opponent (again: the whole season).
   const vs = groups.length > 1 || sh.opp ? `<div class="kicker" style="margin-top:14px">Against each opponent</div><div class="scroll-x"><table class="pin glog shpl"><tr><th class="l">Opponent</th><th>GP</th><th>PTS</th><th>PPG</th><th>FG</th><th>3PT</th><th>FT</th><th>REB</th><th>AST</th><th>STL</th><th>TO</th></tr>
     ${groups.map(o => { const rs = all.filter(r => okey(r.g.opp) === o.k), l = sumLines(rs.map(r => r.ln)), sel = o.k === sh.opp;
       return `<tr${sel ? ' class="on"' : ""}><td class="l"><button class="lnk" data-act="glopp" data-opp="${esc(sel ? "" : o.k)}" aria-pressed="${sel}">${esc(o.name)}</button></td><td>${rs.length}</td><td>${l.pts}</td><td>${(l.pts / rs.length).toFixed(1)}</td><td>${cellOf(l, "fg")}</td><td>${cellOf(l, "tp")}</td><td>${cellOf(l, "ft")}</td><td>${l.oreb + l.dreb}</td><td>${l.ast}</td><td>${l.stl}</td><td>${l.to}</td></tr>`; }).join("")}</table></div>` : "";
-  const chart = placed.length ? `<div class="glchart"><div style="flex:1 1 260px;max-width:300px">${courtSvg(placed, "", null, null, {key:"glSel", sel:picked.map(s => s.k)})}</div><div style="flex:1;min-width:200px"><div class="kicker">${on ? "Shot chart vs " + esc(on.name) : "Season shot chart"}</div><p class="small" style="margin:4px 0">${zone("Paint", paint)} · ${zone("Mid-range", e => !paint(e) && !isThree(e.x, e.y))} · ${zone("Three", e => isThree(e.x, e.y))}</p><p class="small" style="margin:0">${placed.length} of ${shots.length} shots charted. Dots are makes, X's are misses.</p>${shotPanel(picked.map(s => shotInfo(s.r.g, s.r.R, s, true)), placed.length)}</div></div>`
+  const chart = placed.length ? `<div class="glchart"><div style="flex:1 1 260px;max-width:300px">${courtSvg(placed, "", null, null, {key:"glSel", sel:picked.map(s => s.k)})}</div><div style="flex:1;min-width:200px"><div class="kicker">${on ? "Shot chart vs " + esc(on.name) : "Season shot chart"}</div><p class="small" style="margin:4px 0">${zone("Paint", inPaint)} · ${zone("Mid-range", e => !inPaint(e) && !isThree(e.x, e.y))} · ${zone("Three", e => isThree(e.x, e.y))}</p><p class="small" style="margin:0">${placed.length} of ${shots.length} shots charted. Dots are makes, X's are misses.</p>${shotPanel(picked.map(s => shotInfo(s.r.g, s.r.R, s, true)), placed.length)}</div></div>`
     : shots.length ? `<p class="small" style="margin:10px 0 0">No shot spots charted in these games. Turn on Shot spots on the Scorer screen to chart them.</p>` : "";
   return `<div class="kicker">${team === "girls" ? "Girls" : "Boys"} varsity · game log${on ? " · vs " + esc(on.name) : ""}</div><h3>#${esc(p.num)} ${esc(p.name || "")}</h3>
     <p class="small" style="margin:0 0 8px">${[desc, n ? `${n} game${n === 1 ? "" : "s"} · ${pg(t.pts)} ppg · ${pg(t.oreb + t.dreb)} rpg · ${pg(t.ast)} apg` : ""].filter(Boolean).map(esc).join(" · ")}${on ? ` <button class="btn sm" data-act="glopp" data-opp="">Whole season</button>` : ""}</p>
@@ -3826,7 +3830,7 @@ function msOf(team, g, R, pre){
       if(pr[k] != null && pr[k] !== ""){ const c0 = +pr[k] + s0, cn = c0 + t; steps("c", c0, cn, MS_CSTEP[k]); const cr = recs.find(r => r.k === "career" && r.s === k); if(cr) rec(cr, "career", c0, cn); }
       if(g){ const gr = recs.find(r => r.k === "game" && r.s === k); if(gr && t) rec(gr, "single-game", 0, t);
         const h = (B.hi[pid] || {})[k] || 0; if(sb.g >= 3 && t > h && t >= MS_HI[k]) out.push({id:id("hi"), pid, done:true, txt:`${nm(p)}: a season-high ${t} ${w} (was ${h})`}); } } }
-  if(g && R){ const t3 = Object.values(R.box.us).reduce((s, l) => s + l.tpm, 0) + R.team.us.tpm, us = {pid:"", num:"", name:""};
+  if(g && R){ const t3 = Object.values(R.box.us).reduce((s, l) => s + l.tpm, 0) + R.team.us.tpm;
     for(const [s, v, w, near] of [["tpts", R.sc.us, "points", 10], ["t3", t3, "threes", 2]]){ const r = recs.find(x => x.k === "game" && x.s === s); if(!r || !v) continue;
       if(v > r.v) out.push({id:`${gid}:team:${s}`, pid:"", done:true, txt:`${usName(g)} break the school single-game record for team ${w}: ${v} (was ${r.t}, ${by(r)})`});
       else if(v === r.v) out.push({id:`${gid}:team:${s}t`, pid:"", done:true, txt:`${usName(g)} tie the school single-game record for team ${w}: ${v} (${by(r)})`});
@@ -3903,11 +3907,10 @@ const STAT_T = new Set(["FG", "FT", "REB", "AST", "STL", "BLK", "TO", "PF", "TF"
 const DIG = new WeakMap();
 const gSig = g => [g.ev.length, g.rev || 0, g.upd || 0, g.status, g.scrim ? 1 : 0, g.qlen || 0].join(":");
 const fx1 = v => (Math.round(v * 10) / 10).toFixed(1);
-const avgOf = (v, n) => n ? fx1(v / n) : "–";
 const pctN = (m, a) => a ? m / a : null;
 const pctS = v => v == null ? "–" : Math.round(100 * v) + "%";
-const sgn = v => (v > 0 ? "+" : "") + v;
-const sgn1 = v => (v > 0 ? "+" : v < 0 ? "" : "") + fx1(v);
+const digRec = ds => `${ds.filter(d => d.res === "W").length}-${ds.filter(d => d.res === "L").length}`;
+const sgn1 = v => (v > 0 ? "+" : "") + fx1(v);
 // One game taken apart (comp: competitive minutes only, see gameComp).
 function dig(g, comp){
   const k = comp ? "c" : "a", c = DIG.get(g) || {}, sig = gSig(g);
@@ -3944,7 +3947,7 @@ function digOf(g, orig){
     prev = p.sc;
   }
   const ck = real >= 10 && clk / real >= .9, M = ck ? clockStats(g, R) : null, lq = Math.max(1, lastQ(R));
-  const T = {us:sumLines(Object.values(R.box.us).concat([R.team.us])), them:sumLines(Object.values(R.box.them).concat([R.team.them]))};
+  const T = {us:totalsOf(R, "us"), them:totalsOf(R, "them")};
   return {g:orig, gv:g, R, sc:orig === g ? R.sc : replay(orig).sc, P, ck, M:M && M.show ? M : null, Q, lq, end:start(lq + 1), start, T, ast, blk, stl, subs, five:bookFive(g, "us"), res:result(orig)};
 }
 // Days off before each game of a season (b2b: the day after the last one, "1": one day between, "2+": more, or the first).
@@ -4090,13 +4093,13 @@ function ffAgg(ds){
 function ffTable(S0){
   const all = ffAgg(S0.ds), w = ffAgg(S0.ds.filter(d => d.res === "W")), l = ffAgg(S0.ds.filter(d => d.res === "L"));
   if(!all) return `<div class="stblk"><div class="kicker">Four factors</div>${noData("These need every stat logged: shooting with misses, rebounds and turnovers.")}</div>`;
-  const P = v => pctS(v), cols = [["Us", all.us], ["Opponents", all.them], ["Us in wins", w && w.us], ["Us in losses", l && l.us]];
+  const cols = [["Us", all.us], ["Opponents", all.them], ["Us in wins", w && w.us], ["Us in losses", l && l.us]];
   const row = (lbl, k, fmt, tip) => `<tr><td class="l" title="${esc(tip)}">${lbl}</td>${cols.map(([, c]) => `<td>${c && c[k] != null ? fmt(c[k]) : "–"}</td>`).join("")}</tr>`;
   const net = all.us.ppp != null && all.them.ppp != null ? Math.round(100 * (all.us.ppp - all.them.ppp)) : null;
   return `<div class="stblk"><div class="kicker">Four factors and efficiency</div><div class="scroll-x"><table class="pin"><tr><th class="l"></th>${cols.map(([h]) => `<th>${h}</th>`).join("")}</tr>
-    ${row("Shooting (eFG%)", "efg", P, "Field goals with a three worth one and a half")}${row("Turnover rate", "tov", P, "Turnovers per possession")}${row("Off. rebound rate", "orb", P, "Share of own misses rebounded")}${row("Free throw rate", "ftr", P, "Free throws made per shot")}
+    ${row("Shooting (eFG%)", "efg", pctS, "Field goals with a three worth one and a half")}${row("Turnover rate", "tov", pctS, "Turnovers per possession")}${row("Off. rebound rate", "orb", pctS, "Share of own misses rebounded")}${row("Free throw rate", "ftr", pctS, "Free throws made per shot")}
     ${row("Pace (possessions a game)", "poss", fx1, "Estimated")}${row("Points per 100 possessions", "ppp", v => Math.round(100 * v), "Offense (the Opponents column is our defense)")}</table></div>
-    <p class="small" style="margin:4px 0 0">${net != null ? `Net <b>${sgn(net)}</b> points per 100 possessions. ` : ""}Second-chance points a game: <b>${fx1(all.x.second.us / all.n)}</b> for, <b>${fx1(all.x.second.them / all.n)}</b> against. Points off turnovers: <b>${fx1(all.x.offTo.us / all.n)}</b> for, <b>${fx1(all.x.offTo.them / all.n)}</b> against. From ${all.n} game${all.n === 1 ? "" : "s"} with every stat logged.</p></div>`;
+    <p class="small" style="margin:4px 0 0">${net != null ? `Net <b>${pmText(net)}</b> points per 100 possessions. ` : ""}Second-chance points a game: <b>${fx1(all.x.second.us / all.n)}</b> for, <b>${fx1(all.x.second.them / all.n)}</b> against. Points off turnovers: <b>${fx1(all.x.offTo.us / all.n)}</b> for, <b>${fx1(all.x.offTo.them / all.n)}</b> against. From ${all.n} game${all.n === 1 ? "" : "s"} with every stat logged.</p></div>`;
 }
 // Record and margin by how many days off came before the game, and fast games against slow ones (pace above or below the
 // median of these games).
@@ -4137,9 +4140,8 @@ function teamHighs(S0){
   if(!S0.ds.length) return "";
   const best = (lbl, f, low, fmt = String) => { let b = null; for(const d of S0.ds){ const v = f(d); if(v == null) continue; if(!b || (low ? v < b.v : v > b.v)) b = {d, v}; }
     return b ? `<tr><td class="l">${lbl}</td><td><b>${fmt(b.v)}</b></td><td class="l"><button class="glink" data-act="logbox" data-gid="${esc(b.d.g.id)}"><b>${esc(fmtDate(b.d.g.date))}</b><span>${b.d.g.ha === "Away" ? "at" : "vs"} ${esc(b.d.g.opp)}</span></button></td></tr>` : ""; };
-  const sc = d => d.sc;
   return `<div class="stblk"><div class="kicker">Team highs</div><div class="scroll-x"><table class="pin"><tr><th class="l"></th><th></th><th class="l">Game</th></tr>
-    ${best("Most points", d => sc(d).us)}${best("Fewest allowed", d => sc(d).them, true)}${best("Biggest win", d => d.res === "W" ? sc(d).us - sc(d).them : null)}${best("Most threes", d => d.T.us.tpm)}
+    ${best("Most points", d => d.sc.us)}${best("Fewest allowed", d => d.sc.them, true)}${best("Biggest win", d => d.res === "W" ? d.sc.us - d.sc.them : null)}${best("Most threes", d => d.T.us.tpm)}
     ${best("Most rebounds", d => d.T.us.po ? null : d.T.us.oreb + d.T.us.dreb)}${best("Most assists", d => d.T.us.ast)}${best("Most steals", d => d.T.us.stl)}${best("Best FG%", d => d.T.us.po || d.T.us.fga < 10 ? null : d.T.us.fgm / d.T.us.fga, false, pctS)}</table></div></div>`;
 }
 /* ---- Players ---- */
@@ -4243,7 +4245,7 @@ function playersTable(S0, L){
   else if(v === "shoot"){ const H = howOf(S0).P;
     head = ["Player", "FG", "FG%", "3PT", "3P%", "FT", "FT%", ["TS%", "True shooting: points per shot, free throws counted"], ["eFG%", "A three counts one and a half makes"], ["PPS", "Points per field goal tried"], ["3PAr", "Share of shots that were threes"], ["FTr", "Free throws tried per field goal tried"], ["Ast'd", "Share of made baskets that were assisted"]];
     rows = ps.map(p => { const x = L[p.pid].x, h = H[p.pid] || {}, fgp = x.fgm * 2 + x.tpm + x.ftm, m = (h.m2 || 0) + (h.m3 || 0);
-      return [pBtn(S0, p), `${x.fgm}-${x.fga}`, pc(x.fgm, x.fga), `${x.tpm}-${x.tpa}`, pc(x.tpm, x.tpa), `${x.ftm}-${x.fta}`, pc(x.ftm, x.fta), pc(fgp, 2 * (x.fga + .44 * x.fta)), pc(x.fgm + .5 * x.tpm, x.fga), x.fga ? (x.pts - x.ftm) / x.fga >= 0 ? ((x.fgm * 2 + x.tpm) / x.fga).toFixed(2) : "–" : "–", pc(x.tpa, x.fga), x.fga ? (x.fta / x.fga).toFixed(2) : "–", pc((h.a2 || 0) + (h.a3 || 0), m)]; });
+      return [pBtn(S0, p), `${x.fgm}-${x.fga}`, pc(x.fgm, x.fga), `${x.tpm}-${x.tpa}`, pc(x.tpm, x.tpa), `${x.ftm}-${x.fta}`, pc(x.ftm, x.fta), pc(fgp, 2 * (x.fga + .44 * x.fta)), pc(x.fgm + .5 * x.tpm, x.fga), x.fga ? ((x.fgm * 2 + x.tpm) / x.fga).toFixed(2) : "–", pc(x.tpa, x.fga), x.fga ? (x.fta / x.fga).toFixed(2) : "–", pc((h.a2 || 0) + (h.a3 || 0), m)]; });
     note = "From games with every stat logged (misses kept). Ast'd counts made baskets with an assist tapped."; }
   else if(v === "score"){ const H = howOf(S0).P, F = ftOf(S0).P;
     head = ["Player", "PTS", ["From 2", "Share of points"], ["From 3", "Share of points"], ["From FT", "Share of points"], ["Putbacks", "The shot right after their own offensive rebound"], ["2nd chance", "Shots after any offensive rebound"], ["Transition ⏱", "Within 7 seconds of a steal or defensive rebound"], ["And-ones", "Basket plus the foul shot"], ["Trips", "Trips to the line (fouls drawn that gave free throws)"]];
@@ -4259,7 +4261,7 @@ function playersTable(S0, L){
   else if(v === "floor"){ const F = floorOf(S0);
     head = ["Player", ["On +/-", "Points for minus against with them on"], ["Off +/-", "With them on the bench"], ["Net/32 on ⏱", "Per 32 minutes, clock games"], ["Net/32 off ⏱", ""], ["Usage", "Their share of the team's shots, free throws and turnovers while on"], ["Pts share", "Share of the team's points while on"], ["OREB%", "Offensive rebounds they got of the ones there were while on"], ["DREB%", "Defensive rebounds they got of the ones there were while on"], ["Opp FG% on", ""], ["Opp FG% off", ""], ["STL+BLK", "A game"]];
     rows = ps.filter(p => F[p.pid]).map(p => { const f = F[p.pid], o = f.on, x = f.off, w = o.own, a = L[p.pid], n32 = m => m.sec >= 60 ? sgn1((m.pf - m.pa) * 1920 / m.sec) : "–";
-      return [pBtn(S0, p), sgn(o.pf - o.pa), sgn(x.pf - x.pa), n32(f.m.on), n32(f.m.off), pc(w.fga + .44 * w.fta + w.to, o.fga + .44 * o.fta + o.to), pc(w.pts, o.pts), pc(w.oreb, o.uor + o.tdr), pc(w.dreb, o.udr + o.tor), pc(o.ofgm, o.ofga), pc(x.ofgm, x.ofga), fx1((a.stl + a.blk) / a.g)]; });
+      return [pBtn(S0, p), pmText(o.pf - o.pa), pmText(x.pf - x.pa), n32(f.m.on), n32(f.m.off), pc(w.fga + .44 * w.fta + w.to, o.fga + .44 * o.fta + o.to), pc(w.pts, o.pts), pc(w.oreb, o.uor + o.tdr), pc(w.dreb, o.udr + o.tor), pc(o.ofgm, o.ofga), pc(x.ofgm, x.ofga), fx1((a.stl + a.blk) / a.g)]; });
     note = `From ${S0.ds.filter(d => d.subs).length} of ${S0.ds.length} games with subs tapped, counting only plays with five of ours on the floor. Net/32 needs the clock too: ${clockNote(S0, "mds").replace(/<[^>]+>/g, "")}`;
     if(!rows.length) return nav + noData("These need subs tapped in or out during games."); }
   else if(v === "highs"){
@@ -4455,7 +4457,7 @@ function leadsCard(S0){
   for(const d of S0.ds){ let hi = 0, lo = 0; for(const p of d.P) if(p.scored){ const m = p.sc.us - p.sc.them; hi = Math.max(hi, m); lo = Math.min(lo, m); }
     big += hi; dn += -lo; const f = flowOf(d.R); lc += f.lc; ties += f.ties;
     if(hi >= 10 && d.res === "L") blown.push({d, v:hi}); if(lo <= -10 && d.res === "W") back.push({d, v:-lo});
-    if(d.ck){ let t0 = 0, st = 0; const add = (t1, m) => { const s = Math.max(0, t1 - t0); tl[m > 0 ? "lead" : m < 0 ? "trail" : "tied"] += s; t0 = Math.max(t0, t1); };
+    if(d.ck){ let t0 = 0; const add = (t1, m) => { const s = Math.max(0, t1 - t0); tl[m > 0 ? "lead" : m < 0 ? "trail" : "tied"] += s; t0 = Math.max(t0, t1); };
       for(const p of d.P){ if(p.el == null) continue; add(p.el, p.bf.us - p.bf.them); } add(d.end, d.R.sc.us - d.R.sc.them); } }
   const g = x => `${esc(fmtDate(x.d.g.date))} ${x.d.g.ha === "Away" ? "at" : "vs"} ${esc(x.d.g.opp)} (${x.v})`, tot = tl.lead + tl.tied + tl.trail;
   return `<div class="stblk"><div class="kicker">Leads</div>${stTable(["", ""], [["Biggest lead, a game", fx1(big / n)], ["Biggest deficit, a game", fx1(dn / n)], ["Lead changes, a game", fx1(lc / n)], ["Ties, a game", fx1(ties / n)],
@@ -4465,9 +4467,9 @@ function leadsCard(S0){
 // Close games: decided by 5 or fewer, overtime, and clutch time (last 4:00 of the 4th or OT within 5) both ways.
 function clutchCard(S0){
   const n = S0.ds.length; if(!n) return "";
-  const rec = ds => `${ds.filter(d => d.res === "W").length}-${ds.filter(d => d.res === "L").length}`, close = S0.ds.filter(d => d.res && Math.abs(d.sc.us - d.sc.them) <= 5), ot = S0.ds.filter(d => d.res && d.lq > d.Q);
+  const close = S0.ds.filter(d => d.res && Math.abs(d.sc.us - d.sc.them) <= 5), ot = S0.ds.filter(d => d.res && d.lq > d.Q);
   const C = clutchOf(S0), cg = S0.cds.filter(d => d.res && d.P.some(p => clutchP(d, p))), l = C.T;
-  return `<div class="stblk"><div class="kicker">Close games and clutch time</div>${stTable(["", "Us", "Opponents"], [["Record in games decided by 5 or less", rec(close), ""], ["Record in overtime games", rec(ot), ""], ["Record with clutch time ⏱", rec(cg), ""],
+  return `<div class="stblk"><div class="kicker">Close games and clutch time</div>${stTable(["", "Us", "Opponents"], [["Record in games decided by 5 or less", digRec(close), ""], ["Record in overtime games", digRec(ot), ""], ["Record with clutch time ⏱", digRec(cg), ""],
     ["Clutch points", l.us.pts, l.them.pts], ["Clutch FG", `${l.us.fgm}-${l.us.fga}`, `${l.them.fgm}-${l.them.fga}`], ["Clutch FT", `${l.us.ftm}-${l.us.fta}`, `${l.them.ftm}-${l.them.fta}`], ["Clutch turnovers", l.us.to, l.them.to]])}
     <p class="small" style="margin:4px 0 0">Clutch time: the last 4 minutes of the 4th quarter or overtime with the score within 5. ${clockNote(S0).replace(/<[^>]+>/g, "")}</p></div>`;
 }
@@ -4548,7 +4550,7 @@ function toCard(S0){
 // Pace by opponent: possessions a game, points per 100 both ways.
 function paceCard(S0){
   const rows = S0.groups.map(o => { const ds = S0.ds.filter(d => okey(d.g.opp) === o.k), f = ffAgg(ds); if(!f) return null;
-    return [esc(o.name), f.n, fx1(f.us.poss), f.us.ppp != null ? Math.round(100 * f.us.ppp) : "–", f.them.ppp != null ? Math.round(100 * f.them.ppp) : "–", `${ds.filter(d => d.res === "W").length}-${ds.filter(d => d.res === "L").length}`]; }).filter(Boolean);
+    return [esc(o.name), f.n, fx1(f.us.poss), f.us.ppp != null ? Math.round(100 * f.us.ppp) : "–", f.them.ppp != null ? Math.round(100 * f.them.ppp) : "–", digRec(ds)]; }).filter(Boolean);
   if(!rows.length) return "";
   return `<div class="stblk"><div class="kicker">Pace by opponent</div>${stTable(["Opponent", "G", ["Pace", "Possessions a game (ours, estimated)"], ["Off", "Our points per 100 possessions"], ["Def", "Their points per 100 possessions"], "W-L"], rows)}<p class="small" style="margin:4px 0 0">Games with every stat logged.</p></div>`;
 }
@@ -4572,8 +4574,8 @@ const net32 = u => u.sec >= 60 ? sgn1((u.pf - u.pa) * 1920 / u.sec) : "–";
 function unitsCard(S0){
   const A = unitAgg(S0); if(!A.U.length) return `<div class="stblk"><div class="kicker">Lineups ⏱🔁</div>${noData("Lineups need games with the game clock and subs tapped. " + clockNote(S0, "mds"))}</div>`;
   const nums = u => u.pids.map(pid => numOf(S0, pid)).sort((a, b) => (parseInt(a.slice(1), 10) || 0) - (parseInt(b.slice(1), 10) || 0)).join(" ");
-  return `<div class="stblk"><div class="kicker">Five-man lineups ⏱🔁</div>${stTable(["On the floor", "G", "MIN", "PTS", "OPP", "+/-", ["Net/32", "Per 32 minutes"]], A.U.slice(0, 12).map(u => [nums(u), u.g.size, mss(u.sec), u.pf, u.pa, sgn(u.pf - u.pa), net32(u)]))}
-    <div class="kicker" style="margin-top:10px">Pairs</div>${stTable(["Together", "MIN", "PTS", "OPP", "+/-", "Net/32"], A.P.filter(p => p.sec >= 60).slice(0, 12).map(u => [nums(u), mss(u.sec), u.pf, u.pa, sgn(u.pf - u.pa), net32(u)]))}
+  return `<div class="stblk"><div class="kicker">Five-man lineups ⏱🔁</div>${stTable(["On the floor", "G", "MIN", "PTS", "OPP", "+/-", ["Net/32", "Per 32 minutes"]], A.U.slice(0, 12).map(u => [nums(u), u.g.size, mss(u.sec), u.pf, u.pa, pmText(u.pf - u.pa), net32(u)]))}
+    <div class="kicker" style="margin-top:10px">Pairs</div>${stTable(["Together", "MIN", "PTS", "OPP", "+/-", "Net/32"], A.P.filter(p => p.sec >= 60).slice(0, 12).map(u => [nums(u), mss(u.sec), u.pf, u.pa, pmText(u.pf - u.pa), net32(u)]))}
     <p class="small" style="margin:4px 0 0">The 12 most used. ${clockNote(S0, "mds")} A lineup with a sub that had no clock is left out.</p></div>`;
 }
 // One game's rotation: a bar for each stint, by period.
@@ -4630,7 +4632,7 @@ function bigCard(S0){
   for(const u of unitAgg(S0).U){ const b = B[key(cnt(S0, u.pids))] || (B[key(cnt(S0, u.pids))] = {pf:0, pa:0, sec:0}); b.sec += u.sec; }
   const ks = ["0", "1", "2", "3+"].filter(k => B[k] && (B[k].pf || B[k].pa || B[k].sec)); if(!ks.length) return "";
   const bigs = Object.keys(linesOf(S0.ds)).map(pid => stPlayer(S0.team, pid, S0.ds)).filter(p => isBig(p, S0.team));
-  return `<div class="stblk"><div class="kicker">Big and small 🔁</div>${stTable(["Bigs on the floor", "PTS", "OPP", "+/-", ["MIN ⏱", ""], ["Net/32 ⏱", ""]], ks.map(k => { const b = B[k]; return [k, b.pf, b.pa, sgn(b.pf - b.pa), b.sec ? mss(b.sec) : "–", net32(b)]; }))}
+  return `<div class="stblk"><div class="kicker">Big and small 🔁</div>${stTable(["Bigs on the floor", "PTS", "OPP", "+/-", ["MIN ⏱", ""], ["Net/32 ⏱", ""]], ks.map(k => { const b = B[k]; return [k, b.pf, b.pa, pmText(b.pf - b.pa), b.sec ? mss(b.sec) : "–", net32(b)]; }))}
     <p class="small" style="margin:4px 0 0">Bigs: ${bigs.length ? bigs.map(pNm).join(", ") : "none yet"} (centers, forwards and posts from Rosters; no position: ${S0.team === "girls" ? "6-0" : "6-4"} and up). Points from plays with five of ours on the floor.</p></div>`;
 }
 /* ---- Scouting: an opponent across every game we've played them ---- */
@@ -4655,7 +4657,7 @@ function scoutCard(S0){
   return `<div class="card"><div class="row between"><div><div class="kicker">Scouting</div><h3 style="margin:0">${esc(o.name)}</h3></div>
     <select data-sel="stScout" aria-label="Opponent" style="width:auto;max-width:100%">${groups.map(x => `<option value="${esc(x.k)}" ${x.k === k ? "selected" : ""}>${esc(x.name)} (${x.gs.length})${nx && okey(nx.opp) === x.k ? " · next up" : ""}</option>`).join("")}</select></div>
     ${up ? `<p class="small" style="margin:4px 0 0;font-weight:600">Next: ${esc(fmtDate(up.date))}${up.time ? " " + esc(fmtTime(up.time)) : ""} ${up.ha === "Away" ? "at" : "vs"} ${esc(up.opp)}</p>` : ""}
-    <div class="stblk"><div class="kicker">Meetings · ${ds.filter(d => d.res === "W").length}-${ds.filter(d => d.res === "L").length}</div><div class="row" style="gap:6px">${ds.map(d => `<button class="glink" data-act="logbox" data-gid="${esc(d.g.id)}"><b>${esc(fmtDate(d.g.date))}</b><span>${esc(d.res || "")} ${d.sc.us}-${d.sc.them}${d.g.ha === "Away" ? " (away)" : ""}</span></button>`).join("")}</div></div>
+    <div class="stblk"><div class="kicker">Meetings · ${digRec(ds)}</div><div class="row" style="gap:6px">${ds.map(d => `<button class="glink" data-act="logbox" data-gid="${esc(d.g.id)}"><b>${esc(fmtDate(d.g.date))}</b><span>${esc(d.res || "")} ${d.sc.us}-${d.sc.them}${d.g.ha === "Away" ? " (away)" : ""}</span></button>`).join("")}</div></div>
     <div class="stblk"><div class="kicker">Their players against us</div>${stTable(["Player", "GP", "PTS", "PPG", "FG", "3PT", "FT", "REB", "AST", "STL", "TO", "PF"], ps.map(a => [`#${esc(a.num)} ${esc(a.name)}`, a.g, a.ln.pts, fx1(a.ln.pts / a.g), a.x.fga ? `${a.x.fgm}-${a.x.fga}` : a.ln.fgm, a.x.tpa ? `${a.x.tpm}-${a.x.tpa}` : a.ln.tpm, a.x.fta ? `${a.x.ftm}-${a.x.fta}` : a.ln.ftm, a.ln.oreb + a.ln.dreb, a.ln.ast, a.ln.stl, a.ln.to, a.ln.pf]))}
       <p class="small" style="margin:4px 0 0">Matched across games by jersey number and name.</p></div>
     ${placed.length ? `<div class="stblk"><div class="kicker">Their shots against us</div><div class="glchart" style="margin-top:0"><div style="flex:1 1 280px;max-width:380px">${svg}</div><div style="flex:1;min-width:220px">
@@ -4704,7 +4706,7 @@ function oppTable(S0){
   return `<div class="stblk"><div class="kicker">Against each opponent</div><div class="scroll-x" style="margin-top:4px"><table class="pin shpl"><tr><th class="l">Opponent</th><th>GP</th><th class="l">W-L</th><th>PTS</th><th>OPP</th><th>+/-</th><th>FG%</th><th>3P%</th><th>FT%</th><th>REB</th><th>TO</th></tr>
     ${rows.map(o => { const ds = gs.get(o.k), n = ds.length, T2 = {us:LINE(), them:LINE()}, X = LINE(), pts = {us:0, them:0}, sel = o.k === S0.f.opp;
       for(const d of ds){ for(const tm of ["us", "them"]){ pts[tm] += d.R.sc[tm]; T2[tm] = sumLines([T2[tm], d.R.team[tm]].concat(Object.values(d.R.box[tm]))); } Object.assign(X, sumLines([X].concat(Object.values(d.R.box.us).filter(ln => !ln.po)))); }
-      return `<tr${sel ? ' class="on"' : ""}><td class="l"><button class="lnk" data-act="stopp" data-opp="${esc(sel ? "" : o.k)}" aria-pressed="${sel}">${esc(o.name)}</button></td><td>${n}</td><td class="l">${ds.filter(d => d.res === "W").length}-${ds.filter(d => d.res === "L").length}</td><td>${fx1(pts.us / n)}</td><td>${fx1(pts.them / n)}</td><td>${sgn1((pts.us - pts.them) / n)}</td><td>${pct(X.fgm, X.fga)}</td><td>${pct(X.tpm, X.tpa)}</td><td>${pct(X.ftm, X.fta)}</td><td>${fx1((T2.us.oreb + T2.us.dreb) / n)}</td><td>${fx1(T2.us.to / n)}</td></tr>`; }).join("")}</table></div>
+      return `<tr${sel ? ' class="on"' : ""}><td class="l"><button class="lnk" data-act="stopp" data-opp="${esc(sel ? "" : o.k)}" aria-pressed="${sel}">${esc(o.name)}</button></td><td>${n}</td><td class="l">${digRec(ds)}</td><td>${fx1(pts.us / n)}</td><td>${fx1(pts.them / n)}</td><td>${sgn1((pts.us - pts.them) / n)}</td><td>${pct(X.fgm, X.fga)}</td><td>${pct(X.tpm, X.tpa)}</td><td>${pct(X.ftm, X.fta)}</td><td>${fx1((T2.us.oreb + T2.us.dreb) / n)}</td><td>${fx1(T2.us.to / n)}</td></tr>`; }).join("")}</table></div>
     <p class="small" style="margin:4px 0 0">Points, rebounds and turnovers are a game. Tap an opponent to see everything against just them.</p></div>`;
 }
 /* ---- The Stats tab ---- */
@@ -4738,7 +4740,7 @@ function viewSeason(){
     shooting:() => shotChartCard(S0, L) + howTeam(S0) + ftTeam(S0) + rimCard(S0),
     flow:() => quarterCard(S0) + leadsCard(S0) + clutchCard(S0) + marginCurve(S0) + startsCard(S0) + droughtCard(S0) + runsCard(S0) + timeoutCard(S0) + toCard(S0) + paceCard(S0),
     lineups:() => unitsCard(S0) + rotationCard(S0) + minutesCard(S0, L) + benchCard(S0) + foulCard(S0, L) + bigCard(S0) + `<p class="small" style="margin:12px 0 0">Each player on and off the floor (+/-, shares, rebounding, defense): Players, On the floor.</p>`}[sec]()}</div>`;
-  return `<div class="stack stv"><div class="card rcard"><div class="row between"><div class="tc-head" style="margin:0"><img src="bobcat-head.png" alt=""><div><div class="kicker">2026-27 · Season stats</div><h2>${esc(T.name)}</h2></div></div>
+  return `<div class="stack stv"><div class="card rcard"><div class="row between"><div class="tc-head" style="margin:0"><img src="bobcat-head.png" alt=""><div><div class="kicker">${SEASON} · Season stats</div><h2>${esc(T.name)}</h2></div></div>
       <div class="row">${["boys", "girls"].map(t => `<button class="btn sm" data-act="stteam" data-v="${t}" aria-pressed="${t === team}">${t === "girls" ? "Girls" : "Boys"}</button>`).join("")}</div></div>
       ${sec === "records" ? "" : filterBar(S0) + sum}
       <div class="stnav" role="group" aria-label="Stats section">${ST_SECS.map(([k, lb]) => `<button data-act="stsec" data-v="${k}" aria-pressed="${k === sec}">${lb}</button>`).join("")}</div></div>${body}</div>`;
@@ -4753,7 +4755,7 @@ function playerMore(team, p, rows){
   const adv = [["TS%", pc(x.pts, 2 * (x.fga + .44 * x.fta))], ["eFG%", pc(x.fgm + .5 * x.tpm, x.fga)], ["PTS/shot", x.fga ? ((2 * x.fgm + x.tpm) / x.fga).toFixed(2) : "–"], ["3PA rate", pc(x.tpa, x.fga)], ["FT rate", x.fga ? (x.fta / x.fga).toFixed(2) : "–"],
     ["Assisted", h ? pc(h.a2 + h.a3, h.m2 + h.m3) : "–"], ["Game Score", fx1(gs.reduce((s, v) => s + v, 0) / gs.length)]];
   const p32 = m && m.g ? [["MPG ⏱", fx1(m.sec / 60 / m.g)], ["PTS/32", ast32(m.ln.pts, m.sec)], ["REB/32", ast32(m.ln.oreb + m.ln.dreb, m.sec)], ["AST/32", ast32(m.ln.ast, m.sec)]] : [];
-  const onoff = F ? [["On +/-", sgn(F.on.pf - F.on.pa)], ["Off +/-", sgn(F.off.pf - F.off.pa)]] : [];
+  const onoff = F ? [["On +/-", pmText(F.on.pf - F.on.pa)], ["Off +/-", pmText(F.off.pf - F.off.pa)]] : [];
   const tiles = adv.concat(p32, onoff).map(([l, v]) => `<div class="sttile"><span>${l}</span><b>${v}</b></div>`).join("");
   const xs = ds.map(d => oppInfo(d.g.opp, d.g).abbr), pts = ds.map(d => (d.R.box.us[pid] || {}).gp ? d.R.box.us[pid].pts : null);
   return `<div class="sttiles">${tiles}</div>
@@ -4768,9 +4770,9 @@ function playerPdf(team, pid, opp){
   const all = seasonGames(team).filter(g => { const ln = replay(g).box.us[pid]; return ln && ln.gp; }), gs = all.filter(g => !opp || okey(g.opp) === opp), ds = gs.map(g => dig(g, false));
   if(!ds.length){ toast("No games for this player yet."); return; }
   const sub = {team, all:gs, ds, cds:ds.filter(d => d.ck), mds:ds.filter(d => d.M), groups:oppGroups(all), f:{}, rest:new Map()}, L = linesOf(ds), a = L[pid], x = a.x, n = a.g, h = howOf(sub).P[pid], m = minOf(sub)[pid];
-  const on = opp ? sub.groups.find(o => o.k === opp) : null, title = `${p.name || "#" + p.num} ${team === "girls" ? "girls" : "boys"} basketball 2026-27`, D = pdfDoc(title), Lx = 36, RT = 576; let y = 40;
+  const on = opp ? sub.groups.find(o => o.k === opp) : null, title = `${p.name || "#" + p.num} ${team === "girls" ? "girls" : "boys"} basketball ${SEASON}`, D = pdfDoc(title), Lx = 36, RT = 576; let y = 40;
   const need = hh => { if(y + hh > 756){ D.page(); y = 40; } };
-  D.page(); D.text(Lx, y, `${team === "girls" ? "Girls" : "Boys"} varsity · 2026-27 player profile${on ? " · vs " + on.name : ""}`.toUpperCase(), {sz:8.5, b:true, g:.35});
+  D.page(); D.text(Lx, y, `${team === "girls" ? "Girls" : "Boys"} varsity · ${SEASON} player profile${on ? " · vs " + on.name : ""}`.toUpperCase(), {sz:8.5, b:true, g:.35});
   y += 22; D.text(Lx, y, `#${p.num} ${p.name || ""}`, {sz:20, b:true, fit:RT - Lx});
   y += 15; D.text(Lx, y, [p.pos, p.grade, p.ht, `${n} game${n === 1 ? "" : "s"}`].filter(Boolean).join(" · "), {sz:9.5, g:.25});
   const tiles = (list) => { const cw = (RT - Lx) / list.length; y += 22; D.fill(Lx, y - 12, RT - Lx, 30, .93);
@@ -4806,7 +4808,7 @@ function playerPdf(team, pid, opp){
     for(const o of sub.groups){ const gl = a.games.filter(g => okey(g.d.g.opp) === o.k); if(!gl.length) continue; const l = sumLines(gl.map(g => g.ln)); need(13); y += 12.5;
       D.text(Lx, y, `${o.name} (${gl.length})`, {sz:8.5, fit:240}); cols.forEach(([c, f], i) => D.text(ccx(i), y, c === "GMSC" ? fx1(gl.reduce((s, g) => s + gmSc(g.ln), 0) / gl.length) : String(f(l)), {sz:8.5, al:"c", fit:cw - 2})); } }
   y += 22; need(14); D.text(Lx, y, `Brier Stats ${BS_VERSION} · ${new Date().toLocaleDateString()} · Shooting percentages leave out points-only games. Game Score (Hollinger): 10 is a solid night.`, {sz:7, g:.45, fit:RT - Lx});
-  const name = `brier-stats-${(p.name || "player-" + p.num).toLowerCase().replace(/[^a-z0-9]+/g, "-")}-2026-27.pdf`;
+  const name = `brier-stats-${(p.name || "player-" + p.num).toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${SEASON}.pdf`;
   shareFile(name, new Blob([D.bytes()], {type:"application/pdf"}), title);
 }
 function viewTeams(){
@@ -4839,7 +4841,7 @@ function viewOpps(){
 function pubLink(){ return new URL("live/", location.href.split(/[?#]/)[0]).href; }
 function viewSetup(){
   const st = S.settings, edit = canCoach(), dis = edit ? "" : "disabled", adis = canAdmin() ? "" : "disabled";
-  const num = (k, lbl, max) => `<label class="fld" style="width:130px"><span>${lbl}</span><input type="number" min="0" max="${max}" data-set="${k}" value="${st[k]}" ${dis}></label>`;
+  const num = (k, lbl, max) => `<label class="fld" style="width:130px"><span>${lbl}</span><input type="number" min="0" max="${max}" data-set="${k}" value="${esc(st[k])}" ${dis}></label>`;
   return `<div class="stack" style="max-width:880px">${Sync.panel()}
     <div class="card stack"><h3 style="font-size:22px">Game rules</h3><div class="row" style="align-items:flex-end">${num("bonus","Bonus on foul #",15)}${num("to60","60s timeouts",9)}${num("to30","30s timeouts",9)}${num("qlen","Quarter (min)",20)}${num("otlen","OT (min)",10)}</div>
       <p class="small" style="margin:0">TSSAA follows NFHS: team fouls reset every quarter, the 5th puts the other team in the bonus (2 shots), overtime counts with the 4th quarter. 3 sixty-second and 2 thirty-second timeouts, plus one more per overtime.${edit ? "" : " A coach or an Admin changes these."}</p></div>
@@ -4927,14 +4929,14 @@ function scorebookPayload(g){
     cu = {gb: cu.gb + (R.qs.us[q-1] || 0), opp: cu.opp + (R.qs.them[q-1] || 0)};
     periods[q <= Q ? "q" + q : "ot" + (q - Q)] = {...cu};
   }
-  const named = roster(g, "us").filter(p => /^[A-Za-z]/.test(pShort(p))), nm = pShort;
+  const named = roster(g, "us").filter(p => /^[A-Za-z]/.test(pShort(p)));
   const top = named.map(p => ({p, pts:(R.box.us[p.pid] || LINE()).pts})).filter(x => x.pts > 0).sort((a, b) => b.pts - a.pts);
   const keep = top.filter((x, i) => i < 3 || x.pts >= 10).slice(0, 5);
   const sid = g.practice ? "practice" : sbId(g);
   return {source:"brier-stats", v:1, id:sid, ...(sid !== g.id && !g.practice ? {alt_id:g.id} : {}), date:g.date, team:g.team === "girls" ? "Girls" : "Boys", opponent:g.opp,
     final, gb: final ? R.sc.us : null, opp: final ? R.sc.them : null, periods, forfeit:ff,
-    top: keep.map(x => nm(x.p) + " " + x.pts).join(", "),
-    live_note: final || ff || g.status !== "live" ? "" : keep.slice(0, 2).map((x, i) => nm(x.p) + (i ? " " : " has ") + x.pts).join(", ")};
+    top: keep.map(x => pShort(x.p) + " " + x.pts).join(", "),
+    live_note: final || ff || g.status !== "live" ? "" : keep.slice(0, 2).map((x, i) => pShort(x.p) + (i ? " " : " has ") + x.pts).join(", ")};
 }
 function sendSheet(){
   const g = cur(); if(!g) return;
@@ -5217,6 +5219,8 @@ const Drive = (() => {
     : e && e.name === "TypeError" ? "Couldn't reach the Drive script. Check the signal, and that it's deployed as a Web app that Anyone can open."
     : e && e.name === "AbortError" ? "The Drive script took too long to answer." : String(e && e.message || e);
   async function post(body){
+    // The sign-in token rides along, so it goes to a Google Apps Script web app and nowhere else, whatever the setting says.
+    if(!on()) throw new Error("The Drive backup link isn't a Google Apps Script web app link. Check it under Setup, Google Drive backup.");
     const ac = new AbortController(), t = setTimeout(() => ac.abort(), 60000);
     try{
       // Plain text keeps it a simple request: Apps Script answers no preflight.
@@ -5319,7 +5323,7 @@ function bookCheck(g){
 }
 function csvOf(g){
   const R = replay(g), M = clockStats(g, R), cols = ["game_id","date","opponent","home_away","team","num","name","pos","pts","fgm","fga","tpm","tpa","ftm","fta","oreb","dreb","reb","ast","stl","blk","to","pf","tech","plus_minus","min"];
-  const q = v => /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : v;
+  const q = csvCell;
   const lines = [cols.join(",")], pre = [g.id, g.date, g.opp, g.ha];
   for(const tm of ["us","them"]){
     for(const p of sortRoster(roster(g, tm))){ const ln = R.box[tm][p.pid]; if(!ln) continue;
@@ -5645,7 +5649,7 @@ document.addEventListener("click", async ev => {
     case "csv": if(g) download(`${g.id}-box.csv`, csvOf(g), "text/csv"); break;
     case "voidtog": { if(!g || !canEdit(g)) break; const e = g.ev.find(x => x.id === a.dataset.id); if(e){ const v = !e.v, ed = Date.now(); (e.grp ? g.ev.filter(x => x.grp === e.grp) : [e]).forEach(x => { x.v = v; x.ed = ed; }); touch(g); } break; }
     case "fix": { if(!g || !canEdit(g)) break; const e = g.ev.find(x => x.id === a.dataset.id); if(e) fixSheet(g, e); break; }
-    case "fixpick": { if(!s || !g) break; const e = g.ev.find(x => x.id === s.eid); if(!e) break;
+    case "fixpick": { if(!s || !g || !canEdit(g)) break; const e = g.ev.find(x => x.id === s.eid); if(!e) break;
       e.from = e.from || {tm:e.tm, pid:e.pid}; e.tm = a.dataset.tm; e.pid = a.dataset.pid || null; e.ed = Date.now();
       // The basket went to the player who had its assist: one player can't have both, so ask who passed rather than lose it.
       if(e.t === "FG" && e.m && g.ev.some(x => !x.v && x.t === "AST" && x.ref === e.id && x.tm === e.tm && x.pid === e.pid)){ touch(g); fixSheet(g, e); break; }
@@ -5665,7 +5669,7 @@ document.addEventListener("click", async ev => {
       g.ev.splice(g.ev.indexOf(h), 1); const j = g.ev.indexOf(to) + (a.dataset.where === "after" ? 1 : 0);
       g.ev.splice(j, 0, h); h.at = (to.at || 0) + (a.dataset.where === "after" ? 1 : -1); h.ed = Date.now(); closeSheet(); touch(g);
       toast(`Moved the end of ${perLabel(g, h.q || 1)}. Quarter scores and team fouls are redone.`, 3500); break; }
-    case "fixkind": { if(!s || !g) break; const e = g.ev.find(x => x.id === s.eid); if(!e) break;
+    case "fixkind": { if(!s || !g || !canEdit(g)) break; const e = g.ev.find(x => x.id === s.eid); if(!e) break;
       if(e.t === "FG"){ if(a.dataset.k === "made") e.m = !e.m; if(a.dataset.k === "pts") e.p = e.p === 3 ? 2 : 3; }
       if(e.t === "FT") e.m = !e.m;
       if(e.t === "REB") e.o = !e.o;
@@ -5981,9 +5985,9 @@ function reconSheet(g){
     const gap = tm => R.sc[tm] - off[tm], tms = ["us", "them"];
     const pts = tm => sortRoster(roster(g, tm)).filter(p => (R.box[tm][p.pid] || {}).pts).map(p => `<span class="rvp">#${esc(p.num)} ${esc(p.name ? pShort(p) : "")} <b>${R.box[tm][p.pid].pts}</b></span>`).join("") || `<span class="small">No points</span>`;
     return `<h3>Check against the paper book</h3>
-      <p style="margin:0 0 8px">The paper book is official. ${b ? `The gym scoreboard ended at <b>${esc(usName(g))} ${b.us}, ${esc(g.opp)} ${b.them}</b>.` : "There's no scoreboard final for this game (away, or no feed)."} Type the official final if the paper book says something else.</p>
+      <p style="margin:0 0 8px">The paper book is official. ${b ? `The gym scoreboard ended at <b>${esc(usName(g))} ${esc(b.us)}, ${esc(g.opp)} ${esc(b.them)}</b>.` : "There's no scoreboard final for this game (away, or no feed)."} Type the official final if the paper book says something else.</p>
       <form id="rvform" class="stack"><table class="glance rvt"><tr><th class="l"></th><th>Book (players' points)</th><th>Official final</th><th>Off by</th></tr>
-      ${tms.map(tm => `<tr><td class="l">${esc(tmName(g, tm))}</td><td><b>${R.sc[tm]}</b></td><td><input type="number" name="${tm}" min="0" max="250" inputmode="numeric" value="${off[tm]}" ${done ? "disabled" : ""}></td><td class="${gap(tm) ? "rvbad" : ""}" data-gap="${tm}">${gap(tm) ? (gap(tm) > 0 ? "+" : "") + gap(tm) : "✓"}</td></tr>`).join("")}</table>
+      ${tms.map(tm => `<tr><td class="l">${esc(tmName(g, tm))}</td><td><b>${R.sc[tm]}</b></td><td><input type="number" name="${tm}" min="0" max="250" inputmode="numeric" value="${esc(off[tm])}" ${done ? "disabled" : ""}></td><td class="${gap(tm) ? "rvbad" : ""}" data-gap="${tm}">${gap(tm) ? (gap(tm) > 0 ? "+" : "") + gap(tm) : "✓"}</td></tr>`).join("")}</table>
       ${tms.map(tm => `<div class="small"><b>${esc(tmName(g, tm))}:</b> ${pts(tm)}</div>`).join("")}
       ${done ? `<div class="flag ok"><b>Signed off${rv.how === "accept" ? " with a difference" : ""}</b>${rv.note ? `: ${esc(rv.note)}` : "."} The fan page says Final.</div>
         <div class="row"><button class="btn" type="button" data-act="rvagain">Check it again</button><button class="btn" type="button" data-close>Close</button></div>`
@@ -6284,12 +6288,17 @@ function lastThem(g){ return Object.values(S.games).filter(x => x.id !== g.id &&
 // book and, where still taken off, the saved roster.
 const rzRe = (m, g) => { const o = (m.rzOut || []).filter(k => (g.them || []).some(p => p.pid === k)), d = o.filter(k => (S.lib.e[k] || {}).del);
   return {was:g, ch:{}, out:o, lib:d.length ? {now:Object.fromEntries(d.map(k => [k, {del:1}])), was:Object.fromEntries(d.map(k => [k, {del:0}]))} : null}; };
+// Ids go into the page as they are (data-gid, data-id, data-pid). The app makes them from letters, digits and dashes, so a game
+// from the cloud or from a backup file with a quote or an angle bracket in one isn't this app's writing: it's left out.
+const idBad = v => v != null && /[<>"]/.test(String(v));
+const plainIds = (id, g) => !idBad(id) && !idBad(g.id) && !(g.ev || []).some(e => e && (idBad(e.id) || idBad(e.pid) || idBad(e.ref)))
+  && !["us", "them"].some(tm => (g[tm] || []).some(p => p && idBad(p.pid)));
 function restore(text){
   let o; try{ o = JSON.parse(text); }catch(e){ toast("That file isn't a Brier Stats backup."); return; }
   if(!o || !o.brierstats || !o.games){ toast("That file isn't a Brier Stats backup."); return; }
   let n = 0;
   const rzd = [];
-  for(const [id, g] of Object.entries(o.games)){ const m = S.games[id]; if(!m || (g.rev || 0) > (m.rev || 0)){ S.games[id] = g; n++; Sync.dirty(id); }
+  for(const [id, g] of Object.entries(o.games)){ if(!g || !plainIds(id, g)) continue; const m = S.games[id]; if(!m || (g.rev || 0) > (m.rev || 0)){ S.games[id] = g; n++; Sync.dirty(id); }
     else if(!m.deleted && !m.ev.length && (m.rz || 0) > (g.rz || 0) && (g.ev || []).length) rzd.push([m, g]); }
   // A game Coach reset after this backup was made keeps its reset (a backup never puts an older copy over a newer one), but
   // Coach can have its plays back from here, the way the reset's Undo puts them back, on every device.
@@ -6318,6 +6327,13 @@ function restore(text){
    writes only on a change and every 30 seconds while the clock runs: a running clock with no word for 40 seconds, a
    relay that says the receiver lost the board, or the iPad saying the feed was lost (brd 2), shows the book's score
    marked unofficial. delay (ms) holds every board change that long, for a page next to the video stream. */
+// The public collection is written by any scorer's sign-in (and the relay's), and the fan page and the score bug print parts
+// of it as they come (a play's words, the numbers). So what's read from it is cleaned on the way in: an angle bracket
+// in any text becomes its look-alike, and nothing in it can ever turn into a tag on a fan's phone.
+const pubSafe = v => typeof v === "string" ? v.replace(/</g, "\u2039").replace(/>/g, "\u203a") : Array.isArray(v) ? v.map(pubSafe)
+  : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [pubSafe(k), pubSafe(x)])) : v;
+// The board's doc: its four numbers are numbers, or they're nothing.
+const boardDoc = d => { if(!d) return d; const o = {...d}; for(const k of ["home", "vis", "hf", "vf"]) if(o[k] != null && typeof o[k] !== "number") o[k] = null; return o; };
 function boardFeed(fb, db, onDoc){
   const st = {un:null, list:[], offs:[], D:0, first:true};
   function want(on, D){
@@ -6325,7 +6341,7 @@ function boardFeed(fb, db, onDoc){
     if(on && !st.un){ st.first = true; st.list = [];
       st.un = fb.onSnapshot(fb.doc(db, "hoopsPublic", "_board"), {includeMetadataChanges:true}, snap => {
         if(snap.metadata.fromCache || !snap.exists()) return;
-        const d = snap.data(), now = Date.now(), last = st.list[st.list.length - 1];
+        const d = boardDoc(snap.data()), now = Date.now(), last = st.list[st.list.length - 1];
         if(!d || d.v !== 1 || (last && last.d.n === d.n && last.d.sent === d.sent)) return;
         let recv = now;
         // The doc there when this page started listening was written at its at (a clock stopped in a timeout can sit
@@ -6416,7 +6432,7 @@ const PubRead = (() => {
       // Unlocked with no signal, the emptied cache says "no season": what the phone had stays up under the flag. That, or the
       // same season heard again after a lock: the game on screen gets its listener back (stop() took it), or it freezes.
       const j = JSON.stringify(d.exists() ? d.data() : {}); if(PS.phase === "live" && (j === PS.seasonJ || (off && !d.exists()))){ watch(); return; } PS.seasonJ = j;
-      const r = d.exists() ? d.data() : {}; PS.season = r.games || {}; PS.off = !!r.off; PS.phase = "live"; PS.err = "";
+      const r = d.exists() ? pubSafe(d.data()) : {}; PS.season = r.games || {}; PS.off = !!r.off; PS.phase = "live"; PS.err = "";
       // A game back before tip-off (Coach reset it): the copy this phone holds goes, and its listener with it (a new one
       // starts when the game does, and gets the new copy).
       for(const [id, x] of Object.entries(PS.season)) if(x && x.status === "pre"){ delete PS.snap[id]; if(PS.due) delete PS.due[id]; if(PS.watching === id){ PS.unG(); PS.unG = null; PS.watching = null; } }
@@ -6437,7 +6453,7 @@ const PubRead = (() => {
     PS.watching = null; PS.board.want(false);
     if(!id || !row || row.status === "pre" || row.nb) return;
     PS.watching = id;
-    PS.unG = PS.fb.onSnapshot(PS.fb.doc(PS.db, "hoopsPublic", id), d => { if(!d.exists()) return; let sn; try{ sn = JSON.parse(d.data().j); }catch(e){ return; }
+    PS.unG = PS.fb.onSnapshot(PS.fb.doc(PS.db, "hoopsPublic", id), d => { if(!d.exists()) return; let sn; try{ sn = pubSafe(JSON.parse(d.data().j)); }catch(e){ return; }
       if(sn.status === "live" && sn.brk && sn.q > (sn.quarters || 4) && sn.sc.us !== sn.sc.them) sn.status = "final";
       const apply = () => { if((PS.season[id] || {}).status === "pre") return; PS.snap[id] = sn;
         if(PS.watching === id) PS.board.want(sn.status === "live" && sn.brd === 1, PS.delay * 1000); render(); };
@@ -6455,7 +6471,7 @@ const PubRead = (() => {
   async function stats(){
     if(!PS.db || PS.statsBusy || (PS.statsAt && Date.now() - PS.statsAt < 600e3)) return;
     PS.statsBusy = true;
-    try{ const d = await PS.fb.getDoc(PS.fb.doc(PS.db, "hoopsPublic", "_stats")); PS.stats = d.exists() ? JSON.parse(d.data().j) : {t:{}}; PS.statsErr = false; }
+    try{ const d = await PS.fb.getDoc(PS.fb.doc(PS.db, "hoopsPublic", "_stats")); PS.stats = d.exists() ? pubSafe(JSON.parse(d.data().j)) : {t:{}}; PS.statsErr = false; }
     catch(e){ PS.statsErr = true; }
     finally{ PS.statsBusy = false; PS.statsAt = Date.now(); render(); }
   }
@@ -6477,7 +6493,7 @@ const BugRead = (() => {
       const fb = await import(new URL("fb.js", document.baseURI).href);
       const app = fb.initializeApp(FB, "brierbug"), db = fb.initializeFirestore(app, {localCache:fb.memoryLocalCache()});
       Object.assign(BS, {fb, db, board:boardFeed(fb, db, render)});
-      fb.onSnapshot(fb.doc(db, "hoopsPublic", "_bug"), d => { let b = null; try{ b = d.exists() ? JSON.parse(d.data().j) : null; }catch(e){}
+      fb.onSnapshot(fb.doc(db, "hoopsPublic", "_bug"), d => { let b = null; try{ b = d.exists() ? pubSafe(JSON.parse(d.data().j)) : null; }catch(e){}
         BS.bug = b; BS.phase = "live"; BS.board.want(!!b && b.status === "live" && b.brd === 1, 0); full(); render(); }, () => { BS.phase = "error"; render(); });
       // The board's clock ticks in place; anything else the board changes redraws the bug.
       setInterval(() => { if(!BS.board.on()) return; const v = BS.board.view(), k = v ? [v.fresh, v.home, v.vis, v.hf, v.vf, v.q, v.run].join() : "";
@@ -6491,7 +6507,7 @@ const BugRead = (() => {
     const id = BS.bug && BS.bug.id; if(id === BS.gid) return;
     if(BS.unF){ BS.unF(); BS.unF = null; } BS.gid = id; BS.full = null; BS.had = BS.gone = false; if(!id) return;
     // The game's public copy going away, or back to before tip-off, means the game was reset (maybe on another device).
-    BS.unF = BS.fb.onSnapshot(BS.fb.doc(BS.db, "hoopsPublic", id), d => { let sn = null; try{ sn = d.exists() ? JSON.parse(d.data().j) : null; }catch(e){}
+    BS.unF = BS.fb.onSnapshot(BS.fb.doc(BS.db, "hoopsPublic", id), d => { let sn = null; try{ sn = d.exists() ? pubSafe(JSON.parse(d.data().j)) : null; }catch(e){}
       BS.full = sn; if(sn && sn.status !== "pre") BS.had = true; BS.gone = BS.had && (!sn || sn.status === "pre"); render(); }, () => {});
   }
   // A made-up game, to size and place the source in OBS before a real one starts.
@@ -6521,7 +6537,7 @@ function bugCard(sn){
   const full = tm => tm === "us" ? (/greenbrier/i.test(usName(g)) ? usName(g) : "Greenbrier " + usName(g)) : oppFull(g);
   const stage = fin ? "Final" + (lq > Q ? (lq - Q > 1 ? ` (${lq - Q}OT)` : " (OT)") : "") : "Halftime", won = tm => fin && R.sc[tm] > R.sc[OTHER(tm)];
   const per = Array.from({length:lq}, (_, i) => i + 1);
-  const tot = tm => sumLines(Object.values(R.box[tm]).concat([R.team[tm]])), T = {us:tot("us"), them:tot("them")};
+  const tot = tm => totalsOf(R, tm), T = {us:tot("us"), them:tot("them")};
   const st = [["FG", t => `${t.fgm}-${t.fga}`, t => !t.po], ["3PT", t => `${t.tpm}-${t.tpa}`, t => !t.po], ["FT", t => `${t.ftm}-${t.fta}`, t => !t.po], ["REB", t => t.oreb + t.dreb, () => true], ["TO", t => t.to, () => true]]
     .filter(([, , ok]) => order.every(tm => ok(T[tm])));
   return `<div class="ocard"><div class="kick">${esc(stage)} · ${g.team === "girls" ? "Girls" : "Boys"} basketball</div>
@@ -6673,7 +6689,7 @@ function pubRecap(g, R, sn, rows){
   const tw = tops(W), tl = tops(L);
   if(tw[0]) s.push(`${who(tw[0][0])} led ${nm(W)} with ${tw[0][1].pts} points${extra(tw[0][1])}${tw[1] && tw[1][1].pts >= 8 ? `, and ${who(tw[1][0])} added ${tw[1][1].pts}` : ""}.`);
   if(tl[0]) s.push(`${who(tl[0][0])} scored ${tl[0][1].pts} for ${nm(L)}.`);
-  const T = sumLines(Object.values(R.box.us).concat([R.team.us]));
+  const T = totalsOf(R, "us");
   if(!T.po && T.fga >= 10) s.push(`Greenbrier shot ${pct(T.fgm, T.fga)} from the field (${T.fgm} of ${T.fga})${T.tpa ? ` and made ${T.tpm} three${T.tpm === 1 ? "" : "s"}` : ""}.`);
   const [w, l] = pubRec(rows, g.team), [dw, dl] = pubRec(rows, g.team, r => r.district);
   if(w + l) s.push(`The ${usName(g)} ${won ? "improve" : "fall"} to ${w}-${l}${g.district && dw + dl ? ` (${dw}-${dl} in the district)` : ""}.`);
@@ -6710,13 +6726,13 @@ function viewPublic(){
   const rows = Object.entries(PS.season).filter(([, r]) => r).map(([id, r]) => [id, ov(id, r)]).sort((a, b) => (a[1].date + a[1].time).localeCompare(b[1].date + b[1].time));
   if(PS.view === "stats") return viewStats(rows);
   const row = ov(PS.gid, PS.season[PS.gid]), night = row ? rows.filter(([, r]) => r.date === row.date) : [];
-  if(night.length > 1) h += `<div class="pubgames">${night.map(([id, r]) => `<button class="btn${id === PS.gid ? " primary" : ""}" data-act="pubpick" data-gid="${id}">${pubRowName(r)}${r.off ? ` · <b>${esc((OFF_WORDS[r.off] || "Off").toUpperCase())}</b>` : r.status === "live" ? ` · <b>LIVE</b>` : r.status === "final" ? (r.nb ? " · Forfeit" : ` · Final ${r.us}-${r.them}`) : r.time ? " · " + esc(fmtTime(r.time)) : ""}</button>`).join("")}</div>`;
+  if(night.length > 1) h += `<div class="pubgames">${night.map(([id, r]) => `<button class="btn${id === PS.gid ? " primary" : ""}" data-act="pubpick" data-gid="${esc(id)}">${pubRowName(r)}${r.off ? ` · <b>${esc((OFF_WORDS[r.off] || "Off").toUpperCase())}</b>` : r.status === "live" ? ` · <b>LIVE</b>` : r.status === "final" ? (r.nb ? " · Forfeit" : ` · Final ${r.us}-${r.them}`) : r.time ? " · " + esc(fmtTime(r.time)) : ""}</button>`).join("")}</div>`;
   const sn = PS.gid && PS.snap[PS.gid];
-  if(PS.suggest && PS.suggest !== PS.gid && PS.season[PS.suggest]) h += `<div class="pubsuggest"><button class="btn primary" data-act="pubpick" data-gid="${PS.suggest}">${pubRowName(PS.season[PS.suggest])} is LIVE · watch ›</button></div>`;
+  if(PS.suggest && PS.suggest !== PS.gid && PS.season[PS.suggest]) h += `<div class="pubsuggest"><button class="btn primary" data-act="pubpick" data-gid="${esc(PS.suggest)}">${pubRowName(PS.season[PS.suggest])} is LIVE · watch ›</button></div>`;
   // A link to one game (texted on Friday, a bookmark) that isn't the game on now: another night's game that's live gets the
   // same bar (tonight's other game already has its button up top).
   const lvNow = !PS.suggest && row && row.status !== "live" ? rows.find(([id, r]) => id !== PS.gid && r.status === "live" && r.date !== row.date && Date.now() - (r.upd || 0) < 3 * 3600e3) : null;
-  if(lvNow) h += `<div class="pubsuggest"><button class="btn primary" data-act="pubpick" data-gid="${lvNow[0]}">LIVE NOW: ${pubRowName(lvNow[1])} · watch ›</button></div>`;
+  if(lvNow) h += `<div class="pubsuggest"><button class="btn primary" data-act="pubpick" data-gid="${esc(lvNow[0])}">LIVE NOW: ${pubRowName(lvNow[1])} · watch ›</button></div>`;
   // Called off tonight, while the page shows another game (or the plain link opened on something else).
   const offNow = rows.filter(([id, r]) => r.off && r.date === pubToday() && id !== PS.gid);
   if(offNow.length) h += `<div class="flag bad" style="margin-top:8px"><span>${offNow.map(([, r]) => `<b>${pubRowName(r)}</b> tonight is <b>${esc((OFF_WORDS[r.off] || "off").toUpperCase())}</b>`).join(". ")}.</span></div>`;
@@ -6767,7 +6783,7 @@ function viewPublic(){
       const won = r.ff ? r.ff === "W" : r.us > r.them, box = r.status !== "pre" && !r.nb;
       const res = r.off ? `<b>${esc(OFF_WORDS[r.off] || "")}</b>` : r.status === "final" ? `<b class="${won ? "w" : ""}">${won ? "W" : "L"}${r.us + r.them ? " " + r.us + "-" + r.them : ""}${r.ff ? " (forfeit)" : ""}</b>` : r.status === "live" ? `<b>LIVE${PS.snap[id] ? " " + r.us + "-" + r.them : ""}</b>` : r.date < today ? "No live stats" : esc(fmtTime(r.time));
       const inner = `<span class="s1">${esc(fmtDate(r.date))} · ${r.team === "girls" ? "Girls" : "Boys"} · <b>${r.ha === "Away" ? "at" : "vs"} ${esc(r.opp)}</b>${r.district ? ' <span class="tag">District</span>' : ""}</span><span class="s2">${res}${box ? '<span class="small"> · Box score ›</span>' : ""}</span>`;
-      return box ? `<button class="srow" data-act="pubpick" data-gid="${id}">${inner}</button>` : `<div class="srow">${inner}</div>`; }).join("")}</div></details>`;
+      return box ? `<button class="srow" data-act="pubpick" data-gid="${esc(id)}">${inner}</button>` : `<div class="srow">${inner}</div>`; }).join("")}</div></details>`;
   }
   return h;
 }
@@ -6866,7 +6882,7 @@ const Sync = (() => {
       snap.docChanges().forEach(ch => {
         const r = ch.doc.data(), id = ch.doc.id, l = S.games[id];
         if(ch.type === "removed"){ if(l && !st.dirty.has(id)){ delete S.games[id]; delete S.unsent[id]; changed = true; } return; }
-        if(!r || !r.id) return;
+        if(!r || !r.id || !plainIds(id, r)) return;
         if(ch.type === "modified") HEARD[id] = Date.now();
         // A reset (rz: when Coach last reset the game) splits its copies in two, and one from before never merges with one
         // from after. A copy here from before takes the cloud's whole: its plays go, owed or kept from a takeover too. When
@@ -7282,11 +7298,15 @@ const Sync = (() => {
   const LVL = {viewer:{role:"viewer", tier:""}, scorer:{role:"scorer", tier:""}, coach:{role:"scorer", tier:"coach"}, admin:{role:"scorer", tier:"admin"}};
   const LVL_NAME = {viewer:"Viewer", scorer:"Scorer", coach:"Coach", admin:"Admin"};
   const lvlOf = m => ({owner:"admin", coach:"coach", scorer:"scorer"})[roleOf(m)] || "viewer";
-  const ASK = {scorer:"Make them a scorer? Scorers score games, keep the table, the notes and the PA's prep, and can take over scoring from another device. A fill-in PA needs Scorer plus a PA pass (the button on their row); parents and the AD only need Viewer.",
+  // A request's name and email are whatever the asker typed (the rules don't check them yet), so they're shown cut to size.
+  const clipTo = (v, n) => { const s = String(v || ""); return s.length > n ? s.slice(0, n) + "…" : s; };
+  const whoHtml = r => `<b>${esc(clipTo(r.name || r.email, 60))}</b> ${esc(clipTo(r.email, 80))}`;
+  const ASK = {viewer:"Make them a Viewer? Viewers see the rosters, the notes, the table and every game, and change nothing.",
+    scorer:"Make them a scorer? Scorers score games, keep the table, the notes and the PA's prep, and can take over scoring from another device. A fill-in PA needs Scorer plus a PA pass (the button on their row); parents and the AD only need Viewer.",
     coach:"Make them a coach? Coaches change rosters, the schedule, opponents and game rules, let people in, and see Stats and the PA and broadcast pages. Only Admins delete or reset games.",
     admin:"Make them an Admin? Admins can do everything: delete and reset games, the fan page switch, the Drive backup, and make or remove other Admins."};
   async function approve(uid, lvl){ const {fb, db} = st; const r = st.reqs.find(x => x.uid === uid) || st.mems.find(x => x.uid === uid) || {};
-    const b = fb.writeBatch(db); b.set(fb.doc(db, "hoopsMembers", uid), {...LVL[lvl], email:r.email || "", name:r.name || "", at:Date.now()}); b.delete(fb.doc(db, "hoopsRequests", uid)); await b.commit(); }
+    const b = fb.writeBatch(db); b.set(fb.doc(db, "hoopsMembers", uid), {...LVL[lvl], email:String(r.email || "").slice(0, 120), name:String(r.name || "").slice(0, 80), at:Date.now()}); b.delete(fb.doc(db, "hoopsRequests", uid)); await b.commit(); }
   function authMsg(e){ const c = (e && e.code) || ""; if(c.includes("invalid-credential") || c.includes("wrong-password") || c.includes("user-not-found")) return "That email and password don't match. Same account as Mound Book, if you have one."; if(c.includes("email-already")) return "That email already has an account. Sign in instead."; if(c.includes("weak-password")) return "Password needs at least 6 characters."; if(c.includes("network")) return "No signal. Try again when you have some."; if(c.includes("too-many")) return "Too many tries. Wait a minute."; return (e && e.message) || "Didn't work."; }
   // Someone asking to get in shows on Coach's screen whatever tab he's on, not only under Setup: on game night a substitute
   // PA or a new laptop shouldn't wait until he happens to open Setup. Later hides it until someone new asks.
@@ -7297,7 +7317,7 @@ const Sync = (() => {
     if(!r){ if(el) el.remove(); return; }
     if(!el){ el = document.createElement("div"); el.id = "askin"; el.className = "askin no-print"; el.setAttribute("role", "status"); document.body.appendChild(el); }
     const more = st.reqs.length - 1;
-    el.innerHTML = `<span><b>${esc(r.name || r.email)}</b>${r.name ? " " + esc(r.email) : ""} is asking to get in${more ? ` (and ${more} more)` : ""}.</span><span class="row"><button class="btn sm primary" data-act="sy-approve" data-uid="${esc(r.uid)}" data-lvl="viewer">Viewer</button><button class="btn sm" data-act="sy-deny" data-uid="${esc(r.uid)}">No</button><button class="btn sm" data-act="sy-later" data-uid="${esc(r.uid)}">Later</button></span>`;
+    el.innerHTML = `<span><b>${esc(clipTo(r.name || r.email, 60))}</b>${r.name ? " " + esc(clipTo(r.email, 80)) : ""} is asking to get in${more ? ` (and ${more} more)` : ""}.</span><span class="row"><button class="btn sm primary" data-act="sy-approve" data-uid="${esc(r.uid)}" data-lvl="viewer">Viewer</button><button class="btn sm" data-act="sy-deny" data-uid="${esc(r.uid)}">No</button><button class="btn sm" data-act="sy-later" data-uid="${esc(r.uid)}">Later</button></span>`;
   }
   function panel(){
     let h = `<div class="card stack"><h3 style="font-size:22px">Live sync</h3>`;
@@ -7317,10 +7337,10 @@ const Sync = (() => {
       h += `<p style="margin:0">Signed in as <b>${esc(st.email)}</b> · ${ROLE_NAME[st.role] || "Viewer"}. ${st.dirty.size ? st.dirty.size + " game(s) waiting to send." : pubOwed() ? "A fix is still on its way to the fan page." : "Everything's sent."}</p><div class="row"><button class="btn" data-act="sy-out">Sign out</button></div>`;
       if(boss(st.role)){
         const row = (who, btns) => `<div class="row between" style="border-bottom:1px solid var(--grey);padding:6px 0"><span>${who}</span><span class="row">${btns}</span></div>`;
-        h += `<div><div class="kicker" style="margin-bottom:4px">Asking to get in</div>${st.reqs.length ? st.reqs.map(r => row(`<b>${esc(r.name || r.email)}</b> ${esc(r.email)}`, `<button class="btn sm primary" data-act="sy-approve" data-uid="${r.uid}" data-lvl="viewer">Viewer</button><button class="btn sm" data-act="sy-approve" data-uid="${r.uid}" data-lvl="scorer">Scorer</button><button class="btn sm" data-act="sy-approve" data-uid="${r.uid}" data-lvl="coach">Coach</button><button class="btn sm" data-act="sy-deny" data-uid="${r.uid}">No</button>`)).join("") : `<p style="margin:0">Nobody waiting.</p>`}</div>
+        h += `<div><div class="kicker" style="margin-bottom:4px">Asking to get in</div>${st.reqs.length ? st.reqs.map(r => row(whoHtml(r), `<button class="btn sm primary" data-act="sy-approve" data-uid="${r.uid}" data-lvl="viewer">Viewer</button><button class="btn sm" data-act="sy-approve" data-uid="${r.uid}" data-lvl="scorer">Scorer</button><button class="btn sm" data-act="sy-approve" data-uid="${r.uid}" data-lvl="coach">Coach</button><button class="btn sm" data-act="sy-deny" data-uid="${r.uid}">No</button>`)).join("") : `<p style="margin:0">Nobody waiting.</p>`}</div>
           <div><div class="kicker" style="margin-bottom:4px">Let in</div>${st.mems.length ? st.mems.map(m => { const l = lvlOf(m), mine = m.uid === st.uid, hands = st.role === "owner" || l !== "admin";
             const pass = l === "scorer" ? `<button class="btn sm" data-act="sy-pass" data-uid="${m.uid}" aria-pressed="${paPass(m.uid)}" title="Opens the PA page and the broadcast page for this Scorer">PA pass${paPass(m.uid) ? " ✓" : ""}</button>` : "";
-            return row(`<b>${esc(m.name || m.email)}</b> ${esc(m.email)} · ${LVL_NAME[l]}${l === "scorer" && paPass(m.uid) ? " + PA pass" : ""}${mine ? " (you)" : ""}`, mine || !hands ? "" : pass + ["viewer", "scorer", "coach", "admin"].filter(x => x !== l && (x !== "admin" || st.role === "owner")).map(x => `<button class="btn sm" data-act="sy-approve" data-uid="${m.uid}" data-lvl="${x}">Make ${x === "admin" ? "Admin" : x}</button>`).join("") + `<button class="btn sm dark" data-act="sy-remove" data-uid="${m.uid}">Remove</button>`); }).join("") : `<p style="margin:0">Just you so far.</p>`}</div>
+            return row(`${whoHtml(m)} · ${LVL_NAME[l]}${l === "scorer" && paPass(m.uid) ? " + PA pass" : ""}${mine ? " (you)" : ""}`, mine || !hands ? "" : pass + ["viewer", "scorer", "coach", "admin"].filter(x => x !== l && (x !== "admin" || st.role === "owner")).map(x => `<button class="btn sm" data-act="sy-approve" data-uid="${m.uid}" data-lvl="${x}">Make ${x === "admin" ? "Admin" : x}</button>`).join("") + `<button class="btn sm dark" data-act="sy-remove" data-uid="${m.uid}">Remove</button>`); }).join("") : `<p style="margin:0">Just you so far.</p>`}</div>
           <p class="small" style="margin:0">Admins can do everything. Mound Book's owner and its admins are Admins here too, whatever their row says. To make one less, make them a coach in Mound Book first, then change them here. Coaches: rosters, the schedule, opponents, game rules, letting people in, Stats and the PA and broadcast pages. Scorers: scoring, the table and notes. A Scorer with a PA pass also gets the PA and broadcast pages (a fill-in PA). Viewers watch the box score and plays.${st.role === "owner" ? "" : " Only an Admin makes or changes an Admin."}</p>`;
       }
     }
@@ -7337,7 +7357,10 @@ const Sync = (() => {
       else if(act === "sy-mode"){ st.mode = a.dataset.m; render(); }
       else if(act === "sy-out"){ clear(); await fb.signOut(st.auth); S.sync = false; S.role = null; save(); }
       else if(act === "sy-reset"){ const e = ($("#sy-auth [name=email]") || {}).value; if(!e){ toast("Type your email first."); return; } await fb.sendPasswordResetEmail(st.auth, e.trim()); toast("Check your email for a reset link."); }
-      else if(act === "sy-approve"){ const l = a.dataset.lvl; if(!LVL[l] || (ASK[l] && !confirm(ASK[l]))) return; await approve(a.dataset.uid, l); toast("Done."); }
+      else if(act === "sy-approve"){ const l = a.dataset.lvl, r = st.reqs.find(x => x.uid === a.dataset.uid);
+        // Someone new: say who's asking, and that the app can't vouch for the name (anyone can make an account).
+        const ask = r ? `${clipTo(r.name || r.email, 60)}${r.name ? " (" + clipTo(r.email, 80) + ")" : ""} is asking to get in. Anyone can make an account and type any name and email, so only say yes if you know they just asked.\n\n` : "";
+        if(!LVL[l] || (ASK[l] && !confirm(ask + ASK[l]))) return; await approve(a.dataset.uid, l); toast("Done."); }
       else if(act === "sy-deny") await fb.deleteDoc(fb.doc(db, "hoopsRequests", a.dataset.uid));
       else if(act === "sy-later"){ later.add(a.dataset.uid); askCard(); }
       else if(act === "sy-pass"){ if(!boss(st.role)) return; const p = {...(S.settings.paPass || {})}, uid = a.dataset.uid, m = st.mems.find(x => x.uid === uid) || {};
@@ -7411,7 +7434,7 @@ const Board = (() => {
   const fl = s => Math.max(0, Math.floor(s * 10 + 1e-6) / 10);
   function heard(snap){
     if(snap.metadata.fromCache || !snap.exists()) return;          // this iPad's last copy, not word from the Mac
-    const d = snap.data(), now = Date.now();
+    const d = boardDoc(snap.data()), now = Date.now();
     if(!d || d.v !== 1 || (st.d && d.n === st.d.n && d.sent === st.d.sent)) return;
     const prev = st.d; st.d = d; st.err = "";
     // The doc as it stood when this iPad started listening is the board as it was last written (it can sit for minutes in
