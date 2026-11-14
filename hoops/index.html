@@ -587,6 +587,8 @@ body.bcfull .brand b small{font-size:.6em;letter-spacing:.12em;margin-left:6px}
 .chip .say,.table-bar .say{display:block;font-size:13px;font-weight:500;font-style:italic;text-align:left}
 .seg .cue{font-family:var(--f-display);font-weight:700;font-size:13px;letter-spacing:.1em;text-transform:uppercase}
 .seg .read{font-size:20px;line-height:1.45;white-space:pre-wrap}
+.read.caps{text-transform:uppercase}
+.read.caps .ph{text-transform:none}
 .seg .read b{font-weight:700}
 .seg .read .miss{border:1px dashed var(--black);border-radius:4px;padding:0 5px;font-style:italic;font-weight:600}
 .sechead{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:16px 0 8px;padding-bottom:4px;border-bottom:2px solid var(--black)}
@@ -746,7 +748,7 @@ table.rect tr.sub td{background:transparent;padding-top:10px}
    One device scores a game; everyone else signed in follows it live on the Announcer page. Each device's own saved copy is the
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
-const BS_VERSION = "0.15.0";
+const BS_VERSION = "0.16.0";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -1254,10 +1256,10 @@ function playText(g, e, o = {}){
 
 /* ---------- ui state ---------- */
 const ui = {open:{}, pa:true, tab:"desk", gid:null, find:{us:"", them:""}, lineup:null, fu:[], narrow:"home", shotTm:"all", shotPid:"", gfilter:"all", sheet:null, follow:true, annMode:"live", night:null, pubTm:"home"};
-try{ const p = JSON.parse(localStorage.getItem(KEY + ".ui") || "{}"); if(p.tab) ui.tab = p.tab; if(p.gid) ui.gid = p.gid; if(p.annMode) ui.annMode = p.annMode; ui.pa = p.mic === true; ui.micSet = p.micSet === true || p.mic === true; }catch(e){ ui.pa = false; }
+try{ const p = JSON.parse(localStorage.getItem(KEY + ".ui") || "{}"); if(p.tab) ui.tab = p.tab; if(p.gid) ui.gid = p.gid; if(p.annMode) ui.annMode = p.annMode; ui.caps = p.caps !== false; ui.pa = p.mic === true; ui.micSet = p.micSet === true || p.mic === true; }catch(e){ ui.pa = false; }
 if(ANN_ONLY){ ui.tab = "ann"; document.body.classList.add("annfull"); }
 if(BC_ONLY){ ui.tab = "bc"; document.body.classList.add("annfull", "bcfull"); }
-function saveUi(){ if(PUB) return; try{ const p = JSON.parse(localStorage.getItem(KEY + ".ui") || "{}"); if(!ANN_ONLY && !BC_ONLY){ p.tab = ui.tab; p.gid = ui.gid; } p.annMode = ui.annMode; if(ui.micSet){ p.mic = ui.pa; p.micSet = true; } localStorage.setItem(KEY + ".ui", JSON.stringify(p)); }catch(e){} }
+function saveUi(){ if(PUB) return; try{ const p = JSON.parse(localStorage.getItem(KEY + ".ui") || "{}"); if(!ANN_ONLY && !BC_ONLY){ p.tab = ui.tab; p.gid = ui.gid; } p.annMode = ui.annMode; p.caps = ui.caps !== false; if(ui.micSet){ p.mic = ui.pa; p.micSet = true; } localStorage.setItem(KEY + ".ui", JSON.stringify(p)); }catch(e){} }
 function cur(){ const g = ui.gid && S.games[ui.gid]; return g && !g.deleted ? g : null; }
 // Who can do what with live sync on. Sync.role(): "owner" is an Admin (Coach, Mound Book's owner and Admins, and anyone made
 // an Admin here), then "coach", "scorer" and "viewer". Admins: deleting and resetting games, the fan page switch, the Drive
@@ -3120,12 +3122,18 @@ const DEFAULT_SCRIPT = [
 const SCRIPT_AT = {top:"Top of the night", game:"Every game", end:"End of the night", ref:"Emergency card (only when needed)"};
 // [token, what it says, sample]. opt: says nothing when empty instead of showing a [box].
 const TOKENS = [["school","The school"],["tonight","Tonight's games, with tip times"],["level","varsity girls / varsity boys"],["us","Lady Cats / Bobcats"],["usFull","Greenbrier Lady Cats"],
-  ["opp","The opponent"],["oppFull","Opponent and mascot"],["tip","Tip-off time"],["usCoach","Our head coach"],["oppCoach","Their head coach"],["officials","Tonight's officials"],
+  ["opp","The opponent"],["oppFull","Opponent and mascot"],["oppMascot","Their mascot (the girls or boys name, whoever is playing)"],["tip","Tip-off time"],["usCoach","Our head coach"],["oppCoach","Their head coach"],["officials","Tonight's officials"],
   ["sponsor","Tonight's sponsor"],["honors","Halftime recognition"],["anthem","Who sings the anthem"],["anthemBy",", performed by … (blank if nobody's named)",1],
   ["oppStarters","Their five, one per line"],["usStarters","Our five, one per line"],["score","Live score, leader first"],["leaders","Each team's top scorer"],
   ["record","Our record once the game is final",1],["nextGame","Who plays next tonight",1],["nextHome","Our next home game",1],
   ["shelter","Where people go in severe weather"],["admin","Tonight's game administrator"],["aed","Where the AED is"]];
 const OPT_TOKENS = new Set(TOKENS.filter(t => t[2]).map(t => t[0]));
+// A token in any capitals ({oppmascot}, {OPPMASCOT}) is the same token: a script typed in caps still fills in.
+const TOKEN_KEY = Object.fromEntries(TOKENS.map(t => [t[0].toLowerCase(), t[0]]));
+// **bold** and *italics* in a script line (the editor's B and I buttons type them).
+const fmtMarks = h => h.replace(/\*\*([^*\n]+?)\*\*/g, "<b>$1</b>").replace(/\*([^*\n]+?)\*/g, "<i>$1</i>");
+// The script's reading text: in capital letters unless this device turned that off (phonetic spellings keep their case).
+const readCls = () => "read" + (ui.caps !== false ? " caps" : "");
 function scriptSegs(){ return (S.script && S.script.segs && S.script.segs.length ? S.script.segs : DEFAULT_SCRIPT); }
 function nightGames(night){
   if(night === "practice") return S.games.practice ? [S.games.practice] : [];
@@ -3179,7 +3187,7 @@ function introHtml(g, tm){
     if(pos) bits.push("at " + pos);
     if(desc) bits.push((/^[aeiou]/i.test(desc) ? "an " : "a ") + desc);
     bits.push("number " + esc(p.num) + ", " + (p.name ? "<b>" + esc(p.name) + "</b>" : `<span class="miss">[name?]</span>`));
-    const say = sayShow(g, tm, p), line = bits.join(", ") + (say ? ` <i>(${esc(say)})</i>` : "") + ".";
+    const say = sayShow(g, tm, p), line = bits.join(", ") + (say ? ` <i class="ph">(${esc(say)})</i>` : "") + ".";
     return i === ps.length - 1 && ps.length > 1 ? "And " + line : line.charAt(0).toUpperCase() + line.slice(1);
   });
   if(ps.length < 5) lines.push(`<span class="miss">[${5 - ps.length} more starter${ps.length === 4 ? "" : "s"}?]</span>`);
@@ -3250,6 +3258,8 @@ function tokenValue(k, g, games, night){
     case "usFull": return "Greenbrier " + esc(g ? usName(g) : first ? usName(first) : "Bobcats");
     case "opp": return esc(g ? g.opp : [...new Set(games.map(x => x.opp))].join(" and "));
     case "oppFull": return esc(g ? oppFull(g) : first ? oppFull(first) : "");
+    // Rosters, Opponents: Boys mascot, and Girls team name (the boys one when that's blank).
+    case "oppMascot": return g ? esc(oppNick(g)) : [...new Set(games.map(oppNick).filter(Boolean))].map(esc).join(" and ");
     case "tip": return g ? timeWords(g.time) : first ? timeWords(first.time) : "";
     case "usCoach": case "oppCoach": case "officials": case "honors": return esc((i[k] || "").trim());
     case "sponsor": return g ? esc((i.sponsor || "").trim()) : nightInfo("sponsor");
@@ -3267,10 +3277,10 @@ function tokenValue(k, g, games, night){
   }
   return null;
 }
-const TOKEN_MISS = {shelter:"where to shelter?", admin:"game administrator?", aed:"AED location?", usCoach:"our coach?", oppCoach:"their coach?", officials:"officials?", sponsor:"sponsor?", honors:"who's being honored?", anthem:"anthem singer?", oppStarters:"pick their 5 starters", usStarters:"pick our 5 starters", score:"score after the tip", leaders:"leaders after the tip"};
+const TOKEN_MISS = {oppMascot:"their mascot? (Rosters, Opponents)", shelter:"where to shelter?", admin:"game administrator?", aed:"AED location?", usCoach:"our coach?", oppCoach:"their coach?", officials:"officials?", sponsor:"sponsor?", honors:"who's being honored?", anthem:"anthem singer?", oppStarters:"pick their 5 starters", usStarters:"pick our 5 starters", score:"score after the tip", leaders:"leaders after the tip"};
 function fillScript(text, g, games, night){
-  return esc(text).replace(/\{([A-Za-z]+)\}/g, (m, k) => {
-    const v = tokenValue(k, g, games, night);
+  return fmtMarks(esc(text)).replace(/\{([A-Za-z]+)\}/g, (m, raw) => {
+    const k = TOKEN_KEY[raw.toLowerCase()] || raw, v = tokenValue(k, g, games, night);
     if(v === null) return m;
     if(v === "" && !OPT_TOKENS.has(k)) return `<span class="miss">[${esc(TOKEN_MISS[k] || k + "?")}]</span>`;
     return v;
@@ -3341,7 +3351,7 @@ function dueRead(g, R){
   const gid = (o.g || games[0]).id, title = fillScript(o.seg.title || "", o.g, games, night).replace(/<[^>]+>/g, "");
   return `<div class="seg next dueread no-print"><div class="row between"><div><div class="cue">Read now · ${esc(o.seg.cue || "")}</div><h3 style="font-size:20px">${title}</h3></div>
     <span class="row">${ui.pa ? `<button class="btn sm primary" data-act="segdone" data-gid="${gid}" data-key="${esc(o.key)}">Mark read</button>` : ""}<button class="btn sm" data-act="annmode" data-v="script">Show in script</button></span></div>
-    <div class="read">${fillScript(o.seg.text || "", segGame(o.g, o.seg), games, night)}</div></div>`;
+    <div class="${readCls()}">${fillScript(o.seg.text || "", segGame(o.g, o.seg), games, night)}</div></div>`;
 }
 // A mouse or finger press in progress. Prep's save-on-leave waits for it to end (the change handler), so typing in a box
 // and then tapping a starter chip or Mark read doesn't lose the tap to the redraw.
@@ -3356,7 +3366,7 @@ function viewScript(){
   const dates = [...new Set(Object.values(S.games).filter(x => !x.deleted && !x.practice).map(x => x.date))].sort();
   let h = ANN_ONLY && !Sync.live() ? Sync.panel() : "";
   h += `<div class="annbar no-print">${annModes()}<select data-night style="width:auto;max-width:340px">${dates.map(d => `<option value="${d}" ${d === night ? "selected" : ""}>${esc(fmtDate(d))} · ${esc([...new Set(nightGames(d).map(x => x.opp))].join(", "))}${nightGames(d).some(x => x.ha === "Away") ? " (away)" : ""}</option>`).join("")}<option value="practice" ${night === "practice" ? "selected" : ""}>Practice game</option></select>
-    <button class="btn sm" data-act="scriptedit">Edit the script</button><button class="btn sm dark" data-act="emerg">Emergency cards</button><button class="btn sm" data-act="scriptclear" ${games.some(x => (booth(x.id).done || []).length) ? "" : "disabled"} title="Every line for this night back to unread (Undo puts them back)">Uncheck everything</button>${saySwitch()}${undoBtn()}
+    <button class="btn sm" data-act="scriptedit">Edit the script</button><button class="btn sm" data-act="scriptcaps" aria-pressed="${ui.caps !== false}" title="Show the script in capital letters, on this device">ALL CAPS${ui.caps !== false ? " ✓" : ""}</button><button class="btn sm dark" data-act="emerg">Emergency cards</button><button class="btn sm" data-act="scriptclear" ${games.some(x => (booth(x.id).done || []).length) ? "" : "disabled"} title="Every line for this night back to unread (Undo puts them back)">Uncheck everything</button>${saySwitch()}${undoBtn()}
     <span class="small">${Sync.live() ? "Shared with everyone signed in." : "Saved on this device."}</span></div>`;
   if(!games.length) return h + `<div class="card">No games that night.</div>`;
   games.forEach(x => libTie(x));   // a game with no list yet starts from its saved roster
@@ -3403,23 +3413,42 @@ function viewScript(){
     const gs = segGame(o.g, o.seg), peek = done && (ui.peek || {})[gid + ":" + o.key];
     h += `<div class="seg${done ? " done" : ""}${peek ? " peek" : ""}${o === next ? " next" : ""}${on ? "" : " off"}${later ? " later" : ""}"${o === next ? ' id="upnext"' : ""}${done ? ` data-act="segpeek" data-gid="${gid}" data-key="${esc(o.key)}" tabindex="0" role="button" aria-expanded="${!!peek}" title="${peek ? "Fold it again" : "Show the words again"}"` : ""}><div class="row between"><div><div class="cue">${o === next ? "Up next · " : later ? "Later · " : ""}${esc(o.seg.cue || "")}</div><h3 style="font-size:20px">${fillScript(o.seg.title || "", o.g, games, night).replace(/<span class="miss">\[([^\]]*)\]<\/span>/g, "$1")}</h3></div>
       <button class="btn sm${done ? "" : " primary"} no-print" data-act="segdone" data-gid="${gid}" data-key="${esc(o.key)}" title="${done ? "Read. Click to mark it unread" : "Mark this line read"}">${done ? "Read ✓" : "Mark read"}</button></div>
-      ${on ? `<div class="read">${fillScript(o.seg.text || "", gs, games, night)}</div>` : `<div class="small">Skipped: no ${esc(o.seg.need)} for this ${o.g ? "game" : "night"}. Fill it in under Prep to use this one.</div>`}</div>`;
+      ${on ? `<div class="${readCls()}">${fillScript(o.seg.text || "", gs, games, night)}</div>` : `<div class="small">Skipped: no ${esc(o.seg.need)} for this ${o.g ? "game" : "night"}. Fill it in under Prep to use this one.</div>`}</div>`;
   }
   return h;
 }
 function scriptEditor(){
   const segs = JSON.parse(JSON.stringify(scriptSegs()));
   openSheet({segs, wide:true, html:() => `<h3>Edit the script</h3><p class="small" style="margin:0 0 8px">Top-of-the-night lines are read once, game lines once for every game, end lines once at the close. Type a {token} to fill something in:</p>
-    <p class="small" style="margin:0 0 10px">${TOKENS.map(t => `<b>{${t[0]}}</b> ${esc(t[1])}`).join(" · ")}</p>
+    <p class="small" style="margin:0 0 10px">${TOKENS.map(t => `<b>{${t[0]}}</b> ${esc(t[1])}`).join(" · ")}. Capitals don't matter: {oppmascot} works too.</p>
+    <p class="small" style="margin:0 0 10px">Bold and italics: pick words in a line and tap <b>B</b> or <i>I</i>, or type <b>**two stars**</b> or <i>*one star*</i> around them. ${ui.caps !== false ? "The script shows in ALL CAPS on this device (the switch is on the script page)." : ""}</p>
     ${ui.sheet.segs.map((x, i) => `<div class="segedit" data-seg="${i}"><div class="row"><select data-sf="at" style="width:auto">${Object.entries(SCRIPT_AT).map(([k, l]) => `<option value="${k}" ${(x.at || "game") === k ? "selected" : ""}>${l}</option>`).join("")}</select>
       <input type="text" data-sf="title" value="${esc(x.title || "")}" placeholder="Title" style="flex:1;width:auto;min-width:140px"><button type="button" class="btn sm" data-act="segmv" data-i="${i}" data-d="-1" ${i ? "" : "disabled"}>↑</button><button type="button" class="btn sm" data-act="segmv" data-i="${i}" data-d="1" ${i < ui.sheet.segs.length - 1 ? "" : "disabled"}>↓</button><button type="button" class="btn sm dark" data-act="segdel" data-i="${i}">✕</button></div>
       <input type="text" data-sf="cue" value="${esc(x.cue || "")}" placeholder="When to read it">
-      <textarea data-sf="text" rows="3">${esc(x.text || "")}</textarea>
+      <div class="row" style="gap:4px"><button type="button" class="btn sm" data-act="segfmt" data-w="**" title="Bold the words you picked"><b>B</b></button><button type="button" class="btn sm" data-act="segfmt" data-w="*" title="Italicize the words you picked"><i>I</i></button></div>
+      <textarea data-sf="text" rows="3"${ui.caps !== false ? ' style="text-transform:uppercase"' : ""}>${esc(x.text || "")}</textarea>
       <label class="row small">Only when this is filled in: <select data-sf="need" style="width:auto"><option value="">(always read it)</option>${["sponsor","honors","anthem","officials","oppCoach","usCoach"].map(k => `<option ${x.need === k ? "selected" : ""}>${k}</option>`).join("")}</select></label></div>`).join("")}
     <div class="row"><button type="button" class="btn" data-act="segadd">+ Add a line</button><button type="button" class="btn" data-act="segreset">Start over from the default</button></div>
     <div class="row" style="margin-top:10px"><button type="button" class="btn primary" data-act="segsave">Save the script</button><button type="button" class="btn" data-close>Cancel</button></div>`});
 }
 // Reads the editor's fields back into the working copy before anything re-draws it.
+// B and I in the script editor (and Cmd+B / Cmd+I, Ctrl on a PC): put ** or * around the words picked in that line (or a
+// placeholder to type over).
+function segFmt(a){ const box = a.closest("[data-seg]"), ta = box && $("textarea[data-sf=text]", box); if(ta) segWrap(ta, a.dataset.w); }
+document.addEventListener("keydown", ev => {
+  const ta = ev.target, k = (ev.key || "").toLowerCase();
+  if(!(ta && ta.matches && ta.matches("#sheet textarea[data-sf=text]")) || !(ev.metaKey || ev.ctrlKey) || ev.altKey || ev.shiftKey || (k !== "b" && k !== "i")) return;
+  ev.preventDefault(); segWrap(ta, k === "b" ? "**" : "*");
+});
+function segWrap(ta, w){
+  const s0 = ta.selectionStart, s1 = ta.selectionEnd, v = ta.value, pick = v.slice(s0, s1), lead = pick.match(/^\s*/)[0], tail = pick.match(/\s*$/)[0];
+  const core = pick.trim() || (w === "**" ? "bold words" : "italic words"), at = s0 + lead.length + w.length;
+  const put = lead + w + core + w + (pick.trim() ? tail : "");
+  // As typing, so Cmd+Z takes it back; straight into the box where the browser can't.
+  ta.focus(); ta.setSelectionRange(s0, s1); let ok = false; try{ ok = document.execCommand("insertText", false, put); }catch(e){}
+  if(!ok || ta.value !== v.slice(0, s0) + put + v.slice(s1)) ta.value = v.slice(0, s0) + put + v.slice(s1);
+  ta.setSelectionRange(at, at + core.length);
+}
 function grabSegs(){ const s = ui.sheet; if(!s || !s.segs) return; $$("[data-seg]").forEach(el => { const x = s.segs[+el.dataset.seg]; if(!x) return; $$("[data-sf]", el).forEach(f => { x[f.dataset.sf] = f.value; }); if(!x.need) delete x.need; }); }
 
 /* ---------- box score ---------- */
@@ -5321,6 +5350,8 @@ document.addEventListener("click", async ev => {
   switch(act){
     case "go": ui.tab = a.dataset.tab; saveUi(); render(); window.scrollTo(0, 0); break;
     // The script opens at the line that's up next (at the top while that's the first line: Prep, then the welcome).
+    case "scriptcaps": ui.caps = ui.caps === false; saveUi(); render(); if(ui.sheet && ui.sheet.segs){ grabSegs(); renderSheet(); } break;
+    case "segfmt": segFmt(a); break;
     case "annmode": { ui.annMode = a.dataset.v; saveUi(); render(); const n = ui.annMode === "script" && $("#upnext");
       if(n && n !== $(".seg")) toUpNext(); else window.scrollTo(0, 0); break; }
     case "pubpick": PubRead.pick(a.dataset.gid); break;
@@ -5848,7 +5879,7 @@ function emergSheet(){
   const g0 = games[0] || g, i0 = g0 ? infoOf(g0) : {}, know = [["Game administrator", i0.admin], ["Shelter", i0.shelter], ["AED", i0.aed]];
   openSheet({wide:true, html:() => `<h3>Emergency cards</h3><p class="small" style="margin:0 0 8px">Read one only when the game administrator says so. Stop play first: the officials and the clock operator need to hear it too.</p>
     <div class="infogrid" style="margin-bottom:10px">${know.map(([l, v]) => `<div><div class="kicker">${l}</div><b>${v ? esc(v) : `<span class="miss">[not filled in: Prep on the Game-night script]</span>`}</b></div>`).join("")}</div>
-    ${cards.map(c => `<div class="seg"><div class="cue">${esc(c.cue || "")}</div><h3 style="font-size:20px">${esc(c.title || "")}</h3><div class="read">${fillScript(c.text || "", g0, games, night)}</div></div>`).join("")}
+    ${cards.map(c => `<div class="seg"><div class="cue">${esc(c.cue || "")}</div><h3 style="font-size:20px">${esc(c.title || "")}</h3><div class="${readCls()}">${fillScript(c.text || "", g0, games, night)}</div></div>`).join("")}
     <div class="row"><button class="btn" data-close>Close</button></div>`});
 }
 function sayEdit(pid, gid, tm){
