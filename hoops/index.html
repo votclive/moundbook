@@ -753,7 +753,7 @@ table.rect tr.sub td{background:transparent;padding-top:10px}
    One device scores a game; everyone else signed in follows it live on the Announcer page. Each device's own saved copy is the
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
-const BS_VERSION = "0.16.6";
+const BS_VERSION = "0.16.7";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -1187,6 +1187,9 @@ function oppInfo(name, g){
 // "Watertown Lady Tigers" for the girls game, "Watertown Purple Tigers" for the boys.
 function oppNick(g){ const o = oppInfo(g.opp, g); return g.team === "girls" ? (o.girls || o.mascot) : o.mascot; }
 function oppFull(g){ const n = oppNick(g); return n ? g.opp + " " + n : g.opp; }
+// Kevin: the welcome uses each school's plain (boys) mascot, the girls matchup (anthem) the girls name. Opponent name -> mascot.
+const oppPlain = (opp, g) => oppInfo(opp, g).mascot;
+const oppGirls = (opp, g) => { const o = oppInfo(opp, g); return o.girls || o.mascot; };
 const hexOk = h => /^#[0-9a-f]{6}$/i.test(h || "");
 function lum(h){ const c = [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255).map(v => v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4)); return .2126 * c[0] + .7152 * c[1] + .0722 * c[2]; }
 function contrast(a, b){ const x = lum(a), y = lum(b); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); }
@@ -3128,7 +3131,8 @@ const DEFAULT_SCRIPT = [
 const SCRIPT_AT = {top:"Top of the night", game:"Every game", end:"End of the night", ref:"Emergency card (only when needed)"};
 // [token, what it says, sample]. opt: says nothing when empty instead of showing a [box].
 const TOKENS = [["school","The school"],["tonight","Tonight's games, with tip times"],["level","varsity girls / varsity boys"],["us","Lady Cats / Bobcats"],["usFull","Greenbrier Lady Cats"],
-  ["opp","The opponent"],["oppFull","Opponent and mascot (the girls or boys name, whoever is playing)"],["oppMascot","Their mascot (the girls or boys name, whoever is playing)"],["tip","Tip-off time"],["usCoach","Our head coach"],["oppCoach","Their head coach"],["officials","Tonight's officials"],
+  ["opp","The opponent"],["oppFull","Opponent and mascot (in a game line, the girls or boys name, whoever is playing; in a top-of-the-night or end line, the plain mascot)"],["oppMascot","Their mascot (same rule as oppFull)"],
+  ["oppFullGirls","Opponent and girls team name, always (Watertown Lady Purple Tigers)"],["oppMascotGirls","Their girls team name, always"],["usGirls","Our girls team name, always"],["tip","Tip-off time"],["usCoach","Our head coach"],["oppCoach","Their head coach"],["officials","Tonight's officials"],
   ["sponsor","Tonight's sponsor"],["honors","Halftime recognition"],["anthem","Who sings the anthem"],["anthemBy",", performed by … (blank if nobody's named)",1],
   ["oppStarters","Their five, one per line"],["usStarters","Our five, one per line"],["score","Live score, leader first"],["leaders","Each team's top scorer"],
   ["record","Our record once the game is final",1],["nextGame","Who plays next tonight",1],["nextHome","Our next home game",1],
@@ -3252,6 +3256,11 @@ function nextHomeWords(night){
   return `Our next home game is ${esc(d)}, against ${esc([...new Set(games.map(x => x.opp))].join(" and "))}: ${games.map(x => `the ${esc(usName(x))}${x.time ? " at " + timeWords(x.time) : ""}`).join(" and ")}.`;
 }
 // One token's text (already HTML-safe), or "" when there's nothing to say.
+const girlsFirst = games => { const G = games.filter(x => x.team === "girls"); return G.length ? G : games; };
+// Each opponent once: "Watertown Purple Tigers and Jo Byrns Red Devils" (full) or "Purple Tigers and Red Devils".
+function nightOpps(games, nick, full){ const seen = new Set(), out = [];
+  games.forEach(x => { if(seen.has(okey(x.opp))) return; seen.add(okey(x.opp)); const n = nick(x.opp, x); if(full) out.push(n ? x.opp + " " + n : x.opp); else if(n) out.push(n); });
+  return [...new Set(out)].map(esc).join(" and "); }
 function tokenValue(k, g, games, night){
   const i = g ? infoOf(g) : {}, first = games[0], fi = first ? infoOf(first) : {};
   const nightInfo = f => [...new Set(games.map(x => (infoOf(x)[f] || "").trim()).filter(Boolean))].map(esc).join(" and ");
@@ -3259,14 +3268,17 @@ function tokenValue(k, g, games, night){
     case "school": return "Greenbrier High School";
     case "tonight": return tonightWords(games);
     case "level": return g ? "varsity " + (g.team === "girls" ? "girls" : "boys") : "";
-    case "us": return esc(g ? usName(g) : first ? usName(first) : "Bobcats");
-    case "usFull": return "Greenbrier " + esc(g ? usName(g) : first ? usName(first) : "Bobcats");
+    case "us": return esc(g ? usName(g) : usName({team:"boys"}));
+    case "usFull": return "Greenbrier " + esc(g ? usName(g) : usName({team:"boys"}));
+    case "usGirls": return esc(usName({team:"girls"}));
     case "opp": return esc(g ? g.opp : [...new Set(games.map(x => x.opp))].join(" and "));
     // On a night-level line, each opponent once with every mascot playing tonight: "Watertown Lady Purple Tigers and Purple Tigers".
-    case "oppFull": { if(g) return esc(oppFull(g)); const by = new Map(); games.forEach(x => { const n = oppNick(x), L = by.get(x.opp) || []; if(n && !L.includes(n)) L.push(n); by.set(x.opp, L); });
-      return [...by].map(([o, L]) => esc(L.length ? o + " " + L.join(" and ") : o)).join(" and "); }
-    // Rosters, Opponents: Boys mascot, and Girls team name (the boys one when that's blank).
-    case "oppMascot": return g ? esc(oppNick(g)) : [...new Set(games.map(oppNick).filter(Boolean))].map(esc).join(" and ");
+    // In a game line, that game's name (girls or boys). In a top-of-the-night or end line, each school once with its plain mascot.
+    case "oppFull": return g ? esc(oppFull(g)) : nightOpps(games, oppPlain, true);
+    case "oppMascot": return g ? esc(oppNick(g)) : nightOpps(games, oppPlain, false);
+    // The girls matchup, wherever the line sits: tonight's girls opponent, or every opponent when no girls game is on.
+    case "oppFullGirls": return nightOpps(g ? [g] : girlsFirst(games), oppGirls, true);
+    case "oppMascotGirls": return nightOpps(g ? [g] : girlsFirst(games), oppGirls, false);
     case "tip": return g ? timeWords(g.time) : first ? timeWords(first.time) : "";
     case "usCoach": case "oppCoach": case "officials": case "honors": return esc((i[k] || "").trim());
     case "sponsor": return g ? esc((i.sponsor || "").trim()) : nightInfo("sponsor");
@@ -3284,7 +3296,7 @@ function tokenValue(k, g, games, night){
   }
   return null;
 }
-const TOKEN_MISS = {oppMascot:"their mascot? (Rosters, Opponents)", shelter:"where to shelter?", admin:"game administrator?", aed:"AED location?", usCoach:"our coach?", oppCoach:"their coach?", officials:"officials?", sponsor:"sponsor?", honors:"who's being honored?", anthem:"anthem singer?", oppStarters:"pick their 5 starters", usStarters:"pick our 5 starters", score:"score after the tip", leaders:"leaders after the tip"};
+const TOKEN_MISS = {oppMascot:"their mascot? (Rosters, Opponents)", oppMascotGirls:"their girls team name? (Rosters, Opponents)", shelter:"where to shelter?", admin:"game administrator?", aed:"AED location?", usCoach:"our coach?", oppCoach:"their coach?", officials:"officials?", sponsor:"sponsor?", honors:"who's being honored?", anthem:"anthem singer?", oppStarters:"pick their 5 starters", usStarters:"pick our 5 starters", score:"score after the tip", leaders:"leaders after the tip"};
 function fillScript(text, g, games, night){
   return fmtMarks(esc(text)).replace(/\{([A-Za-z]+)\}/g, (m, raw) => {
     const k = TOKEN_KEY[raw.toLowerCase()] || raw, v = tokenValue(k, g, games, night);
