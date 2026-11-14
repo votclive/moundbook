@@ -753,7 +753,7 @@ table.rect tr.sub td{background:transparent;padding-top:10px}
    One device scores a game; everyone else signed in follows it live on the Announcer page. Each device's own saved copy is the
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
-const BS_VERSION = "0.16.4";
+const BS_VERSION = "0.16.5";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -3424,17 +3424,18 @@ function viewScript(){
 }
 function scriptEditor(){
   const segs = JSON.parse(JSON.stringify(scriptSegs()));
-  openSheet({segs, wide:true, html:() => `<h3>Edit the script</h3><p class="small" style="margin:0 0 8px">Top-of-the-night lines are read once, game lines once for every game, end lines once at the close. Drag a line by its ⠿ to move it. Type a {token} to fill something in:</p>
+  openSheet({segs, script:true, wide:true, html:() => `<h3>Edit the script</h3><p class="small" style="margin:0 0 8px">Top-of-the-night lines are read once, game lines once for every game, end lines once at the close. Drag a line by its ⠿ to move it. Type a {token} to fill something in:</p>
     <p class="small" style="margin:0 0 10px">${TOKENS.map(t => `<b>{${t[0]}}</b> ${esc(t[1])}`).join(" · ")}. Capitals don't matter: {oppmascot} works too.</p>
     <p class="small" style="margin:0 0 10px">Bold and italics: pick words in a line and tap <b>B</b> or <i>I</i>, or type <b>**two stars**</b> or <i>*one star*</i> around them. ${ui.caps !== false ? "The script shows in ALL CAPS on this device (the switch is on the script page)." : ""}</p>
     ${ui.sheet.segs.map((x, i) => `<div class="segedit" data-seg="${i}"><div class="row"><span class="seggrip" data-grip title="Drag to move this line" aria-hidden="true">⠿</span><select data-sf="at" style="width:auto">${Object.entries(SCRIPT_AT).map(([k, l]) => `<option value="${k}" ${(x.at || "game") === k ? "selected" : ""}>${l}</option>`).join("")}</select>
-      <input type="text" data-sf="title" value="${esc(x.title || "")}" placeholder="Title" style="flex:1;width:auto;min-width:140px"><button type="button" class="btn sm" data-act="segmv" data-i="${i}" data-d="-1" ${i ? "" : "disabled"}>↑</button><button type="button" class="btn sm" data-act="segmv" data-i="${i}" data-d="1" ${i < ui.sheet.segs.length - 1 ? "" : "disabled"}>↓</button><button type="button" class="btn sm dark" data-act="segdel" data-i="${i}">✕</button></div>
+      <input type="text" data-sf="title" value="${esc(x.title || "")}" placeholder="Title" style="flex:1;width:auto;min-width:140px"><button type="button" class="btn sm" data-act="segmv" data-i="${i}" data-d="-1" ${i ? "" : "disabled"}>↑</button><button type="button" class="btn sm" data-act="segmv" data-i="${i}" data-d="1" ${i < ui.sheet.segs.length - 1 ? "" : "disabled"}>↓</button><button type="button" class="btn sm dark" data-act="segdel" data-i="${i}">✕</button><button type="button" class="btn sm primary" data-act="segsave" data-stay="1" title="Save the whole script and keep editing">Save</button></div>
       <input type="text" data-sf="cue" value="${esc(x.cue || "")}" placeholder="When to read it">
       <div class="row" style="gap:4px"><button type="button" class="btn sm" data-act="segfmt" data-w="**" title="Bold the words you picked"><b>B</b></button><button type="button" class="btn sm" data-act="segfmt" data-w="*" title="Italicize the words you picked"><i>I</i></button></div>
       <textarea data-sf="text" rows="3"${ui.caps !== false ? ' style="text-transform:uppercase"' : ""}>${esc(x.text || "")}</textarea>
       <label class="row small">Only when this is filled in: <select data-sf="need" style="width:auto"><option value="">(always read it)</option>${["sponsor","honors","anthem","officials","oppCoach","usCoach"].map(k => `<option ${x.need === k ? "selected" : ""}>${k}</option>`).join("")}</select></label></div>`).join("")}
     <div class="row"><button type="button" class="btn" data-act="segadd">+ Add a line</button><button type="button" class="btn" data-act="segreset">Start over from the default</button></div>
-    <div class="row" style="margin-top:10px"><button type="button" class="btn primary" data-act="segsave">Save the script</button><button type="button" class="btn" data-close>Cancel</button></div>`});
+    <div class="row" style="margin-top:10px"><button type="button" class="btn primary" data-act="segsave">Save and close</button><button type="button" class="btn" data-act="segdrop">Close without saving</button></div>
+    <p class="small" style="margin:6px 0 0">Closing this any other way (tapping outside it, Esc) saves it too.</p>`});
 }
 // Reads the editor's fields back into the working copy before anything re-draws it.
 // B and I in the script editor (and Cmd+B / Cmd+I, Ctrl on a PC): put ** or * around the words picked in that line (or a
@@ -3478,6 +3479,18 @@ document.addEventListener("pointerdown", ev => { const g = ev.target.closest && 
 document.addEventListener("pointermove", ev => { const d = segDrag; if(!d || ev.pointerId !== d.id) return; ev.preventDefault(); d.y = ev.clientY; segDropAt(ev.clientY); });
 document.addEventListener("pointerup", ev => { if(segDrag && ev.pointerId === segDrag.id) segDragEnd(true); });
 document.addEventListener("pointercancel", ev => { if(segDrag && ev.pointerId === segDrag.id) segDragEnd(false); });
+// Saves the script editor's lines (Kevin: a Save on every line so he needn't scroll, and closing it by accident must not
+// lose the work). close: also shut the editor. Nothing changed: nothing saved, no undo step.
+function scriptSave(close){ const s = ui.sheet; if(!s || !s.script) return; grabSegs();
+  s.segs.forEach(x => { if(!x.id) x.id = rid(); });
+  const same = JSON.stringify(s.segs) === JSON.stringify(scriptSegs());
+  if(!same){ const was = paCopy(S.script), now = {segs:paCopy(s.segs), upd:Date.now()};
+    const put = v => { S.script = {segs:v && v.segs ? paCopy(v.segs) : null, upd:Date.now()}; save(); Sync.dirtyScript(); render(); };
+    S.script = now; save(); Sync.dirtyScript(); undoable("Edit the script", () => put(was), () => put(now)); }
+  if(close) closeSheet(); render();
+  if(!same) undoToast("Script saved."); else if(!close) toast("No changes to save."); }
+// Closing a sheet with the backdrop, a Close button or Esc. The script editor saves on the way out.
+function sheetAway(){ if(ui.sheet && ui.sheet.script) scriptSave(true); else closeSheet(); }
 function grabSegs(){ const s = ui.sheet; if(!s || !s.segs) return; $$("[data-seg]").forEach(el => { const x = s.segs[+el.dataset.seg]; if(!x) return; $$("[data-sf]", el).forEach(f => { x[f.dataset.sf] = f.value; }); if(!x.need) delete x.need; }); }
 
 /* ---------- box score ---------- */
@@ -5354,7 +5367,7 @@ document.addEventListener("click", async ev => {
   const t = ev.target;
   // The second click of a double-click just after a Reset step (on the card that just came up, or the page under it) does nothing.
   if(ev.detail > 1 && Date.now() < rzHush){ getSelection().removeAllRanges(); return; }
-  if(t.matches(".sheet-wrap") || t.closest("button[data-close]")){ closeSheet(); return; }
+  if(t.matches(".sheet-wrap") || t.closest("button[data-close]")){ sheetAway(); return; }
   const tab = t.closest("[data-tab]");
   if(tab && tab.closest("#tabs")){ ui.tab = tab.dataset.tab; saveUi(); render(); window.scrollTo(0, 0); return; }
   const st = t.closest("[data-st]");
@@ -5459,9 +5472,8 @@ document.addEventListener("click", async ev => {
     case "segadd": { grabSegs(); s.segs.push({id:rid(), at:"game", title:"New line", cue:"", text:""}); renderSheet(); const f = $$("#sheet [data-seg]").pop(); if(f) f.scrollIntoView({block:"center"}); break; }
     case "segreset": if(confirm("Throw out your changes and start from the default script?")){ s.segs = JSON.parse(JSON.stringify(DEFAULT_SCRIPT)); renderSheet(); } break;
     // One Undo step: the script as it was goes back to every device (with a newer upd, so they take it; none = the default).
-    case "segsave": { grabSegs(); const was = paCopy(S.script), now = {segs:s.segs.map(x => ({...x, id:x.id || rid()})), upd:Date.now()};
-      const put = v => { S.script = {segs:v && v.segs ? paCopy(v.segs) : null, upd:Date.now()}; save(); Sync.dirtyScript(); render(); };
-      S.script = now; save(); Sync.dirtyScript(); undoable("Edit the script", () => put(was), () => put(now)); closeSheet(); render(); undoToast("Script saved."); break; }
+    case "segsave": scriptSave(!a.dataset.stay); break;
+    case "segdrop": closeSheet(); break;
     case "lineuppa": { if(!g || !canEdit(g)) break; const tm = a.dataset.tm, R = replay(g), want = startersOf(g, tm).filter(pid => !R.court[tm].has(pid)).slice(0, 5 - R.court[tm].size);
       const grp = rid(); want.forEach(pid => rec({tm, pid, t:"IN", lu:true, grp}, {quiet:true})); ui.lineup = null; touch(g); break; }
     case "oppedit": if(canCoach()) oppSheet(a.dataset.opp); break;
@@ -5713,7 +5725,7 @@ document.addEventListener("click", async ev => {
   }
 });
 document.addEventListener("keydown", ev => { if(ev.key !== "Escape") return;
-  if(ui.sheet) closeSheet(); else if(ui.fu[0] && ui.fu[0].k === "loc" && $(".fu.loc")){ ui.fu.shift(); renderFu(); } });
+  if(ui.sheet) sheetAway(); else if(ui.fu[0] && ui.fu[0].k === "loc" && $(".fu.loc")){ ui.fu.shift(); renderFu(); } });
 document.addEventListener("input", ev => {
   const t = ev.target;
   if(t.dataset.hex || t.dataset.hext){ const k = t.dataset.hex || t.dataset.hext, pair = $(t.dataset.hex ? `[data-hext="${k}"]` : `[data-hex="${k}"]`);
