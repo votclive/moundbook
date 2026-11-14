@@ -2161,7 +2161,7 @@ function viewAnn(){
   const meta = boardMeta(g, R);
   // The compact board, pinned to the top: the score, fouls and timeouts stay on screen while the PA scrolls to the notes or
   // the last plays, and the headline and the table sit above the fold.
-  const head = `<div class="bugcap"><span>${esc(usName(g))}${rec ? " (" + esc(rec) + ")" : ""} ${gameTitle(g)} · ${esc(gameSub(g))}</span>${met ? `<span>${esc(met)}</span>` : ""}</div>
+  const head = `<div class="bugcap"><span>${esc(usName(g))}${rec ? " (" + esc(rec) + ")" : ""} ${gameTitle(g)} · ${gameSub(g)}</span>${met ? `<span>${esc(met)}</span>` : ""}</div>
       <div class="annbug">${bug(g, R, {meta, quiet:!!signalFlag(g), per:fin ? "FINAL" : g.status === "live" ? nowLabel(g, R) : "PREGAME"})}${foulBar(g, R)}</div>
       <div class="linesc">${lineScore(g, R)}</div>`;
   // Points and fouls only (Kevin): no shooting, rebound or turnover glance here; Jim's page has those.
@@ -2369,7 +2369,7 @@ function drawBroadcast(pre){
   if(!g){ put("none", `<div class="card"><p style="margin:0">No game yet. Pick one above. Once the scorer starts a game, this page follows it.</p></div>`); return; }
   const R = replay(g), fin = g.status === "final", rec = g.practice ? "" : recordOf(g), met = g.practice ? "" : lastMeeting(g), lastAt = lastAtOf(g), hl = headline(g, R);
   const meta = boardMeta(g, R);
-  put("cap", `<div class="bugcap"><span>${esc(usName(g))}${rec ? " (" + esc(rec) + ")" : ""} ${gameTitle(g)} · ${esc(gameSub(g))}</span>${met ? `<span>${esc(met)}</span>` : ""}</div>`);
+  put("cap", `<div class="bugcap"><span>${esc(usName(g))}${rec ? " (" + esc(rec) + ")" : ""} ${gameTitle(g)} · ${gameSub(g)}</span>${met ? `<span>${esc(met)}</span>` : ""}</div>`);
   // Jim's scoreboard is the compact one and stays pinned at the top while he scrolls the spotting boards.
   put("bug", bug(g, R, {meta, quiet:!!signalFlag(g), per:fin ? "FINAL" : g.status === "live" ? nowLabel(g, R) : "PREGAME"}) + foulBar(g, R));
   put("last", hl.length || (g.status === "live" && lastAt) ? `<div class="lastplay">${hl.map(x => `<div>${x}</div>`).join("")}${g.status === "live" && lastAt ? `<div class="small" style="font-weight:500">Last play ${agoWords(lastAt)}</div>` : ""}</div>` : "");
@@ -3197,7 +3197,7 @@ function introHtml(g, tm){
 // School names on both sides: "Greenbrier 45, White House 40".
 function scoreWords(g){
   if(!g.ev.length) return "";
-  const R = replay(g), a = {n:"Greenbrier", v:R.sc.us}, b = {n:g.opp, v:R.sc.them};
+  const R = replay(g), a = {n:"Greenbrier", v:R.sc.us}, b = {n:esc(g.opp), v:R.sc.them};
   if(a.v === b.v) return `tied at ${a.v}`;
   const [hi, lo] = a.v > b.v ? [a, b] : [b, a];
   return `${hi.n} ${hi.v}, ${lo.n} ${lo.v}`;
@@ -5615,7 +5615,7 @@ document.addEventListener("click", async ev => {
     case "csv": if(g) download(`${g.id}-box.csv`, csvOf(g), "text/csv"); break;
     case "voidtog": { if(!g || !canEdit(g)) break; const e = g.ev.find(x => x.id === a.dataset.id); if(e){ const v = !e.v, ed = Date.now(); (e.grp ? g.ev.filter(x => x.grp === e.grp) : [e]).forEach(x => { x.v = v; x.ed = ed; }); touch(g); } break; }
     case "fix": { if(!g || !canEdit(g)) break; const e = g.ev.find(x => x.id === a.dataset.id); if(e) fixSheet(g, e); break; }
-    case "fixpick": { if(!s || !g) break; const e = g.ev.find(x => x.id === s.eid); if(!e) break;
+    case "fixpick": { if(!s || !g || !canEdit(g)) break; const e = g.ev.find(x => x.id === s.eid); if(!e) break;
       e.from = e.from || {tm:e.tm, pid:e.pid}; e.tm = a.dataset.tm; e.pid = a.dataset.pid || null; e.ed = Date.now();
       // The basket went to the player who had its assist: one player can't have both, so ask who passed rather than lose it.
       if(e.t === "FG" && e.m && g.ev.some(x => !x.v && x.t === "AST" && x.ref === e.id && x.tm === e.tm && x.pid === e.pid)){ touch(g); fixSheet(g, e); break; }
@@ -5635,7 +5635,7 @@ document.addEventListener("click", async ev => {
       g.ev.splice(g.ev.indexOf(h), 1); const j = g.ev.indexOf(to) + (a.dataset.where === "after" ? 1 : 0);
       g.ev.splice(j, 0, h); h.at = (to.at || 0) + (a.dataset.where === "after" ? 1 : -1); h.ed = Date.now(); closeSheet(); touch(g);
       toast(`Moved the end of ${perLabel(g, h.q || 1)}. Quarter scores and team fouls are redone.`, 3500); break; }
-    case "fixkind": { if(!s || !g) break; const e = g.ev.find(x => x.id === s.eid); if(!e) break;
+    case "fixkind": { if(!s || !g || !canEdit(g)) break; const e = g.ev.find(x => x.id === s.eid); if(!e) break;
       if(e.t === "FG"){ if(a.dataset.k === "made") e.m = !e.m; if(a.dataset.k === "pts") e.p = e.p === 3 ? 2 : 3; }
       if(e.t === "FT") e.m = !e.m;
       if(e.t === "REB") e.o = !e.o;
