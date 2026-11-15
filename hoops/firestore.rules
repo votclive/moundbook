@@ -105,11 +105,31 @@ service cloud.firestore {
     function hoopsMayGive(lvl, d) { return lvl >= 4 || (lvl == 3 && d.get('tier', '') != 'admin'); }
     match /hoopsMembers/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || hoopsCoach());
-      allow create: if signedIn() && hoopsEntry(request.resource.data) && hoopsMayGive(hoopsLevel(), request.resource.data);
+      allow create: if signedIn() && hoopsEntry(request.resource.data)
+        && (hoopsMayGive(hoopsLevel(), request.resource.data) || hoopsInvited(uid, request.resource.data));
       allow update: if signedIn() && hoopsEntry(request.resource.data) && hoopsMayChange(hoopsLevel(), resource.data, request.resource.data);
       allow delete: if signedIn() && hoopsMayGive(hoopsLevel(), resource.data);
     }
     function hoopsMayChange(lvl, was, now) { return hoopsMayGive(lvl, was) && hoopsMayGive(lvl, now); }
+    // Invites (0.23.0): a Coach or an Admin invites someone by email at a level they could give. The invite's id is a long
+    // random code that only goes out in the link. Whoever signs in with that email and has the code makes their own entry
+    // at exactly the invited level, within 14 days; then the invite goes. Nobody lists invites but Coaches and Admins.
+    function myEmail() { return request.auth.token.email != null ? request.auth.token.email.lower() : '-'; }
+    function hoopsInviteOk(d) { return d.keys().hasOnly(['email', 'name', 'role', 'tier', 'by', 'at']) && hoopsEntry(d) && d.get('tier', '') != 'board'
+        && d.email is string && d.email.size() > 3 && d.email.size() <= 120 && d.email == d.email.lower() && d.name is string && d.name.size() <= 80
+        && d.by == request.auth.uid && d.at is number; }
+    function hoopsInvited(uid, d) {
+      let inv = /databases/$(db)/documents/hoopsInvites/$(d.get('inv', '-'));
+      let i = exists(inv) ? get(inv).data : {};
+      return request.auth.uid == uid && i.get('email', '') == myEmail() && d.get('email', '') == myEmail()
+        && i.get('role', '') == d.role && i.get('tier', '') == d.get('tier', '') && request.time.toMillis() - i.get('at', 0) < 1209600000;
+    }
+    match /hoopsInvites/{code} {
+      allow get: if signedIn() && (hoopsCoach() || resource.data.email == myEmail());
+      allow list: if hoopsCoach();
+      allow create: if hoopsCoach() && code.size() >= 20 && hoopsInviteOk(request.resource.data) && hoopsMayGive(hoopsLevel(), request.resource.data);
+      allow delete: if signedIn() && ((hoopsCoach() && hoopsMayGive(hoopsLevel(), resource.data)) || resource.data.email == myEmail());
+    }
     match /hoopsRequests/{uid} {
       allow read: if signedIn() && (uid == request.auth.uid || hoopsCoach());
       allow create, update: if signedIn() && uid == request.auth.uid
