@@ -5,7 +5,7 @@
 <!-- The page's lock: the only script that may run is the one in this file (named by the SHA-256 of its text) and files
      from this folder (fb.js). Text that turns up in the page from a roster, a game or the cloud can never run as code.
      After ANY edit to the script, run "python3 hoops/stamp.py hoops": with a stale hash the browser runs nothing. -->
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-sDexHPU/qlI0eoSb/lg44B2aENxf/tblT3GckRxOWlk='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-hbcNws0ZJ4gZ7Z97AOU8gdz95rfDZqhWpXR6XZ8jUDU='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#094A28">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -815,12 +815,14 @@ td .face{width:24px;height:24px;margin:-5px 7px -4px 0}
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
 { const n = document.getElementById("nostart"); if(n) n.remove(); }   // the script is running: see #nostart
-const BS_VERSION = "0.20.2";
+const BS_VERSION = "0.20.3";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
 const pct = (m, a) => a ? Math.round(100 * m / a) + "%" : "–";
-const PUB = /[?&#]live\b/.test(location.search + location.hash);           // the public page for fans: no sign-in, read only
+// The public page for fans: no sign-in, read only. On votclive.com (votclive.com/hoops/livestats/, a Netlify proxy of this
+// folder, Kevin 0.20.3) it is the only page: no ?live needed, and staff can't sign in there.
+const PUB = /[?&#]live\b/.test(location.search + location.hash) || /(^|\.)votclive\.com$/i.test(location.hostname);
 const ANN_ONLY = !PUB && /[?&#]announcer\b/.test(location.search + location.hash);
 // The score bug for the stream (?bug, or /hoops/bug/): an OBS browser source on Jim's MacBook. No sign-in, see-through page.
 const OBS = !PUB && /[?&#]bug\b/.test(location.search + location.hash);
