@@ -5,7 +5,7 @@
 <!-- The page's lock: the only script that may run is the one in this file (named by the SHA-256 of its text) and files
      from this folder (fb.js). Text that turns up in the page from a roster, a game or the cloud can never run as code.
      After ANY edit to the script, run "python3 hoops/stamp.py hoops": with a stale hash the browser runs nothing. -->
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-nfPTB3uM+301iWj1kxufWXfPRksAcIJC0vgHl7RwYUs='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-sDexHPU/qlI0eoSb/lg44B2aENxf/tblT3GckRxOWlk='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#094A28">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -815,7 +815,7 @@ td .face{width:24px;height:24px;margin:-5px 7px -4px 0}
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
 { const n = document.getElementById("nostart"); if(n) n.remove(); }   // the script is running: see #nostart
-const BS_VERSION = "0.20.1";
+const BS_VERSION = "0.20.2";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -918,6 +918,8 @@ function load(){
 }
 const LOCAL_SET = ["extra", "chart", "flip", "faces"];
 const ADMIN_SET = ["drive", "pub", "pubSec"];   // settings only an Admin changes (the rules check them)
+// The fan page's pace (Setup › Public page, Admin): pubSec seconds between copies, or PUB_NOW for every play.
+const PUB_NOW = 2, pubNow = () => (S.settings.pubSec || 30) <= PUB_NOW;
 function cloudSettings(s){ const o = {...s}; LOCAL_SET.forEach(k => delete o[k]); return o; }
 function save(){
   try{
@@ -5068,9 +5070,9 @@ function viewSetup(){
     <div class="card stack"><h3 style="font-size:22px">Public page</h3>
       <p style="margin:0">Fans follow the score, box score and play-by-play at <a href="${esc(pubLink())}" target="_blank" rel="noopener">${esc(pubLink().replace(/^https?:\/\//, ""))}</a> with no sign-in. Put the link in the stream description. It never shows notes, the table or name notes.</p>
       <div class="row"><button class="btn${S.settings.pub !== false ? " primary" : ""}" data-act="pubtoggle" ${adis} aria-pressed="${S.settings.pub !== false}">${S.settings.pub !== false ? "On" : "Off"}</button>
-        <label class="row small">Send an update at most every <select data-set="pubSec" style="width:auto" ${adis}>${[15, 30, 60].map(n => `<option value="${n}" ${(st.pubSec || 30) === n ? "selected" : ""}>${n} seconds</option>`).join("")}</select></label>
+        <label class="row small">Send an update <select data-set="pubSec" style="width:auto" ${adis}>${[[PUB_NOW, "every play (right away)"], [15, "15 seconds"], [30, "30 seconds"], [60, "60 seconds"]].map(([n, l]) => `<option value="${n}" ${(st.pubSec || 30) === n ? "selected" : ""}>${l}</option>`).join("")}</select></label>
         <button class="btn sm" data-act="copypub">Copy the link</button><button class="btn sm" data-act="copypub" data-delay="30" title="For the stream description: the page holds each update 30 seconds so it doesn't run ahead of the video">Copy the stream link (30 s behind)</button><button class="btn sm" data-act="copybug" title="For OBS on the stream laptop: add it as a Browser Source, 1920 by 1080">Copy the score bug link (OBS)</button></div>
-      <p class="small" style="margin:0">Ends of quarters and finals go out right away. Every phone watching costs one Firebase read per update, and the free plan allows 50,000 reads a day, shared with the scorer, PA, booth and Mound Book: at ${esc(String(st.pubSec || 30))} seconds that's roughly ${Math.floor(50000 / (3 * 3600 / Math.max(10, st.pubSec || 30)) / 10) * 10} phones through a doubleheader. <b>Go over and the PA's and booth's screens stop too, until about 2 AM.</b> Before a big night, move the Firebase project to the pay-as-you-go Blaze plan with a small budget alert (a 1,000-phone night costs well under a dollar), or slow the updates down.</p></div>
+      <p class="small" style="margin:0">Ends of quarters and finals go out right away. Every phone watching costs one Firebase read per update, and the free plan allows 50,000 reads a day, shared with the scorer, PA, booth and Mound Book: ${pubNow() ? "with every play (about 400 updates a game)" : `at ${esc(String(st.pubSec || 30))} seconds`} that's roughly ${Math.floor(50000 / (pubNow() ? 800 : 3 * 3600 / Math.max(10, st.pubSec || 30)) / 10) * 10} phones through a doubleheader. <b>Go over and the PA's and booth's screens stop too, until about 2 AM.</b> Before a big night, move the Firebase project to the pay-as-you-go Blaze plan with a small budget alert (a 1,000-phone night costs well under a dollar), or slow the updates down.</p></div>
     <div class="card stack"><h3 style="font-size:22px">Back up and move</h3>
       <div class="row"><button class="btn" data-act="backup">Full backup (all games)</button>${canAdmin() ? `<button class="btn" data-act="restore">Restore from a backup</button>` : ""}<input type="file" id="restore-file" accept=".json,application/json" hidden></div>
       <p class="small" style="margin:0">Everything lives on this device first. A backup is one file with every game, roster, name note, opponent color and the PA's script. Restoring keeps the newer copy of each game and never replaces a name note.</p>
@@ -7750,7 +7752,7 @@ function viewPublic(){
     const ov = boardOver(g, R, sn, PS.board && PS.board.view()), Rb = {...R, sc:ov.sc};
     // How old this copy is (the stream delay doesn't count). Mid-period the scorer sends every few seconds of play, so a copy
     // a couple of minutes old means the table's signal (or this phone's) dropped: say so, then fade the score.
-    const age = Date.now() - (sn.upd || 0) - PS.delay * 1000, gap = (sn.every || 30) * 1000, old = !fin && !sn.brk && age > 2 * gap + 60000, faded = old && age > 2 * gap + 180000;
+    const age = Date.now() - (sn.upd || 0) - PS.delay * 1000, gap = Math.max(30, sn.every || 30) * 1000, old = !fin && !sn.brk && age > 2 * gap + 60000, faded = old && age > 2 * gap + 180000;
     // Under each team: its team fouls in words, the bonus on the team that shoots it, timeouts by length. None of it at the final.
     const meta = tm => `${ov.tf[tm]} team foul${ov.tf[tm] === 1 ? "" : "s"}<br>Timeouts 60s ${sn.tol[tm][60]} · 30s ${sn.tol[tm][30]}${ov.bonus[tm] ? `<div class="bonus">IN THE BONUS</div>` : ""}`;
     // At the final the strip under the board names each team's top scorer instead of the last horn.
@@ -7772,7 +7774,7 @@ function viewPublic(){
       ${pubShots(g, R)}
       <div class="card" id="pubplays"><h3 style="font-size:22px;margin-bottom:4px">${sn.more ? "Last " + sn.plays.length + " plays" : "Play-by-play"}</h3>${sn.plays.length ? `<ul class="plays">${sn.plays.slice().reverse().map(p => `<li class="${p[4] ? "score" : ""}" style="${p[5] === "them" ? tvars(g, "them") : ""}"><span class="pq">${esc(perLabel(g, p[0]))}${p[7] ? `<span class="gcl">${esc(p[7])}</span>` : ""}${p[6] ? `<small>${esc(new Date(p[6]).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}))}</small>` : ""}</span><span class="ps">${ha.home === "us" ? p[1] + "-" + p[2] : p[2] + "-" + p[1]}</span><span class="pt">${p[5] ? `<span class="ptm">${esc(p[5] === "us" ? "GHS" : (g.oi && g.oi.abbr) || oppInfo(g.opp, g).abbr)}</span> ` : ""}${p[5] === "us" ? face(player(g, "us", "us" + p[8]), "", true) : ""}${p[4] ? "<b>" + esc(unent(p[3])) + "</b>" : esc(unent(p[3]))}</span></li>`).join("")}</ul>` : `<p class="small">Plays show up here once the game starts.</p>`}</div>
       ${sn.sponsor ? `<div class="card" style="text-align:center"><div class="kicker">Tonight's game is brought to you by</div><h2 style="margin-top:4px">${esc(sn.sponsor)}</h2></div>` : ""}
-      <p class="pubnote">${review ? "Final score. The stat keeper is checking the box score against the official book, so player numbers may still change." : fin ? "Final box score." : `${ov.tag === "board" ? "The score, clock and team fouls come straight from the gym scoreboard. " : ov.tag === "unofficial" ? "The gym scoreboard's feed is down, so the score is the stat keeper's until it's back. " : ""}${ov.tag === "board" ? "The box score updates" : "Stats update"} about every ${esc(String(sn.every || 30))} seconds, so they can run a little ahead of or behind the video.${PS.delay ? ` This page holds each update ${PS.delay} seconds to match the stream.` : ""}`} Last update ${esc(new Date(sn.upd).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}))}${fin ? "" : ` (${esc(agoWords(sn.upd))})`}.</p></div>`;
+      <p class="pubnote">${review ? "Final score. The stat keeper is checking the box score against the official book, so player numbers may still change." : fin ? "Final box score." : `${ov.tag === "board" ? "The score, clock and team fouls come straight from the gym scoreboard. " : ov.tag === "unofficial" ? "The gym scoreboard's feed is down, so the score is the stat keeper's until it's back. " : ""}${ov.tag === "board" ? "The box score updates" : "Stats update"} ${(sn.every || 30) <= PUB_NOW ? "with every play" : `about every ${esc(String(sn.every || 30))} seconds`}, so they can run a little ahead of or behind the video.${PS.delay ? ` This page holds each update ${PS.delay} seconds to match the stream.` : ""}`} Last update ${esc(new Date(sn.upd).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}))}${fin ? "" : ` (${esc(agoWords(sn.upd))})`}.</p></div>`;
   }
   // The season: results and what's next.
   const today = pubToday(), nextHome = rows.find(([, r]) => r.ha === "Home" && r.status === "pre" && !r.off && r.date > (row ? row.date : today));
@@ -8148,7 +8150,8 @@ const Sync = (() => {
     // A period break, the final, or any fix after the final goes out right away; anything else waits its turn.
     const P = st.pub, R = replay(g), big = soon || g.status === "final" || P.seen[id] !== g.status + ":" + R.q;
     if(P.timer[id] && !big) return;                       // one is already waiting; it sends the newest numbers
-    const gap = big ? 1500 : Math.max(10, S.settings.pubSec || 30) * 1000;
+    // "Every play" (Kevin, 0.20.2): a tap goes out at once; taps close together (a make and its assist) share one copy.
+    const gap = big || pubNow() ? 1500 : Math.max(10, S.settings.pubSec || 30) * 1000;
     clearTimeout(P.timer[id]);
     P.timer[id] = setTimeout(() => pubSend(id), Math.max(big ? 300 : 0, (P.last[id] || 0) + gap - Date.now()));
   }
