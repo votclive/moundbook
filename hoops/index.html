@@ -5,7 +5,7 @@
 <!-- The page's lock: the only script that may run is the one in this file (named by the SHA-256 of its text) and files
      from this folder (fb.js). Text that turns up in the page from a roster, a game or the cloud can never run as code.
      After ANY edit to the script, run "python3 hoops/stamp.py hoops": with a stale hash the browser runs nothing. -->
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-ssCLu8OgNkqCvdaCi7LZpfZVN8pwB4RbppaEUmc1dn0='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-O8plGn8Kq++M3enfpAu9YtNdH0LYKNO+GhOtCLeBGQI='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#094A28">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -836,7 +836,7 @@ td .face{width:24px;height:24px;margin:-5px 7px -4px 0}
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
 { const n = document.getElementById("nostart"); if(n) n.remove(); }   // the script is running: see #nostart
-const BS_VERSION = "0.21.1";
+const BS_VERSION = "0.22.0";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -1156,6 +1156,21 @@ function lineupCard(g, R, M, cls = "card"){
 /* ---------- names ---------- */
 function roster(g, tm){ if(tm === "them") return g.them; return (g.us && g.us.length) ? g.us : (S.teams[g.team] || {}).roster || []; }
 function player(g, tm, pid){ return roster(g, tm).find(p => p.pid === pid) || null; }
+// Uniforms (Kevin: white, green and black). A kid who wears another number in one of them has it on Rosters (p.unum, by
+// uniform; no number there = his usual number). A game's uniform (g.uni, set in the game's Edit sheet on Games) puts those
+// numbers on that game (uniApply).
+const UNIS = ["White", "Green", "Black"];
+const UNI_OK = n => /^\d{1,3}$/.test(String(n == null ? "" : n));
+// His number in that uniform when it's different from his usual one, else "".
+function uniNum(p, u){ const m = p && p.unum && typeof p.unum === "object" ? p.unum : null, n = m && UNIS.includes(u) && Object.prototype.hasOwnProperty.call(m, u) ? String(m[u]) : "";
+  return UNI_OK(n) && n !== String(p.num) ? n : ""; }
+// Every number he wears: his usual one first, then each uniform's own.
+const kidNums = p => [String(p.num)].concat(UNIS.map(u => uniNum(p, u))).filter((n, i, a) => n && a.indexOf(n) === i);
+// Our kid as the season roster has him (his usual number and his alt), or null for a tonight-only add.
+const seasonP = (g, pid) => g.practice ? null : ((S.teams[g.team] || {}).roster || []).find(x => x.pid === pid) || null;
+// Can this kid come off this game's list? Only with no play of his standing, and (ours) only a kid who isn't on Rosters:
+// a season kid comes off on Rosters (Coach).
+function canDrop(g, tm, pid){ return canEdit(g) && !g.ev.some(e => !e.v && e.pid === pid) && (tm === "them" || !seasonP(g, pid)); }
 function usName(g){ return g.usName || (S.teams[g.team] || {}).name || (g.team === "girls" ? "Lady Cats" : "Bobcats"); }
 function tmName(g, tm){ return tm === "us" ? usName(g) : g.opp; }
 function pLabel(g, tm, pid){ if(!pid) return tmName(g, tm) + " (team)"; const p = player(g, tm, pid); if(!p) return "?"; return "#" + p.num + (p.name ? " " + p.name : ""); }
@@ -1499,7 +1514,7 @@ function touch(g){ g.rev = (g.rev || 0) + 1; g.upd = Date.now(); save(); Sync.di
 function claim(g){ if(!g.writer){ g.writer = S.dev; g.writerAt = Date.now(); } }
 // The game fields the edit sheet, Final and Reopen change. g.fed keeps when each was last changed, so two devices fixing a
 // game that's over at the same time keep each other's fields (mergeGame). A copy from before stamps counts as 0.
-const GFIELDS = ["date", "time", "opp", "ha", "event", "district", "off", "forfeit", "ppdFrom", "offWas", "status", "quarters", "qlen", "bfin", "rv", "scrim"];
+const GFIELDS = ["date", "time", "opp", "ha", "event", "district", "off", "forfeit", "ppdFrom", "offWas", "status", "quarters", "qlen", "bfin", "rv", "scrim", "uni"];
 function edField(g, ks){ if(!ks.length) return; const t = Date.now(); g.fed = {...(g.fed || {})}; ks.forEach(k => { g.fed[k] = t; }); }
 // One game from two copies of it: base, plus every change in other that's newer (plays by mergeEv, players by their edit
 // stamp ed, game fields by g.fed, numbers the PA's list put in). Where neither side's change is newer, base's stands.
@@ -1946,6 +1961,7 @@ function teamCol(g, R, tm, side, hideNarrow){
     return `<button class="chip${at ? " at" : ""}${ln.pf >= 5 || ln.tf >= 2 ? " dark" : ""}${fcls(ln)}" data-act="bench" data-tm="${tm}" data-pid="${p.pid}">${face(p, "", tm === "us")}<b>${esc(p.num)}</b><span class="nm">${esc(pShort(p))}${ln.pts ? " · " + ln.pts : ""}${ln.pf ? " · " + ln.pf + "F" : ""}</span></button>`; }).join("")}</div>`;
   // Subs waiting at the table sit under the bench: a sub reporting never moves the five cards above under the book's finger.
   // Each shows her whole name and her foul color; a full bar packs the bench tighter (benchFit), never past the screen.
+  if(tm === "us" && edit && g.status !== "final" && jvFor(g).length) h += `<button class="btn sm no-print callup" data-act="callup" style="margin-top:8px">Call up JV</button>`;
   if(table.length) h += `<div class="table-bar"><span class="kicker">At the table</span><div class="tbl">${table.map(pid => { const p = player(g, tm, pid); return `<button class="chip at${fcls(R.box[tm][pid])}" data-act="tablein" data-tm="${tm}" data-pid="${pid}" ${edit ? "" : "disabled"} title="Check in at the next stoppage">${face(p, "", tm === "us")}<b>${esc(p.num)}</b>${p.name ? `<span class="nm">${esc(pShort(p))}</span>` : ""}<span class="go">▸ IN</span></button>`; }).join("")}</div><span class="tbtn"><button class="chip subgo" data-act="swapopen" data-tm="${tm}" ${edit && g.status !== "final" ? "" : "disabled"} title="Pick who's coming out, all in one step">Sub in (${table.length})</button><button class="chip skip" data-act="tableclear" data-tm="${tm}">Clear</button></span></div>`;
   return h + `</section>`;
 }
@@ -5110,7 +5126,9 @@ function viewTeams(){
     return `<div class="card rcard"><div class="row between"><div class="tc-head" style="margin:0"><img src="bobcat-head.png" alt=""><div><div class="kicker">${team === "girls" ? "Girls varsity" : "Boys varsity"}</div><h2>${esc(T.name)}</h2></div></div>
       ${edit ? `<div class="row"><button class="btn sm" data-act="faces" data-team="${team}">Photos${rs.length && S.settings.faces !== false ? ` · ${rs.filter(p => Faces.has(p.pid)).length} of ${rs.length}` : ""}</button><button class="btn sm" data-act="paste" data-team="${team}">Paste a roster</button><button class="btn sm" data-act="addroster" data-team="${team}">+ Player</button></div>` : ""}</div>
       <div class="scroll-x" style="margin-top:8px"><table class="pin rtab"><tr><th class="l">Player</th><th class="l">Pos</th><th class="l">Yr</th><th class="l">Ht</th>${edit ? "<th></th>" : ""}</tr>
-      ${rs.map(p => `<tr><td class="l">${face(p, "", true)}<button class="lnk" data-act="glog" data-team="${team}" data-pid="${p.pid}" title="Game log">${esc(p.num)} ${esc(p.name)}</button>${S.say[p.pid] ? `<div class="small" style="font-style:italic">${esc(S.say[p.pid])}</div>` : ""}</td><td class="l">${esc(p.pos || "")}</td><td class="l">${esc(p.grade || "")}</td><td class="l">${esc(p.ht || "")}</td>${edit ? `<td><button class="btn sm" data-act="editroster" data-team="${team}" data-pid="${p.pid}">Edit</button></td>` : ""}</tr>`).join("") || `<tr><td class="l" colspan="5">No players yet. Paste the roster: one player per line, like <b>12 Jaylen Smith G Sr 6-2</b>.</td></tr>`}</table></div>
+      ${rs.map(p => `<tr><td class="l">${face(p, "", true)}<button class="lnk" data-act="glog" data-team="${team}" data-pid="${p.pid}" title="Game log">${esc(p.num)} ${esc(p.name)}</button>${UNIS.filter(u => uniNum(p, u)).map(u => ` <span class="small" title="His number in the ${u} uniform">${u} #${esc(uniNum(p, u))}</span>`).join("")}${S.say[p.pid] ? `<div class="small" style="font-style:italic">${esc(S.say[p.pid])}</div>` : ""}</td><td class="l">${esc(p.pos || "")}</td><td class="l">${esc(p.grade || "")}</td><td class="l">${esc(p.ht || "")}</td>${edit ? `<td><button class="btn sm" data-act="editroster" data-team="${team}" data-pid="${p.pid}">Edit</button></td>` : ""}</tr>`).join("") || `<tr><td class="l" colspan="5">No players yet. Paste the roster: one player per line, like <b>12 Jaylen Smith G Sr 6-2</b>.</td></tr>`}</table></div>
+      ${edit && (T.jv || []).length ? `<div class="kicker" style="margin-top:12px">JV · off varsity games until called up</div><div class="scroll-x"><table class="pin rtab">${sortRoster(T.jv).map(p => `<tr><td class="l">${esc(p.num)} ${esc(p.name)}${UNIS.filter(u => uniNum(p, u)).map(u => ` <span class="small">${u} #${esc(uniNum(p, u))}</span>`).join("")}</td><td class="l">${esc(p.pos || "")}</td><td class="l">${esc(p.grade || "")}</td><td class="l">${esc(p.ht || "")}</td><td><button class="btn sm" data-act="editroster" data-team="${team}" data-jv="1" data-pid="${p.pid}">Edit</button></td></tr>`).join("")}</table></div>
+      <p class="small" style="margin:4px 0 0">Uncheck JV in his Edit card when he moves up for good. For one night, the scorer taps <b>Call up JV</b> under our players.</p>` : ""}
       <div class="row" style="margin-top:6px"><p class="small" style="margin:0;flex:1 1 260px">Year and height feed the PA's starting-lineup intros. Tap a player for the game log. ${canCoach() ? `The record, season numbers and CSVs are on <button class="lnk" data-act="go" data-tab="stats">Stats</button>.` : ""}</p></div></div>`;
   }).join("") + viewOpps() + viewLib() + `</div>`;
 }
@@ -5171,7 +5189,12 @@ function sheetPlayer(opts){
     <label class="fld" style="flex:1;min-width:160px"><span>Name</span><input type="text" name="name" value="${esc(opts.name || "")}" placeholder="${opts.optionalName ? "Optional" : ""}"></label>
     <label class="fld" style="width:90px"><span>Pos</span><input type="text" name="pos" value="${esc(opts.pos || "")}"></label>
     <label class="fld" style="width:90px"><span>Year</span><select name="grade">${["", "Fr", "So", "Jr", "Sr"].map(v => `<option ${v === (opts.grade || "") ? "selected" : ""}>${v}</option>`).join("")}</select></label>
-    <label class="fld" style="width:90px"><span>Height</span><input type="text" name="ht" value="${esc(opts.ht || "")}" placeholder="6-2"></label></div>
+    <label class="fld" style="width:90px"><span>Height</span><input type="text" name="ht" value="${esc(opts.ht || "")}" placeholder="6-2"></label>
+</div>
+    ${opts.uniOk ? `<div><div class="small" style="font-weight:600;margin-bottom:4px">A different number in some uniforms? Put it under that uniform. Leave a box empty when he wears his usual number in it.</div>
+      <div class="row">${UNIS.map(u => `<label class="fld" style="width:90px"><span>${u}</span><input type="text" inputmode="numeric" name="uni-${u}" value="${esc(uniNum(opts, u))}" placeholder="Same"></label>`).join("")}</div>
+      <p class="small" style="margin:4px 0 0">A game's uniform is picked in its Edit sheet on Games; his number follows it for that game.</p></div>` : ""}
+    ${opts.jvOk ? `<label class="row small" style="gap:8px"><input type="checkbox" name="jv" ${opts.jv ? "checked" : ""} style="width:22px;height:22px"> <span><b>JV.</b> Keeps him off varsity games, the Scorer screen and every page. Uncheck when he moves up for good. For one night, the scorer calls him up from the Scorer screen.</span></label>` : ""}
     ${opts.both ? `<label class="row small" style="gap:8px"><input type="checkbox" name="both" ${opts.bothOff ? "" : "checked"} style="width:22px;height:22px"> Change the season roster too (uncheck for tonight only, like a jersey swap)</label>` : ""}
     <label class="row small" style="gap:8px"><input type="checkbox" name="nopub" ${opts.nopub ? "checked" : ""} ${opts.nopubLock ? "disabled" : ""} style="width:22px;height:22px"> Number only on the public page (for a player whose family opted out). The book, announcer and PA still show the name.${opts.nopubLock ? " A coach changes this on Rosters." : ""}</label>
     <div class="row"><button class="btn primary" type="submit">Save</button><button class="btn" type="button" data-close>Cancel</button>${opts.onDelete ? `<button class="btn dark" type="button" data-act="pdel">Remove</button>` : ""}</div></form>`, opts});
@@ -5182,10 +5205,14 @@ function sheetText(title, label, val, onSave, rows = 1, placeholder = ""){
 }
 function pmenu(g, tm, pid){
   const R = replay(g), p = player(g, tm, pid), on = R.court[tm].has(pid), at = atTable(g, tm).includes(pid), edit = canEdit(g);
+  // A kid with an alt number on Rosters: one tap swaps it in for this game (or back to his usual one).
+  const sp = tm === "us" ? seasonP(g, pid) : null, sw = sp ? kidNums(sp).filter(n => n !== String(p.num)) : [];
   openSheet({html:() => `${fhead(p, `<h3>#${esc(p.num)} ${esc(p.name || "")}</h3><p class="small" style="margin:0 0 10px">${esc(tmName(g, tm))} · ${statLine(R.box[tm][pid] || LINE())}</p>`, undefined, tm === "us")}
     <div class="row">${edit ? (on ? `<button class="btn" data-act="pm-out">Take out (no sub)</button>` : `<button class="btn primary" data-act="pm-in">Put in</button>`) : ""}
     ${on ? "" : `<button class="btn" data-act="pm-table">${at ? "Off the table" : "Send to the table"}</button>`}
     ${edit ? `<button class="btn dark" data-act="pm-tech">Technical foul</button><button class="btn" data-act="pm-edit">Edit name / number</button>` : ""}
+    ${edit ? sw.map(n => `<button class="btn" data-act="pm-alt" data-v="${esc(n)}">Wearing #${esc(n)} tonight</button>`).join("") : ""}
+    ${canDrop(g, tm, pid) ? `<button class="btn" data-act="pm-del">Remove from this game</button>` : ""}
     <button class="btn" data-act="pm-say">Phonetic spelling</button><button class="btn" data-close>Close</button></div>`, tm, pid});
 }
 
@@ -6595,6 +6622,16 @@ document.addEventListener("click", async ev => {
         if(Object.keys(plan.now).length > k) n++; });
       saySteps(plan, n === 1 ? "Phonetic spelling" : `Phonetic spellings (${n})`); closeSheet(); render(); break; }
     case "pmenu": if(g) pmenu(g, a.dataset.tm, a.dataset.pid); break;
+    case "pm-alt": if(g && s && canEdit(g)){ const num = String(a.dataset.v || ""), sp = seasonP(g, s.pid);
+      if(!sp || !kidNums(sp).includes(num)) break;
+      const bad = numClash(roster(g, "us"), num, s.pid); if(bad){ toast(bad + " Change his number first.", 4000); break; }
+      closeSheet(); claim(g); altSwap(g, s.pid, num); break; }
+    case "callup": if(g && canEdit(g) && g.status !== "final"){ const L = sortRoster(jvFor(g)); if(!L.length) break;
+      openSheet({html:() => `<h3>Call up a JV player</h3><p class="small" style="margin:0 0 8px">For this game only. Rosters doesn't change.</p><div class="stack">${L.map(p => `<button class="btn" data-act="callpick" data-pid="${esc(p.pid)}">#${esc(p.num)} ${esc(p.name || "")}</button>`).join("")}<button class="btn" data-close>Cancel</button></div>`}); } break;
+    case "callpick": if(g && canEdit(g) && g.status !== "final"){ const kid = jvFor(g).find(p => p.pid === a.dataset.pid); if(!kid) break; const gid = g.id;
+      sheetPlayer({title:`Call up #${kid.num} for tonight`, num:uniNum(kid, g.uni) || kid.num, name:kid.name, pos:kid.pos, grade:kid.grade, ht:kid.ht, nopub:kid.nopub, nopubLock:true,
+        check:np => numClash(roster(S.games[gid] || g, "us"), np.num, kid.pid), onSave:np => { const gg = S.games[gid]; if(!gg || !canEdit(gg)) return; claim(gg); callUp(gg, kid, np); }}); } break;
+    case "pm-del": if(g && s && canDrop(g, s.tm, s.pid)){ closeSheet(); claim(g); dropKid(g, s.tm, s.pid); } break;
     case "pm-in": if(g && s){ closeSheet(); const R = replay(g); if(R.court[s.tm].size >= 5){ toTable(g, s.tm, s.pid); ui.fu = [{k:"out", tm:s.tm, pin:s.pid}]; render(); } else subIn(g, s.tm, s.pid, null); } break;
     case "pm-out": if(g && s){ closeSheet(); rec({tm:s.tm, pid:s.pid, t:"OUT"}); } break;
     case "pm-table": if(g && s){ closeSheet(); toTable(g, s.tm, s.pid); render(); } break;
@@ -6762,14 +6799,25 @@ document.addEventListener("click", async ev => {
       if(!confirm(`Delete ${usName(x)} ${gameTitle(x).replace(/<[^>]+>/g, "")} on ${fmtDate(x.date)}? It comes off the schedule, the fan page and the PA's script.`)) break;
       x.deleted = true; claim(x); closeSheet(); if(ui.gid === x.id) ui.gid = null; touch(x); Sync.seedSeason(true); toast("Game deleted."); break; }
     case "paste": if(canCoach()) pasteRoster(a.dataset.team); break;
-    case "addroster": { if(!canCoach()) break; const team = a.dataset.team; sheetPlayer({title:"Add to " + S.teams[team].name, check:p => numClash(S.teams[team].roster, p.num), onSave:p => { S.teams[team].roster.push({pid:rid(), ...p}); S.teamsRev++; save(); Sync.dirtyTeams(); lateAdds(team); render(); }}); break; }
-    case "editroster": { if(!canCoach()) break; const team = a.dataset.team, p = S.teams[team].roster.find(x => x.pid === a.dataset.pid); if(!p) break;
-      sheetPlayer({title:"Edit #" + p.num, num:p.num, name:p.name, pos:p.pos, grade:p.grade, ht:p.ht, nopub:p.nopub, check:np => String(np.num) === String(p.num) ? "" : numClash(S.teams[team].roster, np.num, p.pid), onSave:np => {
-          const flip = !!p.nopub !== np.nopub; Object.assign(p, np); p.ed = Date.now(); S.teamsRev++; save(); Sync.dirtyTeams(); lateAdds(team);
+    case "addroster": { if(!canCoach()) break; const team = a.dataset.team, T = S.teams[team];
+      sheetPlayer({title:"Add to " + T.name, uniOk:true, jvOk:true, check:p => numClash(p.jv ? T.jv : T.roster, p.num), onSave:p => { const j = !!p.jv; delete p.jv;
+        (j ? (T.jv = T.jv || []) : T.roster).push({pid:rid(), ...p}); S.teamsRev++; save(); Sync.dirtyTeams(); lateAdds(team); render(); if(j) toast(`#${p.num} is on the JV list.`); }}); break; }
+    case "editroster": { if(!canCoach()) break; const team = a.dataset.team, T = S.teams[team], jv = a.dataset.jv === "1", p = (jv ? T.jv || [] : T.roster).find(x => x.pid === a.dataset.pid); if(!p) break;
+      sheetPlayer({title:"Edit #" + p.num, num:p.num, name:p.name, pos:p.pos, grade:p.grade, ht:p.ht, nopub:p.nopub, uniOk:true, unum:p.unum, jvOk:true, jv, check:np => !!np.jv === jv && String(np.num) === String(p.num) ? "" : numClash(np.jv ? T.jv : T.roster, np.num, p.pid), onSave:np => {
+          const toJv = !!np.jv; delete np.jv;
+          // JV checked or unchecked: he moves between the lists, same player id, so his called-up games' stats stay his.
+          if(toJv !== jv){ const sl = jv ? null : seasonLines(team)[p.pid];
+            if(sl && sl.g && !confirm(`${p.name || "#" + p.num} has stats from ${sl.g} game${sl.g > 1 ? "s" : ""} this season. JV takes him off Rosters and the season totals (each game's box score keeps them). Move him anyway?`)) return;
+            if(!jv && p.nopub) T.hidden = {...(T.hidden || {}), [p.pid]:1};
+            T.roster = T.roster.filter(x => x.pid !== p.pid); T.jv = (T.jv || []).filter(x => x.pid !== p.pid); Object.assign(p, np); p.ed = Date.now();
+            (toJv ? T.jv : T.roster).push(p); S.teamsRev++; save(); Sync.dirtyTeams(); lateAdds(team); render();
+            toast(toJv ? `#${p.num} is on the JV list.` : `#${p.num} is on the varsity roster.`); return; }
+          const flip = !jv && !!p.nopub !== np.nopub; Object.assign(p, np); p.ed = Date.now(); S.teamsRev++; save(); Sync.dirtyTeams(); lateAdds(team);
           // Games already played carry their own copy of the roster: send their public copies again with the change.
           if(flip) flipNoPub(p.pid, !!np.nopub);
           render(); },
-        onDelete:() => { const sl = seasonLines(team)[p.pid];
+        onDelete:() => { if(jv){ T.jv = (T.jv || []).filter(x => x.pid !== p.pid); S.teamsRev++; save(); Sync.dirtyTeams(); render(); return; }
+          const sl = seasonLines(team)[p.pid];
           if(sl && sl.g && !confirm(`${p.name || "#" + p.num} has stats from ${sl.g} game${sl.g > 1 ? "s" : ""} this season. Removing takes them off Rosters and the season totals (each game's box score keeps them). Remove anyway?`)) return;
           if(p.nopub) S.teams[team].hidden = {...(S.teams[team].hidden || {}), [p.pid]:1};   // his games' public copies keep the number only
           S.teams[team].roster = S.teams[team].roster.filter(x => x.pid !== p.pid); S.teamsRev++; save(); Sync.dirtyTeams(); lateAdds(team); render(); }}); break; }
@@ -6929,6 +6977,10 @@ document.addEventListener("submit", ev => {
   if(f.id === "pform" && s){ const d = new FormData(f), p = {num:String(d.get("num")).trim().replace(/^#/, ""), name:String(d.get("name")).trim(), pos:String(d.get("pos")).trim().toUpperCase(), grade:String(d.get("grade") || ""), ht:normHt(String(d.get("ht") || "")), nopub:s.opts.nopubLock ? !!s.opts.nopub : !!d.get("nopub")};
     const both = f.querySelector('[name="both"]'); if(both) p.both = both.checked;
     if(!p.num){ toast("Number first."); return; }
+    if(s.opts.uniOk){ const m = {}; for(const u of UNIS){ const el = f.querySelector(`[name="uni-${u}"]`), v = el ? el.value.trim().replace(/^#/, "") : "";
+        if(v && !UNI_OK(v)){ toast(`${u} uniform: just the number.`); return; } if(v && v !== p.num) m[u] = v; }
+      p.unum = m; }
+    if(s.opts.jvOk) p.jv = !!d.get("jv");
     const bad = s.opts.check && s.opts.check(p); if(bad){ toast(bad, 4000); return; }
     closeSheet(); s.opts.onSave(p); return; }
   if(f.id === "oform" && s){ if(!canCoach()) return; const d = new FormData(f), name = s.opp || String(d.get("name") || "").trim(); if(!name){ toast("Name the school first."); return; }
@@ -6970,6 +7022,8 @@ document.addEventListener("submit", ev => {
     // offWas (a called-off game an accidental tap started) goes only when the sheet offered Postponed and Cancelled.
     if(!g.off || g.forfeit) delete g.off; if(!g.forfeit) delete g.forfeit; if(!g.ev.some(e => !e.v && !PREGAME(e))) delete g.offWas;
     if(g.forfeit && g.status === "live") g.status = "final";
+    // The uniform (not on a final): each kid's number for it goes on the game (uniApply).
+    if(d.has("uni") && g.status !== "final"){ const u = UNIS.includes(d.get("uni")) ? d.get("uni") : ""; if(u !== (g.uni || "")){ if(u) g.uni = u; else delete g.uni; if(canEdit(g)) uniApply(g); } }
     // Scrimmage (Admin only): off the record, the season stats and everything public. Its own box score stays in the app.
     const scrimWas = !!g.scrim; if(canAdmin()){ if(d.get("scrim")) g.scrim = true; else delete g.scrim; }
     if(!!g.scrim !== scrimWas){ if(g.scrim) Sync.unpubGame(g.id); else if(g.status !== "pre") Sync.pubSoon(g.id); }
@@ -7235,6 +7289,7 @@ function editGameSheet(g){
     <div class="row"><label class="fld" style="flex:1"><span>Opponent</span><input type="text" name="opp" value="${esc(g.opp)}" required></label>
     <label class="fld" style="width:140px"><span>Where</span><select name="ha"><option ${g.ha === "Home" ? "selected" : ""}>Home</option><option ${g.ha === "Away" ? "selected" : ""}>Away</option><option ${g.ha === "Neutral" ? "selected" : ""}>Neutral</option></select></label></div>
     <label class="fld"><span>Event (optional)</span><input type="text" name="event" value="${esc(g.event || "")}" placeholder="Christmas Classic"></label>
+    ${g.status === "final" ? "" : `<label class="fld"><span>Our uniform</span><select name="uni"><option value="">Not set (everyone's usual number)</option>${UNIS.map(u => `<option ${g.uni === u ? "selected" : ""}>${u}</option>`).join("")}</select></label>`}
     <label class="row" style="font-weight:600"><input type="checkbox" name="district" ${g.district ? "checked" : ""} style="width:22px;height:22px"> District game</label>
     ${canAdmin() ? `<label class="row" style="font-weight:600"><input type="checkbox" name="scrim" ${g.scrim ? "checked" : ""} style="width:22px;height:22px"> Scrimmage: not in the record or season stats, never on the fan page or the stream</label>` : ""}
     <label class="fld"><span>Status</span><select name="off"><option value="">${played ? "Played" : "On the schedule"}</option>${played ? "" : `<option value="ppd" ${g.off === "ppd" ? "selected" : ""}>Postponed (new date to come)</option><option value="cxl" ${g.off === "cxl" ? "selected" : ""}>Cancelled</option>`}</select></label>
@@ -7278,6 +7333,59 @@ function parsePlayerLine(line){
 }
 const nameKey = s => String(s || "").toLowerCase().replace(/[^a-z]/g, "");
 // A player added to the season roster joins the roster copy of a game this device is scoring (or has a copy for before the tip).
+// Tonight's number for one of ours, picked by hand from the numbers he wears (his kid menu): a tonight-only change, like a
+// jersey swap in the Edit sheet. It stays put when the game's uniform changes (numBy has no "uni" for him). One Undo step.
+function altSwap(g, pid, num){
+  const sp = seasonP(g, pid); if(!sp) return; const gid = g.id;
+  const put = n => { const gg = S.games[gid]; if(!gg) return; if(!gg.us.length) gg.us = JSON.parse(JSON.stringify((S.teams[gg.team] || {}).roster || []));
+    gg.usOwn = true; const ov = {...((gg.usOver || {})[pid] || {})}; ov.num = String(n);
+    gg.usOver = {...(gg.usOver || {}), [pid]:ov}; if(gg.numBy && gg.numBy[pid]){ gg.numBy = {...gg.numBy}; delete gg.numBy[pid]; }
+    const q = gg.us.find(x => x.pid === pid); if(q){ q.num = String(n); q.ed = Date.now(); } touch(gg); render(); };
+  const was = String((player(g, "us", pid) || sp).num); put(num);
+  undoable(`#${was} to #${num}`, () => put(was), () => put(num));
+  toast(`${sp.name || "#" + sp.num} is #${num} tonight.`);
+}
+// The game's uniform puts each kid's number for it on the game (before the final): a tonight-only number like a jersey swap,
+// marked numBy[pid] = "uni" so a new uniform (or none) takes it back off. A number set by hand for the game stays. Called
+// when the uniform changes and whenever Rosters changes (lateAdds). True when something changed.
+function uniApply(g){
+  if(!g || g.practice || g.deleted || g.status === "final") return false; const R = (S.teams[g.team] || {}).roster || [], u = UNIS.includes(g.uni) ? g.uni : "";
+  const by = g.numBy || {}; if(!R.some(p => uniNum(p, u)) && !Object.values(by).includes("uni")) return false;
+  if(!g.us.length) g.us = JSON.parse(JSON.stringify(R)); g.usOwn = true;
+  const over = {...(g.usOver || {})}, nb = {...by}; let ch = false;
+  for(const sp of R){ const q = g.us.find(x => x.pid === sp.pid); if(!q) continue; const ov = {...(over[sp.pid] || {})}, w = uniNum(sp, u);
+    if(ov.num != null && nb[sp.pid] !== "uni") continue;   // set by hand for this game
+    if(w){ ov.num = w; nb[sp.pid] = "uni"; } else { delete ov.num; delete nb[sp.pid]; }
+    if(Object.keys(ov).length) over[sp.pid] = ov; else delete over[sp.pid];
+    const num = ov.num != null ? String(ov.num) : String(sp.num); if(String(q.num) !== num){ q.num = num; q.ed = Date.now(); ch = true; } }
+  if(JSON.stringify(over) !== JSON.stringify(g.usOver || {}) || JSON.stringify(nb) !== JSON.stringify(by)){ g.usOver = over; g.numBy = nb; ch = true; }
+  if(!Object.keys(g.numBy || {}).length) delete g.numBy;
+  if(ch) touch(g); return ch;
+}
+// JV kids (Rosters, JV box) who aren't on this game's list: the ones the scorer can call up for tonight.
+const jvFor = g => g.practice ? [] : ((S.teams[g.team] || {}).jv || []).filter(p => p && !roster(g, "us").some(q => q.pid === p.pid));
+// A JV kid called up for this game only: he goes on the game's own list as a tonight-only add (late, so Rosters changes
+// before the tip keep him), wearing the game's uniform number if he has one. Rosters doesn't change. One Undo step;
+// "Remove from this game" on his menu takes him back off while he has no plays.
+function callUp(g, kid, np){
+  const gid = g.id, q = {...kid, ...np, pid:kid.pid, late:1}; delete q.jv; delete q.both;
+  const keep = {us:JSON.parse(JSON.stringify(g.us)), own:!!g.usOwn, over:g.usOver ? JSON.parse(JSON.stringify(g.usOver)) : null};
+  const put = () => { const gg = S.games[gid]; if(!gg) return; if(!gg.us.length) gg.us = JSON.parse(JSON.stringify((S.teams[gg.team] || {}).roster || []));
+    gg.usOwn = true; gg.usOver = gg.usOver || {}; if(!gg.us.some(x => x.pid === q.pid)) gg.us.push({...q}); touch(gg); render(); };
+  const back = () => { const gg = S.games[gid]; if(!gg) return; gg.us = JSON.parse(JSON.stringify(keep.us)); if(keep.own) gg.usOwn = true; else delete gg.usOwn;
+    if(keep.over) gg.usOver = JSON.parse(JSON.stringify(keep.over)); else delete gg.usOver; touch(gg); render(); };
+  put(); undoable(`Called up #${q.num}`, back, put); toast(`#${q.num}${q.name ? " " + q.name : ""} is called up for tonight.`);
+}
+// A kid typed onto tonight's list by mistake (a tonight-only add, or a visitor) comes off it: only with no play of his
+// standing (canDrop). The table and the PA's start list let go of him too. One Undo step.
+function dropKid(g, tm, pid){
+  const gid = g.id, key = tm === "us" ? "us" : "them", p = player(g, tm, pid); if(!p) return;
+  const keep = {list:JSON.parse(JSON.stringify(g[key])), over:g.usOver ? JSON.parse(JSON.stringify(g.usOver)) : null};
+  const out = () => { const gg = S.games[gid]; if(!gg) return; gg[key] = gg[key].filter(x => x.pid !== pid); if(gg.usOver && gg.usOver[pid]){ gg.usOver = {...gg.usOver}; delete gg.usOver[pid]; }
+    if(tableIds(gg, tm).includes(pid)) offTable(gg, tm, pid); touch(gg); render(); };
+  const back = () => { const gg = S.games[gid]; if(!gg) return; gg[key] = JSON.parse(JSON.stringify(keep.list)); if(keep.over) gg.usOver = JSON.parse(JSON.stringify(keep.over)); touch(gg); render(); };
+  out(); undoable(`Removed #${p.num}`, back, out); toast(`#${p.num}${p.name ? " " + p.name : ""} is off this game's list.`);
+}
 function lateAdds(team){
   const R = (S.teams[team] || {}).roster || [], key = a => JSON.stringify(a.map(p => Object.keys(p).sort().map(k => [k, p[k]])));
   for(const g of Object.values(S.games)){
@@ -7294,6 +7402,8 @@ function lateAdds(team){
     const have = new Set(g.us.map(p => p.pid)), add = R.filter(p => !have.has(p.pid) && !g.us.some(q => q.late && twin(q) === p));
     if(add.length){ g.us.push(...add.map(p => ({...p}))); touch(g); }
   }
+  // Each game's uniform numbers follow Rosters (a number added or changed under a uniform).
+  for(const g of Object.values(S.games)) if(g.team === team && g.uni && canEdit(g)) uniApply(g);
 }
 function pasteRoster(team){
   sheetText("Paste the " + S.teams[team].name + " roster", "One player per line: number and name, then position, year and height in any order (all optional). A table copied from a roster web page works too.", "", txt => {
@@ -7384,7 +7494,7 @@ const plainIds = (id, g) => !idBad(id) && g.id === id && (g.deleted === true || 
   && (g.ev == null || Array.isArray(g.ev)) && !(g.ev || []).some(e => !e || typeof e !== "object" || idBad(e.id) || idBad(e.pid) || idBad(e.ref) || (e.tm !== "us" && e.tm !== "them") || (e.p != null && typeof e.p !== "number"))
   && !["us", "them"].some(tm => g[tm] != null && (!Array.isArray(g[tm]) || g[tm].some(p => !p || typeof p !== "object" || idBad(p.pid))));
 // The rosters doc (Coaches and Admins write it) and a backup's rosters: a player id that would break a tag keeps it out.
-const teamsBad = t => !t || typeof t !== "object" || Object.values(t).some(x => x && x.roster != null && (!Array.isArray(x.roster) || x.roster.some(p => !p || typeof p !== "object" || idBad(p.pid))));
+const teamsBad = t => !t || typeof t !== "object" || Object.values(t).some(x => x && ["roster", "jv"].some(k => x[k] != null && (!Array.isArray(x[k]) || x[k].some(p => !p || typeof p !== "object" || idBad(p.pid)))));
 // A link the Drive script answered with: only Google Drive's own pages are ever opened.
 const gLink = u => /^https:\/\/(drive|docs)\.google\.com\//.test(String(u || "")) ? String(u) : "";
 function restore(text){
