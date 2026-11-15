@@ -5,7 +5,7 @@
 <!-- The page's lock: the only script that may run is the one in this file (named by the SHA-256 of its text) and files
      from this folder (fb.js). Text that turns up in the page from a roster, a game or the cloud can never run as code.
      After ANY edit to the script, run "python3 hoops/stamp.py hoops": with a stale hash the browser runs nothing. -->
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-FYbphQM2GpG/lQzc/J0slNtPG/RmyLD2uF5HVWkBkj8='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-h4MZ8skgNhzbA+HYmq7Q7SdcGo/LKOp2Dqupr9p1ImM='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#094A28">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -474,6 +474,15 @@ th.tn{white-space:normal}
 .ann .ago{text-align:center;padding:0 0 6px}
 /* PA Live: the board stays pinned to the top while the PA scrolls down to the notes or the last plays. */
 .annbug{position:sticky;top:0;z-index:15;background:var(--white);padding:4px 0}
+/* Arrange: the cards' bars show only while arranging; the card being dragged is see-through. */
+.lyb{min-width:0}.lyh{display:none}.bcrail > .lyb{display:grid}
+.lyon .lyb{outline:2px dashed var(--green);outline-offset:3px;border-radius:6px}
+.lyon .lyh{display:flex;align-items:center;gap:8px;padding:6px 8px;margin-bottom:6px;background:var(--green);color:var(--white);border-radius:4px;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
+.lyon .lyh b{flex:1;font-family:var(--f-display);letter-spacing:.06em;text-transform:uppercase;font-size:15px}
+.lyon .lyh .lyg{font-size:20px;line-height:1}
+.lyon .lyh .btn{min-height:32px;padding:2px 10px}
+.lydrag{opacity:.55}
+.lyempty{margin:0;padding:6px 8px;color:#777}
 .ann > .bugcap{margin-bottom:-8px}
 table.glance td,table.glance th{text-align:center}
 table.glance td.l,table.glance th.l{text-align:left}
@@ -827,7 +836,7 @@ td .face{width:24px;height:24px;margin:-5px 7px -4px 0}
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
 { const n = document.getElementById("nostart"); if(n) n.remove(); }   // the script is running: see #nostart
-const BS_VERSION = "0.20.4";
+const BS_VERSION = "0.21.0";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -2311,6 +2320,50 @@ function tableStep(g, tm, pid){ const on = !tableHas(g, tm, pid).length, p = paP
 // and unticked for everyone else and on the Scorer's own Announcer tab. The role may only be known once sign-in finishes
 // (or from this device's last sign-in, with no signal), so it's asked again at every redraw.
 function micDefault(){ if(ui.micSet) return; const r = Sync.role() || (S.sync && !["signedout", "waiting", "board"].includes(Sync.phase()) ? S.role : null); ui.pa = ANN_ONLY && r === "owner" && S.roleMB === "owner"; }
+/* ---------- Arrange: Kevin and Jim drag the PA and Broadcast cards into the order they want for the night ----------
+   Each page's cards carry data-ly="scope:key" and a CSS order from this device's pick (localStorage KEY+".lay"), so a live
+   redraw keeps the order and Jim's notepad is never redrawn. Arrange (the page's button) shows a bar on each card: drag it by
+   the bar, or tap ▲ ▼. Reset puts that page back. Per device: Kevin's iPad and Jim's MacBook each keep their own.
+   Scopes: pa (the PA page's Live view), bc (the Broadcast page, top to bottom), bcr (the Broadcast page's middle column). */
+const LAY = {
+  pa:[["line", "Line score"], ["last", "Last play"], ["due", "Reads due"], ["ms", "Milestones"], ["floor", "On the floor and the table"], ["lead", "Points leaders"], ["flow", "Game flow"], ["plays", "Last plays and PA notes"]],
+  bc:[["last", "Last play"], ["ms", "Milestones"], ["grid", "Spotting boards"], ["box", "Box score"]],
+  bcr:[["pad", "Game notes"], ["drops", "Talking points"], ["line", "Line score"], ["flow", "Game flow"], ["glance", "At a glance"], ["plays", "Last plays"], ["tonight", "Tonight"]]};
+const LAY_KEY = KEY + ".lay";
+function layAll(){ try{ const o = JSON.parse(localStorage.getItem(LAY_KEY) || "{}"); return o && typeof o === "object" && !Array.isArray(o) ? o : {}; }catch(e){ return {}; } }
+// The scope's keys in this device's order: saved keys that still exist, then any new card where it sits by default.
+function layOrder(sc){ const def = LAY[sc].map(x => x[0]), got = layAll()[sc], out = Array.isArray(got) ? got.filter((k, i) => typeof k === "string" && def.includes(k) && got.indexOf(k) === i) : [];
+  def.forEach((k, i) => { if(!out.includes(k)){ const prev = def.slice(0, i).reverse().find(x => out.includes(x)); out.splice(prev ? out.indexOf(prev) + 1 : 0, 0, k); } }); return out; }
+function laySave(sc, order){ const o = layAll(); if(order) o[sc] = order; else delete o[sc]; try{ localStorage.setItem(LAY_KEY, JSON.stringify(o)); }catch(e){} }
+const layMoved = sc => { const a = layAll()[sc]; return Array.isArray(a) && layOrder(sc).join() !== LAY[sc].map(x => x[0]).join(); };
+// A card's wrapper attributes and its Arrange bar.
+function layAt(sc, k){ return ` data-ly="${sc}:${k}" style="order:${layOrder(sc).indexOf(k) + 1}"`; }
+function layBar(sc, k){ const l = (LAY[sc].find(x => x[0] === k) || ["", k])[1];
+  return `<div class="lyh no-print" title="Drag to move"><span class="lyg" aria-hidden="true">⠿</span><b>${esc(l)}</b><button class="btn sm" data-act="lymv" data-lk="${sc}:${k}" data-v="-1" aria-label="Move ${esc(l)} up">▲</button><button class="btn sm" data-act="lymv" data-lk="${sc}:${k}" data-v="1" aria-label="Move ${esc(l)} down">▼</button></div>`; }
+// A whole card for the PA page: nothing when it's empty (and the bar alone while arranging, so it can still be moved).
+function layBox(sc, k, html){ if(!html && !ui.layEdit) return ""; return `<div class="lyb"${layAt(sc, k)}>${layBar(sc, k)}${html || `<p class="small lyempty">${esc((LAY[sc].find(x => x[0] === k) || ["", k])[1])} shows here when there's something to show.</p>`}</div>`; }
+// The page's Arrange button (and Reset while arranging).
+function layBtns(scs){ return `<button class="btn sm${ui.layEdit ? " dark" : ""}" data-act="lyedit" aria-pressed="${!!ui.layEdit}" title="Drag the cards into your order for the night">${ui.layEdit ? "Done arranging" : "Arrange"}</button>${ui.layEdit && scs.some(layMoved) ? `<button class="btn sm" data-act="lyreset" data-v="${scs.join(",")}">Reset order</button>` : ""}`; }
+// Put the scope's cards in its order on the page now (no redraw).
+function layApply(sc){ const o = layOrder(sc); $$(`[data-ly^="${sc}:"]`).forEach(el => { const k = el.dataset.ly.slice(sc.length + 1); if(o.includes(k)) el.style.order = o.indexOf(k) + 1; }); }
+function layMove(sc, k, to){ const o = layOrder(sc), i = o.indexOf(k); if(i < 0) return; to = Math.max(0, Math.min(o.length - 1, to)); if(to === i) return;
+  o.splice(i, 1); o.splice(to, 0, k); laySave(sc, o); layApply(sc); }
+// Dragging by the bar: the card under the finger takes the dragged card's place. Listeners on the document, so a live redraw
+// of the PA page in the middle of a drag doesn't drop it (the card is found again by its key).
+let layDrag = null;
+document.addEventListener("pointerdown", ev => { const h = ev.target.closest && ev.target.closest(".lyon .lyh"); if(!h || layDrag || ev.button > 0 || ev.target.closest("button")) return;
+  const el = h.closest("[data-ly]"); if(!el) return; ev.preventDefault(); const [sc, k] = el.dataset.ly.split(":");
+  layDrag = {sc, k, id:ev.pointerId}; el.classList.add("lydrag"); try{ h.setPointerCapture(ev.pointerId); }catch(e){} });
+document.addEventListener("pointermove", ev => { const d = layDrag; if(!d || ev.pointerId !== d.id) return; ev.preventDefault();
+  const me = $(`[data-ly="${d.sc}:${d.k}"]`); if(me) me.classList.add("lydrag");
+  const sibs = $$(`[data-ly^="${d.sc}:"]`).filter(el => el !== me && el.offsetParent); let over = null;
+  // Past the middle of the card above or below (not just onto it), so a tall card and a short one don't trade back and forth.
+  for(const el of sibs){ const r = el.getBoundingClientRect(); if(ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom){ over = {el, r}; break; } }
+  if(over){ const o = layOrder(d.sc), to = o.indexOf(over.el.dataset.ly.slice(d.sc.length + 1)), from = o.indexOf(d.k), mid = over.r.top + over.r.height / 2;
+    if(to > from ? ev.clientY > mid : ev.clientY < mid) layMove(d.sc, d.k, to); }
+  const edge = 70; if(ev.clientY < edge) scrollBy(0, -12); else if(ev.clientY > innerHeight - edge) scrollBy(0, 12); });
+const layDrop = ev => { const d = layDrag; if(!d || ev.pointerId !== d.id) return; layDrag = null; $$(".lydrag").forEach(el => el.classList.remove("lydrag")); render(); };
+document.addEventListener("pointerup", layDrop); document.addEventListener("pointercancel", layDrop);
 function viewAnn(){
   if(!paOk()) return (Sync.live() ? "" : Sync.panel()) + paLock();
   micDefault();
@@ -2321,7 +2374,7 @@ function viewAnn(){
   h += `<div class="annbar no-print">${annModes()}${tonightBtns()}${gamePicker()}
     <label class="row small" style="gap:6px"><input type="checkbox" data-follow ${ui.follow ? "checked" : ""} style="width:20px;height:20px"> Follow the live game</label>
     <label class="row small" style="gap:6px" title="Ticked: a click on a bench name sends that kid to the table, and a click at the table marks the sub called. Untick on a screen that isn't at the mic"><input type="checkbox" data-pa ${ui.pa ? "checked" : ""} style="width:20px;height:20px"> I'm on the PA mic</label>${saySwitch()}${undoBtn()}
-    <button class="btn sm dark" data-act="emerg">Emergency cards</button>${flipBtn()}
+    <button class="btn sm dark" data-act="emerg">Emergency cards</button>${flipBtn()}${(ui.annMode || "live") === "live" ? layBtns(["pa"]) : ""}
     ${ANN_ONLY ? "" : `<a class="btn sm" href="?announcer" target="_blank" rel="noopener">Open on its own</a><a class="btn sm" href="?broadcast" target="_blank" rel="noopener">Broadcast page</a>`}<span class="small">${Sync.live() ? (Sync.stale() ? "<b>Not updating: no signal.</b> Numbers may be behind." : "Updates live from the Scorer screen.") : ANN_ONLY ? "Sign in above to follow the scorer's iPad live." : "Sign in under Setup to follow the scorer's iPad live."}</span></div>`;
   h += liveNudge(g) + signalFlag(g);
   if(!g) return h + needGame();
@@ -2330,9 +2383,9 @@ function viewAnn(){
   const meta = boardMeta(g, R);
   // The compact board, pinned to the top: the score, fouls and timeouts stay on screen while the PA scrolls to the notes or
   // the last plays, and the headline and the table sit above the fold.
-  const head = `<div class="bugcap"><span>${esc(usName(g))}${rec ? " (" + esc(rec) + ")" : ""} ${gameTitle(g)} · ${gameSub(g)}</span>${met ? `<span>${esc(met)}</span>` : ""}</div>
-      <div class="annbug">${bug(g, R, {meta, quiet:!!signalFlag(g), per:fin ? "FINAL" : g.status === "live" ? nowLabel(g, R) : "PREGAME"})}${foulBar(g, R)}</div>
-      <div class="linesc">${lineScore(g, R)}</div>`;
+  const top = `<div class="bugcap"><span>${esc(usName(g))}${rec ? " (" + esc(rec) + ")" : ""} ${gameTitle(g)} · ${gameSub(g)}</span>${met ? `<span>${esc(met)}</span>` : ""}</div>
+      <div class="annbug">${bug(g, R, {meta, quiet:!!signalFlag(g), per:fin ? "FINAL" : g.status === "live" ? nowLabel(g, R) : "PREGAME"})}${foulBar(g, R)}</div>`;
+  const lines = `<div class="linesc">${lineScore(g, R)}</div>`, head = top + lines;
   // Points and fouls only (Kevin): no shooting, rebound or turnover glance here; Jim's page has those.
   if(ui.annMode === "box") return h + `<div class="ann stack">${head}<div class="ann-cols"><div class="card">${boxTable(g, R, sd.left, false, true)}</div><div class="card">${boxTable(g, R, sd.right, false, true)}</div></div>${flowHere(g, R)}</div>`;
   const hl = headline(g, R, {pa:true});
@@ -2356,14 +2409,16 @@ function viewAnn(){
       <div class="row no-print" style="margin-top:6px"><button class="btn sm" data-act="saypick" data-gid="${g.id}" data-tm="${tm}" title="Phonetic spellings for ${esc(tmName(g, tm))}">Phonetics</button></div></div>`;
   };
   const b = booth(g.id);
-  return h + `<div class="ann stack">${head}
-      ${hl.length ? `<div class="lastplay">${hl.map(x => `<div>${x}</div>`).join("")}</div>` : ""}${g.status === "live" && lastAt ? `<div class="ago small">Last play ${agoWords(lastAt)}</div>` : ""}${dueRead(g, R)}${msPanel(g, R)}
-    <div class="ann-cols">${side(sd.left)}${side(sd.right)}</div>
-    <div class="lead" style="grid-template-columns:1fr">${leadCard(g, R, "pts", "Points")}</div>
-    ${flowHere(g, R)}
-    <div class="ann-cols"><div class="card"><h3 style="font-size:22px;margin-bottom:4px">Last plays</h3>${playList(g, R, 10, false, p => (["FG", "FT"].includes(p.e.t) && p.e.m) || ["PF", "TF", "TMO", "PER", "NOTE", "TIP", "JUMP"].includes(p.e.t))}</div>
+  // Arrange (layBox): every card under the pinned board can move; the board itself stays on top.
+  return h + `<div class="ann stack${ui.layEdit ? " lyon" : ""}">${top}
+      ${layBox("pa", "line", lines)}
+      ${layBox("pa", "last", (hl.length ? `<div class="lastplay">${hl.map(x => `<div>${x}</div>`).join("")}</div>` : "") + (g.status === "live" && lastAt ? `<div class="ago small">Last play ${agoWords(lastAt)}</div>` : ""))}${layBox("pa", "due", dueRead(g, R))}${layBox("pa", "ms", msPanel(g, R))}
+    ${layBox("pa", "floor", `<div class="ann-cols">${side(sd.left)}${side(sd.right)}</div>`)}
+    ${layBox("pa", "lead", `<div class="lead" style="grid-template-columns:1fr">${leadCard(g, R, "pts", "Points")}</div>`)}
+    ${layBox("pa", "flow", flowHere(g, R))}
+    ${layBox("pa", "plays", `<div class="ann-cols"><div class="card"><h3 style="font-size:22px;margin-bottom:4px">Last plays</h3>${playList(g, R, 10, false, p => (["FG", "FT"].includes(p.e.t) && p.e.m) || ["PF", "TF", "TMO", "PER", "NOTE", "TIP", "JUMP"].includes(p.e.t))}</div>
       <div class="card no-print stack"><div><h3 style="font-size:22px;margin-bottom:6px">PA notes</h3><textarea data-bnotes="notes" data-gid="${g.id}" rows="5" placeholder="Senior night: honor #3 at halftime. Thank the band.">${esc(b.notes)}</textarea></div>
-      <p class="small" style="margin:0">${g.practice ? "Practice game: stays on this device." : Sync.live() ? "Shared with everyone signed in. Never on the public page." : "Saved on this device."}</p></div></div></div>`;
+      <p class="small" style="margin:0">${g.practice ? "Practice game: stays on this device." : Sync.live() ? "Shared with everyone signed in. Never on the public page." : "Saved on this device."}</p></div></div>`)}</div>`;
 }
 
 /* ---------- broadcast page (?broadcast) ----------
@@ -2514,7 +2569,7 @@ function bcTonight(g){
   return rows.length ? `<dl class="bcinfo">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join("")}</dl>` : `<p class="small" style="margin:0">Coaches, officials, the sponsor and the halftime honors show up here once the PA fills in Prep.</p>`;
 }
 function bcBar(g){
-  return `<div class="annbar no-print">${tonightBtns()}${gamePicker()}<label class="row small" style="gap:6px"><input type="checkbox" data-follow ${ui.follow ? "checked" : ""} style="width:20px;height:20px"> Follow the live game</label>${flipBtn()}${bcSaySwitch()}${g ? `<a class="btn sm" href="#bcbox" title="Every stat for both teams, under the spotting boards">Box score ↓</a>` : ""}${undoBtn()}
+  return `<div class="annbar no-print">${tonightBtns()}${gamePicker()}<label class="row small" style="gap:6px"><input type="checkbox" data-follow ${ui.follow ? "checked" : ""} style="width:20px;height:20px"> Follow the live game</label>${flipBtn()}${bcSaySwitch()}${g ? layBtns(["bc", "bcr"]) : ""}${g ? `<a class="btn sm" href="#bcbox" title="Every stat for both teams, under the spotting boards">Box score ↓</a>` : ""}${undoBtn()}
     <span class="small">${Sync.live() ? (Sync.stale() ? "<b>Not updating: no signal.</b> Numbers may be behind." : "Live from the Scorer screen, to the second.") : "Sign in to follow the scorer's iPad live."}</span></div>`;
 }
 // Drawn in parts so the notepad is never redrawn: Jim can type through a live update without losing a letter.
@@ -2529,16 +2584,19 @@ function drawBroadcast(pre){
   const g = cur(), view = $("#view"), k = (g ? g.id : "-") + "|" + (S.settings.flip ? 1 : 0);
   const root = $(".bc", view);
   if(!root || root.dataset.k !== k){
-    view.innerHTML = `<div data-bc="pre"></div><div class="bc ann" data-k="${esc(k)}"><div data-bc="bar"></div><div data-bc="signal"></div>${g ? `<div data-bc="cap"></div><div data-bc="bug"></div><div data-bc="last"></div><div data-bc="ms"></div>
-      <div class="bcgrid"><div data-bc="left"></div><aside class="bcrail">
-        <div class="card bcpad"><h3>Game notes</h3><textarea data-bcpad="${esc(g.id)}" rows="6" placeholder="Storylines, stat drops, the sponsor read, who to thank. Saves as you type.">${esc(booth(g.id).bnotes || "")}</textarea><p class="small" data-bc="padnote"></p></div>
-        <div class="card" data-bc="drops"></div>
-        <div data-bc="line"></div><div data-bc="flow"></div><div data-bc="glance"></div>
-        <div class="card"><h3>Last plays</h3><div data-bc="plays"></div></div>
-        <div class="card"><h3>Tonight</h3><div data-bc="tonight"></div></div>
-      </aside><div data-bc="right"></div></div><div data-bc="box" id="bcbox" class="bcboxes"></div>` : `<div data-bc="none"></div>`}</div>`;
+    // Arrange: each card sits in a wrapper (data-ly) with its bar, so the parts below can be redrawn without touching the order.
+    const W = (sc, key, inner) => `<div class="lyb"${layAt(sc, key)}>${layBar(sc, key)}${inner}</div>`;
+    view.innerHTML = `<div data-bc="pre"></div><div class="bc ann" data-k="${esc(k)}"><div data-bc="bar"></div><div data-bc="signal"></div>${g ? `<div data-bc="cap"></div><div data-bc="bug"></div>${W("bc", "last", `<div data-bc="last"></div>`)}${W("bc", "ms", `<div data-bc="ms"></div>`)}
+      ${W("bc", "grid", `<div class="bcgrid"><div data-bc="left"></div><aside class="bcrail">
+        ${W("bcr", "pad", `<div class="card bcpad"><h3>Game notes</h3><textarea data-bcpad="${esc(g.id)}" rows="6" placeholder="Storylines, stat drops, the sponsor read, who to thank. Saves as you type.">${esc(booth(g.id).bnotes || "")}</textarea><p class="small" data-bc="padnote"></p></div>`)}
+        ${W("bcr", "drops", `<div class="card" data-bc="drops"></div>`)}
+        ${W("bcr", "line", `<div data-bc="line"></div>`)}${W("bcr", "flow", `<div data-bc="flow"></div>`)}${W("bcr", "glance", `<div data-bc="glance"></div>`)}
+        ${W("bcr", "plays", `<div class="card"><h3>Last plays</h3><div data-bc="plays"></div></div>`)}
+        ${W("bcr", "tonight", `<div class="card"><h3>Tonight</h3><div data-bc="tonight"></div></div>`)}
+      </aside><div data-bc="right"></div></div>`)}${W("bc", "box", `<div data-bc="box" id="bcbox" class="bcboxes"></div>`)}` : `<div data-bc="none"></div>`}</div>`;
   }
   const put = (part, html) => { const el = $(`[data-bc="${part}"]`, view); if(el) el.innerHTML = html; };
+  { const bc = $(".bc", view); if(bc) bc.classList.toggle("lyon", !!ui.layEdit); layApply("bc"); layApply("bcr"); }
   put("pre", pre + (Sync.live() ? "" : Sync.panel()));
   put("bar", bcBar(g));
   if(!g){ put("none", `<div class="card"><p style="margin:0">No game yet. Pick one above. Once the scorer starts a game, this page follows it.</p></div>`); return; }
@@ -6377,6 +6435,9 @@ document.addEventListener("click", async ev => {
     case "pubpl": pubPlayerSheet(a.dataset.tm, a.dataset.i); break;
     case "pubstats": PS.view = a.dataset.v ? "stats" : ""; if(a.dataset.v) ui.pubStT = a.dataset.v; render(); window.scrollTo(0, 0); break;
     case "pubstt": ui.pubStT = a.dataset.v; render(); break;
+    case "lyedit": ui.layEdit = !ui.layEdit; render(); break;
+    case "lymv": { const [sc, k] = String(a.dataset.lk || "").split(":"); if(!LAY[sc]) break; const o = layOrder(sc); layMove(sc, k, o.indexOf(k) + +a.dataset.v); render(); break; }
+    case "lyreset": String(a.dataset.v || "").split(",").filter(sc => LAY[sc]).forEach(sc => laySave(sc, null)); render(); break;
     case "pubbx": ui.pubBx = a.dataset.v === "sh" ? "sh" : ""; render(); break;
     case "pubsort": ui.pubStK = /^\d+$/.test(a.dataset.v) ? +a.dataset.v : a.dataset.v; render(); break;
     case "pubsched": { const d = document.getElementById("schedule"); if(d){ d.open = true; d.scrollIntoView({behavior:"smooth", block:"start"}); } break; }
