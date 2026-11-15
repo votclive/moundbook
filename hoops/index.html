@@ -5,7 +5,7 @@
 <!-- The page's lock: the only script that may run is the one in this file (named by the SHA-256 of its text) and files
      from this folder (fb.js). Text that turns up in the page from a roster, a game or the cloud can never run as code.
      After ANY edit to the script, run "python3 hoops/stamp.py hoops": with a stale hash the browser runs nothing. -->
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-9D+JRidWK/E+uEhcCCOjLkmxtdeouIJLRTpw6YX5mvI='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-RSbRH2pctncGgXG7yGOshm7ICTiQVgQWlbmGnNNqn0w='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#094A28">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1524,6 +1524,8 @@ function rec(e, opts = {}){
   if(!e.gc){ const f = e.ref && g.ev.find(x => x.id === e.ref), gc = f && f.gc && !f.gc.m ? f.gc : Board.stamp(g); if(gc) e.gc = {...gc}; }
   if(g.status === "pre" && !PREGAME(e)) startGame(g);
   g.ev.push(e);
+  // Play's under way: the "who controlled the tip?" question has had its chance.
+  if(!PREGAME(e) && ui.sheet && ui.sheet.k === "tip") closeSheet();
   if(!opts.keepFu) ui.fu = [];
   if(!opts.quiet) touch(g); return e;
 }
@@ -1676,13 +1678,13 @@ function swapHtml(){
 }
 // Kevin (0.18.0): Tip-off. Tap it, tap the team that controlled the tip: the game starts and the arrow points at the other
 // team. Also comes up by itself when the gym scoreboard puts the game live (Board's auto-start).
-function tipSheet(g){
+function tipSheet(g, auto){
   if(!g || !canEdit(g) || g.status === "final" || ui.sheet || g.ev.some(x => !x.v && !PREGAME(x))) return;
   openSheet({k:"tip", gid:g.id, html:() => { const gg = S.games[ui.sheet.gid]; if(!gg) return `<h3>Tip-off</h3><div class="row"><button class="btn" data-close>Close</button></div>`;
     const sd = sides(gg);
     return `<h3>Who controlled the tip?</h3><p class="small" style="margin:0">The arrow points at the other team: they get the first held ball.</p>
       <div class="tipgo">${[sd.left, sd.right].map(tm => `<button class="btn" data-act="tipwin" data-tm="${tm}" style="${tvars(gg, tm)}">${badge(gg, tm)}<b>${esc(tmName(gg, tm))}</b></button>`).join("")}</div>
-      <div class="row"><button class="btn" data-close>Later</button></div>`; }});
+      <div class="row"><button class="btn" data-close>Later</button>${auto ? `<button class="btn" data-act="boardnotyet" title="The scoreboard put this game live, but it isn't starting yet">Not starting yet</button>` : ""}</div>`; }});
 }
 // The team the arrow gives the next held ball to: in a new period before its first play, the arrow has already been used
 // for the opening throw-in.
@@ -6101,7 +6103,7 @@ document.addEventListener("click", async ev => {
     case "gclk": { const x = g && g.ev.find(e => e.id === a.dataset.id); if(x && canEdit(g)) clockSheet(g, x); break; }
     case "gclkclear": if(ui.sheet && ui.sheet.gc) setClock(ui.sheet.gc, null); break;
     case "boardok": Board.dismiss(); break;
-    case "boardnotyet": Board.notYet(); break;
+    case "boardnotyet": if(ui.sheet && ui.sheet.k === "tip") closeSheet(); Board.notYet(); break;
     case "playscsv": if(g){ const pid = (ui.pf && ui.pf.pid) || "", pl = pid && (player(g, "us", pid) || player(g, "them", pid));
       download(`${g.id}${pl ? "-" + String(pl.num).replace(/[^\w-]/g, "") : ""}-plays.csv`, playsCsv(g, pl ? pid : ""), "text/csv"); } break;
     case "missed": if(g && canEdit(g)) missedSheet(g); break;
@@ -8114,7 +8116,7 @@ const Board = (() => {
     if(!autoReady(g)) return;
     startGame(g); autoBy = g.id; touch(g);
     toast("The scoreboard is set for the tip: the game is live. Tap Not yet on the green chip if it isn't.", 5000);
-    if(g === cur()) tipSheet(g);
+    if(g === cur()) tipSheet(g, true);
   }
   // Kevin (0.18.0): at a quarter break the arrow switches once play starts: the board's clock running in the new period.
   // With no board, the period's first logged play does it (replay). Only the iPad scoring the game writes it.
