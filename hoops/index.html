@@ -5,7 +5,7 @@
 <!-- The page's lock: the only script that may run is the one in this file (named by the SHA-256 of its text) and files
      from this folder (fb.js). Text that turns up in the page from a roster, a game or the cloud can never run as code.
      After ANY edit to the script, run "python3 hoops/stamp.py hoops": with a stale hash the browser runs nothing. -->
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-2V7IjibBjUw/fgzm3HB1x+J6zWOW3riXC6IfqSPR+D8='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-nfPTB3uM+301iWj1kxufWXfPRksAcIJC0vgHl7RwYUs='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#094A28">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -815,7 +815,7 @@ td .face{width:24px;height:24px;margin:-5px 7px -4px 0}
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
 { const n = document.getElementById("nostart"); if(n) n.remove(); }   // the script is running: see #nostart
-const BS_VERSION = "0.20.0";
+const BS_VERSION = "0.20.1";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -2061,11 +2061,14 @@ function fuPick(tm, pid){
 // letters in it, so a glance says the shot went to the right team.
 // pick ({key, sel}): the chart's shots can be tapped (shotPick): each mark carries its key and spot, and the picked ones
 // (sel, keys) get a ring. ui[key] holds the pick.
+// How strong a shot chart's lane is painted (Kevin, 0.20.1): the team's color and its bobcat or logo, see-through so the
+// shots on top stand out. The Game Book uses the same.
+const LANE_A = .25;
 function courtSvg(shots, mode, g, tm, pick){
   const k = g && tm ? teamInk(g, tm) : null, ab = k && tm !== "us" ? oppInfo(g.opp, g).abbr.slice(0, 4) : "";
-  const paint = !k ? "" : `<rect class="pt" x="190" y="0" width="120" height="190" fill="${k.fill}"/>` + (tm === "us" ? `<image href="bobcat-head.png" x="203" y="76" width="94" height="92"/>`
-    : Logos.sym(g.opp) ? `<circle cx="250" cy="122" r="50" fill="#FFFFFF" stroke="${k.alt || k.ink}" stroke-width="3"/><use href="#${Logos.sym(g.opp)}" x="211" y="83" width="78" height="78"/>`
-    : `<text x="250" y="${ab.length > 3 ? 138 : 142}" text-anchor="middle" fill="${k.ink}" style="font-family:var(--f-display);font-weight:800;font-size:${ab.length > 3 ? 36 : ab.length > 2 ? 46 : 60}px">${esc(ab)}</text>`);
+  const paint = !k ? "" : `<g class="pt" opacity="${LANE_A}"><rect x="190" y="0" width="120" height="190" fill="${k.fill}"/>` + (tm === "us" ? `<image href="bobcat-head.png" x="203" y="76" width="94" height="92"/>`
+    : Logos.sym(g.opp) ? `<use href="#${Logos.sym(g.opp)}" x="206" y="78" width="88" height="88"/>`
+    : `<text x="250" y="${ab.length > 3 ? 138 : 142}" text-anchor="middle" fill="${k.ink}" style="font-family:var(--f-display);font-weight:800;font-size:${ab.length > 3 ? 36 : ab.length > 2 ? 46 : 60}px">${esc(ab)}</text>`) + `</g>`;
   const sel = new Set(pick && pick.sel || []), rings = [];
   let s = `<svg class="court${pick ? " pick" : ""}" viewBox="0 0 500 470" ${mode === "loc" ? 'data-court="loc"' : ""}${pick ? ` data-pick="${pick.key}"` : ""} role="img" aria-label="Half court">
     <rect class="fl" x="1.5" y="1.5" width="497" height="467"/>${paint}<rect class="ln" x="190" y="0" width="120" height="190"/><circle class="ln" cx="250" cy="190" r="60"/>
@@ -5433,7 +5436,7 @@ const Faces = (() => {
 
 /* ---------- opponents' logos (0.20.0, Kevin) ----------
    A school's logo goes wherever our bobcat does: the badge beside its name, the lane of its shot charts (its main color,
-   the logo on a white disc), the Game Book, the Opponents list, the fan page. One picture per school, saved once and used
+   the logo, see-through), the Game Book, the Opponents list, the fan page. One picture per school, saved once and used
    every season: hoopsBook/logos {v, l:{school key:{d, at}}, upd} for everyone let in, and hoopsPublic/_logos {v, l:{key:d}}
    for the fan page while it's on. Each is a PNG (see-through kept), trimmed to the logo and 128 px on its long side. */
 const LOGO_PX = 128, LOGO_MAX = 48000, LOGO_DOC = 900000;
@@ -5967,7 +5970,7 @@ function gbPdf(g, o, logo, art){
   const court = (x0, y0, w, tm, shots) => {
     const s = w / 500, P = (x, yy) => [x0 + x * s, y0 + yy * s], k = ink(tm), lc = bw ? .3 : .35, lw = Math.max(.45, w / 420);
     const lane = bw ? "" : artImg("paint", tm);
-    if(!bw){ D.fill(x0, y0, w, 470 * s, "#FBFAF6"); if(lane) D.img(lane, x0 + 190 * s, y0, 120 * s, 190 * s); else D.fill(x0 + 190 * s, y0, 120 * s, 190 * s, tint(k.fill, .84)); }
+    if(!bw){ D.fill(x0, y0, w, 470 * s, "#FBFAF6"); if(lane) D.img(lane, x0 + 190 * s, y0, 120 * s, 190 * s); else D.fill(x0 + 190 * s, y0, 120 * s, 190 * s, tint(k.fill, 1 - LANE_A)); }
     const box = (x, yy, ww, hh) => D.poly([P(x, yy), P(x + ww, yy), P(x + ww, yy + hh), P(x, yy + hh)], {c:lc, lw, close:true});
     const arc = (cx, cy, r, a0, a1, n) => Array.from({length:n + 1}, (_, i) => { const a = (a0 + (a1 - a0) * i / n) * Math.PI / 180; return P(cx + r * Math.cos(a), cy + r * Math.sin(a)); });
     box(0, 0, 500, 470); box(190, 0, 120, 190); D.poly(arc(250, 190, 60, 0, 360, 40), {c:lc, lw, close:true});
@@ -6073,7 +6076,7 @@ function gbPdf(g, o, logo, art){
   return {bytes:D.bytes(), name, title};
 }
 // The Game Book's color pictures, drawn the way the app's shot chart draws them: each team's lane in its main color with our
-// bobcat or their logo on a white disc (the letters stay off: a plain lane where there's no logo), and their logo tile.
+// bobcat or their logo, see-through (LANE_A) on the court's floor color (the letters stay off: a plain lane where there's no logo), and their logo tile.
 function gbArt(g){
   const pic = src => new Promise(res => { if(!src) return res(null); const im = new Image(); let done = false; const end = v => { if(!done){ done = true; res(v); } };
     setTimeout(() => end(null), 4000); im.onload = () => end(im); im.onerror = () => end(null); im.src = src; });
@@ -6083,9 +6086,9 @@ function gbArt(g){
     const art = {paint:{}, tile:{}};
     try{
       for(const tm of ["us", "them"]){ const k = teamInk(g, tm), Z = 2.5, c = document.createElement("canvas"); c.width = 120 * Z; c.height = 190 * Z; const q = c.getContext("2d");
-        q.imageSmoothingQuality = "high"; q.fillStyle = k.fill; q.fillRect(0, 0, c.width, c.height);
+        q.imageSmoothingQuality = "high"; q.fillStyle = "#FBFAF6"; q.fillRect(0, 0, c.width, c.height); q.globalAlpha = LANE_A; q.fillStyle = k.fill; q.fillRect(0, 0, c.width, c.height);
         if(tm === "us" && cat) q.drawImage(cat, 13 * Z, 76 * Z, 94 * Z, 92 * Z);
-        if(tm === "them" && theirs){ q.fillStyle = "#FFFFFF"; q.strokeStyle = k.alt || k.ink; q.lineWidth = 3 * Z; q.beginPath(); q.arc(60 * Z, 122 * Z, 50 * Z, 0, Math.PI * 2); q.fill(); q.stroke(); fit(q, theirs, 21 * Z, 83 * Z, 78 * Z, 78 * Z); }
+        if(tm === "them" && theirs) fit(q, theirs, 16 * Z, 78 * Z, 88 * Z, 88 * Z);
         if(tm === "us" ? cat : theirs) art.paint[tm] = jpg(c); }
       if(theirs){ const c = document.createElement("canvas"); c.width = c.height = 96; const q = c.getContext("2d"); q.imageSmoothingQuality = "high"; q.fillStyle = "#FFFFFF"; q.fillRect(0, 0, 96, 96); fit(q, theirs, 4, 4, 88, 88); art.tile.them = jpg(c); }
     }catch(e){}
