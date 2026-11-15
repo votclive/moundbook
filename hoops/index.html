@@ -5,7 +5,7 @@
 <!-- The page's lock: the only script that may run is the one in this file (named by the SHA-256 of its text) and files
      from this folder (fb.js). Text that turns up in the page from a roster, a game or the cloud can never run as code.
      After ANY edit to the script, run "python3 hoops/stamp.py hoops": with a stale hash the browser runs nothing. -->
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-gf/2gJTvWrM+xVTp4+07/FqttgxjxZ7nLEr2jO6qT/s='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-RSbRH2pctncGgXG7yGOshm7ICTiQVgQWlbmGnNNqn0w='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#094A28">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -345,6 +345,19 @@ th.tn{white-space:normal}
 /* The arrow's team is spelled out: a long one moves to its own line rather than being cut to letters. */
 .cact .an{display:inline-block}
 .cact .wide{grid-column:span 2}
+.cact .pair{display:flex;gap:4px;min-width:0}.cact .pair .btn{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;overflow:hidden}.cact .pair .btn+.btn{flex:.8}
+.desk .center .cact,.cact{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.cact .pair .an{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
+.cact .pair .ak{display:block;font-size:10px;letter-spacing:.08em;text-transform:uppercase;line-height:1}
+.shortf{margin-left:auto;background:var(--f5);color:var(--white);font-family:var(--f-display);font-weight:800;font-size:12px;letter-spacing:.06em;padding:2px 6px;border-radius:5px;white-space:nowrap}
+.teamcol .table-bar .tbtn{display:flex;gap:3px;flex:none;align-items:center}
+.teamcol .table-bar .subgo{background:var(--tf,var(--green));border-color:var(--tl,var(--green));color:var(--ti,var(--white));font-family:var(--f-display);font-weight:800;font-size:13px;letter-spacing:.04em;justify-content:center}
+.swap .kicker{margin:10px 0 4px;color:var(--tl,var(--green))}
+.swap .swl{display:flex;flex-wrap:wrap;gap:6px}
+.swap .swl .chip{min-height:44px;display:inline-flex;align-items:center;gap:6px}
+.swap .swl .chip .go{font-family:var(--f-display);font-weight:800;font-size:12px}
+.swap .flag{margin-top:10px}.swap .row{margin-top:12px}
+.tipgo{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}
+.tipgo .btn{min-height:88px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;font-size:18px;border:3px solid var(--tl,var(--green))}
 .mini{margin-top:8px;border-top:2px solid var(--black)}
 .mini .plays li{padding:4px 2px;font-size:13px}
 /* Real names wrap a play onto two lines: the list keeps to five short rows' room (newest on top) and scrolls inside, so the
@@ -711,7 +724,7 @@ table.rect tr.sub td{background:transparent;padding-top:10px}
   .desk{grid-template-columns:1fr 1fr}
   .desk .center{grid-column:1/-1;order:-1;display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:8px;align-items:start}
   .desk .center .tbox,.desk .center .cact{margin-top:0}
-  .desk .center .cact{grid-column:1/-1;grid-template-columns:repeat(4,1fr)}
+  .desk .center .cact{grid-column:1/-1;grid-template-columns:repeat(4,minmax(0,1fr))}
   .desk .center .mini{display:none}
   .lead{grid-template-columns:1fr 1fr}
   .bcgrid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)} .bcrail{grid-column:1/-1;order:2}
@@ -792,7 +805,7 @@ td .face{width:24px;height:24px;margin:-5px 7px -4px 0}
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
 { const n = document.getElementById("nostart"); if(n) n.remove(); }   // the script is running: see #nostart
-const BS_VERSION = "0.17.1";
+const BS_VERSION = "0.18.0";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -959,7 +972,7 @@ const gcText = (e, g, q) => !e || !e.gc ? "" : clockText(g && q ? gcIn(g, e, q) 
 function perLabel(g, q){ const Q = g.quarters || 4; return q <= Q ? "Q" + q : (q === Q + 1 ? "OT" : "OT" + (q - Q)); }
 function replay(g){
   const R = {q:1, sc:{us:0,them:0}, qs:{us:[0],them:[0]}, tf:{us:{},them:{}}, tmo:{us:{60:0,30:0},them:{60:0,30:0}},
-    box:{us:{},them:{}}, team:{us:LINE(),them:LINE()}, byQ:{}, court:{us:new Set(),them:new Set()}, plays:[], shots:[], lastMiss:null, poss:null, brk:false};
+    box:{us:{},them:{}}, team:{us:LINE(),them:LINE()}, byQ:{}, court:{us:new Set(),them:new Set()}, plays:[], shots:[], lastMiss:null, poss:null, brk:false, full:{us:null, them:null}, flip:false};
   const byId = new Map(); for(const e of g.ev) if(e.id) byId.set(e.id, e);
   const L = (tm, pid) => pid ? (R.box[tm][pid] || (R.box[tm][pid] = LINE())) : R.team[tm];
   // The same line, for this period only (box score by quarter).
@@ -994,16 +1007,22 @@ function replay(g){
       case "PF": inc("pf"); R.tf[tm][q] = (R.tf[tm][q] || 0) + 1; break;
       case "TF": inc("tf"); if(e.pid) inc("pf"); R.tf[tm][q] = (R.tf[tm][q] || 0) + 1; break;
       case "TMO": R.tmo[tm][e.len === 30 ? 30 : 60]++; break;
-      case "IN": R.court[tm].add(e.pid); break;
+      // full: the last five a team had on the floor. While a sub leaves it short, the fan page keeps showing those five.
+      case "IN": R.court[tm].add(e.pid); if(R.court[tm].size === 5) R.full[tm] = new Set(R.court[tm]); break;
       case "OUT": R.court[tm].delete(e.pid); break;
       case "PER": R.q++; R.qs.us[R.q-1] = 0; R.qs.them[R.q-1] = 0; R.lastMiss = null; flip = true; break;
       case "POSS": R.poss = e.to; flip = false; break;
+      // Kevin (0.18.0): the opening tip points the arrow at the team that lost it; a held ball goes to the arrow's team
+      // (tm) and the arrow switches.
+      case "TIP": R.poss = OTHER(tm); flip = false; break;
+      case "JUMP": R.poss = OTHER(tm); break;
     }
     R.plays.push({e, q, sc:{us:R.sc.us, them:R.sc.them}, scored:R.sc.us !== before.us || R.sc.them !== before.them});
   }
   // Between periods: the last thing that happened is the horn. Screens say "End of Q1" or "Halftime", not "Q2 0-0". Subs,
   // lineup taps and the arrow during the break don't end it (the PA's Read now stays up): the next real play does.
   for(let i = R.plays.length - 1; i >= 0; i--){ const p = R.plays[i]; if(p.void || ["NOTE", "IN", "OUT", "POSS"].includes(p.e.t)) continue; R.brk = p.e.t === "PER"; break; }
+  R.flip = flip && !!R.poss;   // a new period's throw-in hasn't happened yet: the arrow switches with play's first action
   return R;
 }
 // The period as a scoreboard says it: Q3, or END Q1 / HALFTIME / END REG between periods.
@@ -1297,6 +1316,8 @@ function playText(g, e, o = {}){
     case "OUT": return who + " checks out";
     case "PER": return "End of " + perLabel(g, e.q || 0);
     case "POSS": return "Possession arrow → " + esc(tmName(g, e.to));
+    case "TIP": return "Tip-off: <b>" + team + "</b> controls the tip";
+    case "JUMP": return "Held ball, " + team + " ball";
     case "NOTE": return esc(e.txt || "Note");
   }
   return esc(e.t);
@@ -1503,11 +1524,13 @@ function rec(e, opts = {}){
   if(!e.gc){ const f = e.ref && g.ev.find(x => x.id === e.ref), gc = f && f.gc && !f.gc.m ? f.gc : Board.stamp(g); if(gc) e.gc = {...gc}; }
   if(g.status === "pre" && !PREGAME(e)) startGame(g);
   g.ev.push(e);
+  // Play's under way: the "who controlled the tip?" question has had its chance.
+  if(!PREGAME(e) && ui.sheet && ui.sheet.k === "tip") closeSheet();
   if(!opts.keepFu) ui.fu = [];
   if(!opts.quiet) touch(g); return e;
 }
 // The last play that matters for linking (subs, notes and the arrow don't count).
-function lastPlay(g){ for(let i = g.ev.length - 1; i >= 0; i--){ const e = g.ev[i]; if(!e.v && !["IN","OUT","NOTE","POSS"].includes(e.t)) return e; } return null; }
+function lastPlay(g){ for(let i = g.ev.length - 1; i >= 0; i--){ const e = g.ev[i]; if(!e.v && !["IN","OUT","NOTE","POSS","TIP","JUMP"].includes(e.t)) return e; } return null; }
 const linked = (g, t, id) => g.ev.some(x => !x.v && x.t === t && x.ref === id);
 let lastTap = {k:"", at:0};
 // A finger that bounces: the same button again within ms counts once. A real catch-up tap (two free throws) is slower.
@@ -1573,8 +1596,12 @@ function stat(tm, pid, k){
 function undo(){
   const g = cur(); if(!g || !canEdit(g)) return;
   if(g.status === "final"){ toast("This game is final. Tap Reopen first, or fix plays under Plays."); return; }
+  let auto = false;
   for(let i = g.ev.length - 1; i >= 0; i--){ const e = g.ev[i]; if(e.v) continue;
-    // A sub (out + in) or a lineup batch undoes as one.
+    // The arrow switch the gym clock put in (play started in a new period) goes with the step before it: undoing only it
+    // would see the clock running and put it straight back.
+    if(e.t === "POSS" && e.auto){ e.v = true; e.ed = Date.now(); auto = true; continue; }
+    // A sub (out + in, or a whole swap) or a lineup batch undoes as one.
     const grp = e.grp ? g.ev.filter(x => x.grp === e.grp && !x.v) : [e], ed = Date.now();
     grp.forEach(x => { x.v = true; x.ed = ed; }); ui.fu = [];
     // Nothing real left (an accidental tap during warmups): back to pregame, so the PA's script and the fan page are too.
@@ -1582,8 +1609,11 @@ function undo(){
     // A called-off game an accidental tap brought back is called off again. A copy kept for tonight-only changes stays
     // (and catches up with Rosters); the practice game's players live only in its copy.
     if(g.status === "live" && !g.ev.some(x => !x.v && !PREGAME(x))){ g.status = "pre"; if(g.offWas) g.off = g.offWas; delete g.offWas; if(g.usOwn) lateAdds(g.team); else if(!g.practice) g.us = []; }
-    toast("Undid: " + (grp.length > 1 && e.t === "IN" && grp.some(x => x.t === "OUT") ? pLabel(g, e.tm, e.pid) + " in for " + pLabel(g, e.tm, grp.find(x => x.t === "OUT").pid) : playText(g, e).replace(/<[^>]+>/g, "")));
+    const ins = grp.filter(x => x.t === "IN"), outs = grp.filter(x => x.t === "OUT");
+    toast("Undid: " + (grp.length === 2 && ins.length === 1 && outs.length === 1 ? pLabel(g, e.tm, ins[0].pid) + " in for " + pLabel(g, e.tm, outs[0].pid)
+      : grp.length > 1 && outs.length && ins.length + outs.length === grp.length ? `the sub (${ins.length} in, ${outs.length} out)` : playText(g, e).replace(/<[^>]+>/g, "")));
     touch(g); return; }
+  if(auto){ touch(g); return; }
   toast("Nothing to undo.");
 }
 function endPeriod(){
@@ -1603,6 +1633,62 @@ function subIn(g, tm, pin, pout){
   offTable(g, tm, pin);
   touch(g);
 }
+
+// Kevin (0.18.0): a whole sub in one step. Who's coming in (the table, all picked) and who's going out (tapped off the
+// floor) go in as out-in pairs, one Undo. More can come out than go in (the floor runs short and the team's column says so
+// until five are back); never more on than five. The kids who went in come off the table (the PA's list too).
+function makeSwap(g, tm, ins, outs){
+  if(!canEdit(g) || g.status === "final" || g !== cur()) return false;
+  const R = replay(g), on = R.court[tm];
+  ins = ins.filter((p, i) => ins.indexOf(p) === i && !on.has(p) && player(g, tm, p)); outs = outs.filter((p, i) => outs.indexOf(p) === i && on.has(p));
+  if(!ins.length && !outs.length) return false;
+  if(on.size - outs.length + ins.length > 5){ toast("That would put " + (on.size - outs.length + ins.length) + " on the floor. Take more out first."); return false; }
+  const grp = rid(), pre = !g.ev.some(x => !x.v && !PREGAME(x));
+  for(let i = 0; i < Math.max(ins.length, outs.length); i++){
+    if(outs[i]) rec({tm, pid:outs[i], t:"OUT", grp}, {quiet:true, keepFu:true});
+    if(ins[i]) rec({tm, pid:ins[i], t:"IN", grp, ...(pre ? {lu:true} : {})}, {quiet:true, keepFu:true});
+  }
+  ins.forEach(p => offTable(g, tm, p));
+  touch(g); return true;
+}
+function swapWords(g, tm, ins, outs){
+  const L = ids => ids.map(p => pLabel(g, tm, p)).join(", "), n = replay(g).court[tm].size;
+  return (ins.length === 1 && outs.length === 1 ? L(ins) + " in for " + L(outs) + "." : (ins.length ? "In: " + L(ins) + ". " : "") + (outs.length ? "Out: " + L(outs) + "." : "")).trim() + (n < 5 ? ` ${n} on the floor.` : "");
+}
+function swapSheet(g, tm){
+  if(!g || !canEdit(g) || g.status === "final") return;
+  const on = replay(g).court[tm];
+  openSheet({k:"swap", gid:g.id, tm, ins:new Set(atTable(g, tm).filter(pid => !on.has(pid))), outs:new Set(), html:swapHtml});
+}
+function swapHtml(){
+  const s = ui.sheet, g = s && S.games[s.gid];
+  if(!g) return `<h3>Sub</h3><div class="row"><button class="btn" data-close>Close</button></div>`;
+  const R = replay(g), tm = s.tm, on = R.court[tm], table = atTable(g, tm).filter(pid => !on.has(pid));
+  // A kid who went in, or came off the table, since the sheet opened drops out of the picks.
+  [...s.ins].forEach(p => { if(!table.includes(p)) s.ins.delete(p); }); [...s.outs].forEach(p => { if(!on.has(p)) s.outs.delete(p); });
+  const nIn = s.ins.size, nOut = s.outs.size, after = on.size - nOut + nIn, ok = (nIn || nOut) && after <= 5;
+  const chip = (p, sel, act, cls) => { const ln = R.box[tm][p.pid] || LINE();
+    return `<button class="chip${sel ? cls : ""}${fcls(ln)}" data-act="${act}" data-pid="${p.pid}" aria-pressed="${sel}">${face(p, "", tm === "us")}<b>${esc(p.num)}</b><span class="nm">${esc(pShort(p))}${ln.pf ? " · " + ln.pf + "F" : ""}</span>${sel ? `<span class="go">${act === "swin" ? "IN" : "OUT"}</span>` : ""}</button>`; };
+  const label = after > 5 ? `${after} on the floor: take ${after - 5} more out` : !ok ? "Tap who's coming out" : nIn && nOut ? `Make the swap: ${nIn} in, ${nOut} out` : nIn ? `Put ${nIn} in` : `Take ${nOut} out`;
+  return `<div class="swap" style="${tvars(g, tm)}"><h3>${esc(tmName(g, tm))} sub</h3>
+    <div class="kicker">Coming in${table.length > 1 ? " · tap one to leave her at the table" : ""}</div><div class="swl">${table.map(pid => chip(player(g, tm, pid), s.ins.has(pid), "swin", " at")).join("") || `<span class="small">Nobody at the table.</span>`}</div>
+    <div class="kicker">Going out · tap the ones coming off</div><div class="swl">${sortRoster(roster(g, tm)).filter(p => on.has(p.pid)).map(p => chip(p, s.outs.has(p.pid), "swout", " dark")).join("") || `<span class="small">Nobody on the floor.</span>`}</div>
+    ${ok && after < 5 ? `<div class="flag bad small">That leaves ${after} on the floor. The column says so until five are back.</div>` : ""}
+    <div class="row"><button class="btn primary" data-act="swgo" ${ok ? "" : "disabled"}>${label}</button><button class="btn" data-close>Cancel</button></div></div>`;
+}
+// Kevin (0.18.0): Tip-off. Tap it, tap the team that controlled the tip: the game starts and the arrow points at the other
+// team. Also comes up by itself when the gym scoreboard puts the game live (Board's auto-start).
+function tipSheet(g, auto){
+  if(!g || !canEdit(g) || g.status === "final" || ui.sheet || g.ev.some(x => !x.v && !PREGAME(x))) return;
+  openSheet({k:"tip", gid:g.id, html:() => { const gg = S.games[ui.sheet.gid]; if(!gg) return `<h3>Tip-off</h3><div class="row"><button class="btn" data-close>Close</button></div>`;
+    const sd = sides(gg);
+    return `<h3>Who controlled the tip?</h3><p class="small" style="margin:0">The arrow points at the other team: they get the first held ball.</p>
+      <div class="tipgo">${[sd.left, sd.right].map(tm => `<button class="btn" data-act="tipwin" data-tm="${tm}" style="${tvars(gg, tm)}">${badge(gg, tm)}<b>${esc(tmName(gg, tm))}</b></button>`).join("")}</div>
+      <div class="row"><button class="btn" data-close>Later</button>${auto ? `<button class="btn" data-act="boardnotyet" title="The scoreboard put this game live, but it isn't starting yet">Not starting yet</button>` : ""}</div>`; }});
+}
+// The team the arrow gives the next held ball to: in a new period before its first play, the arrow has already been used
+// for the opening throw-in.
+const arrowNow = R => !R.poss ? null : R.flip ? OTHER(R.poss) : R.poss;
 
 /* ---------- render ---------- */
 // Kevin (0.16.11): Jim's broadcast page and the fans' live page are tabs too, to swap between them in one window.
@@ -1751,7 +1837,7 @@ function viewDesk(){
   h += `<div class="row only-narrow" style="margin-bottom:8px">${[sd.left, sd.right].map(tm => `<button class="btn sm" aria-pressed="${ui.narrow === hk(tm)}" data-act="narrow" data-v="${hk(tm)}">${esc(tmName(g, tm))}</button>`).join("")}</div>`;
   h += `<div class="desk">${teamCol(g, R, sd.left, sd.left === ha.home ? "Home" : "Away", ui.narrow !== hk(sd.left))}<div class="center">${board(g, R)}${Board.strip(g)}${teamBox(g, R, sd.left, edit)}${teamBox(g, R, sd.right, edit)}
     <div class="cact no-print">
-      <button class="btn" data-act="poss" ${edit ? "" : "disabled"}>Arrow ${R.poss ? (R.poss === sd.left ? "◀ " : "▶ ") + `<span class="an">${esc(tmName(g, R.poss))}</span>` : "· set"}</button>
+      <div class="pair">${!g.ev.some(x => !x.v && !PREGAME(x)) && g.status !== "final" ? `<button class="btn primary" data-act="tipoff" ${edit ? "" : "disabled"}>Tip-off</button>` : ""}<button class="btn" data-act="poss" ${edit ? "" : "disabled"} title="Possession arrow: tap to switch it">${R.poss ? `<span class="ak">Arrow</span><span class="an" title="${esc(tmName(g, R.poss))}">${R.poss === sd.left ? "◀ " : "▶ "}${esc(R.poss === "us" ? "GHS" : oppInfo(g.opp, g).abbr || tmName(g, R.poss))}</span>` : "Arrow · set"}</button>${g.ev.some(x => !x.v && !PREGAME(x)) ? `<button class="btn" data-act="jump" ${edit && R.poss && g.status !== "final" ? "" : "disabled"} title="Held ball: the arrow's team gets it and the arrow switches">Jump ball</button>` : ""}</div>
       <button class="btn" data-act="note" ${edit ? "" : "disabled"}>+ Warning / note</button>
       ${ended && g.status !== "final" ? `<button class="btn primary" data-act="final" ${edit ? "" : "disabled"}>Make it final: ${R.sc.us}-${R.sc.them}</button>` : `<button class="btn" data-act="send">Send to Scorebook</button>`}
       ${R.brk && !ended && g.status !== "final" ? `<button class="btn" data-act="bkchk">${nowLabel(g, R) === "HALFTIME" ? "Halftime check" : "Book check"}</button>` : `<button class="btn" data-act="go" data-tab="box">Review game</button>`}
@@ -1802,7 +1888,7 @@ function teamCol(g, R, tm, side, hideNarrow){
   const f = (ui.find[tm] || "").trim().toLowerCase().replace(/^#/, "");
   const match = p => !f || String(p.num) === f || (p.name || "").toLowerCase().includes(f);
   const lineupMode = ui.lineup === tm;
-  let h = `<section class="teamcol${hideNarrow ? " hide-narrow" : ""}" style="${tvars(g, tm)}"><div class="tc-head">${badge(g, tm)}<h3 class="fit" data-min="14">${tm === "them" && canCoach() ? `<button class="tc-name" data-act="oppedit" data-opp="${esc(g.opp)}" title="Team colors and name">${esc(g.opp)}</button>` : esc(tmName(g, tm))}</h3><span class="side">${side}</span>
+  let h = `<section class="teamcol${hideNarrow ? " hide-narrow" : ""}" style="${tvars(g, tm)}"><div class="tc-head">${badge(g, tm)}<h3 class="fit" data-min="14">${tm === "them" && canCoach() ? `<button class="tc-name" data-act="oppedit" data-opp="${esc(g.opp)}" title="Team colors and name">${esc(g.opp)}</button>` : esc(tmName(g, tm))}</h3>${shortFlag(g, R, tm) || `<span class="side">${side}</span>`}
     <button class="btn sm no-print" data-act="lineup" data-tm="${tm}" aria-pressed="${lineupMode}" ${edit ? "" : "disabled"}>${lineupMode ? "Done" : court.size ? "Lineup" : "Starters"}</button>
     <button class="btn sm no-print" data-act="addp" data-tm="${tm}" ${edit ? "" : "disabled"} aria-label="Add player">+</button></div>`;
   if(!list.length){ const prev = tm === "them" && edit ? lastThem(g) : null, lk = tm === "them" && edit && libOk(g) ? libRoster(g.team, g.opp).length : 0;
@@ -1824,9 +1910,11 @@ function teamCol(g, R, tm, side, hideNarrow){
     return `<button class="chip${at ? " at" : ""}${ln.pf >= 5 || ln.tf >= 2 ? " dark" : ""}${fcls(ln)}" data-act="bench" data-tm="${tm}" data-pid="${p.pid}">${face(p, "", tm === "us")}<b>${esc(p.num)}</b><span class="nm">${esc(pShort(p))}${ln.pts ? " · " + ln.pts : ""}${ln.pf ? " · " + ln.pf + "F" : ""}</span></button>`; }).join("")}</div>`;
   // Subs waiting at the table sit under the bench: a sub reporting never moves the five cards above under the book's finger.
   // Each shows her whole name and her foul color; a full bar packs the bench tighter (benchFit), never past the screen.
-  if(table.length) h += `<div class="table-bar"><span class="kicker">At the table</span><div class="tbl">${table.map(pid => { const p = player(g, tm, pid); return `<button class="chip at${fcls(R.box[tm][pid])}" data-act="tablein" data-tm="${tm}" data-pid="${pid}" ${edit ? "" : "disabled"} title="Check in at the next stoppage">${face(p, "", tm === "us")}<b>${esc(p.num)}</b>${p.name ? `<span class="nm">${esc(pShort(p))}</span>` : ""}<span class="go">▸ IN</span></button>`; }).join("")}</div><button class="chip skip" data-act="tableclear" data-tm="${tm}">Clear</button></div>`;
+  if(table.length) h += `<div class="table-bar"><span class="kicker">At the table</span><div class="tbl">${table.map(pid => { const p = player(g, tm, pid); return `<button class="chip at${fcls(R.box[tm][pid])}" data-act="tablein" data-tm="${tm}" data-pid="${pid}" ${edit ? "" : "disabled"} title="Check in at the next stoppage">${face(p, "", tm === "us")}<b>${esc(p.num)}</b>${p.name ? `<span class="nm">${esc(pShort(p))}</span>` : ""}<span class="go">▸ IN</span></button>`; }).join("")}</div><span class="tbtn"><button class="chip subgo" data-act="swapopen" data-tm="${tm}" ${edit && g.status !== "final" ? "" : "disabled"} title="Pick who's coming out, all in one step">Sub in (${table.length})</button><button class="chip skip" data-act="tableclear" data-tm="${tm}">Clear</button></span></div>`;
   return h + `</section>`;
 }
+// Fewer than five on the floor in a live game (a sub took out more than went in): red, on the Scorer's and the PA's.
+const shortFlag = (g, R, tm) => g.status === "live" && R.court[tm].size && R.court[tm].size < 5 ? `<span class="shortf" title="Fewer than five on the floor">${R.court[tm].size} ON THE FLOOR</span>` : "";
 // Foul trouble, Kevin's way, the same for the scorer, the PA and Jim (never the fan page): 3 fouls yellow, 4 orange, 5 red.
 // A technical counts as a personal foul, and a second one is an ejection: red too. foulLvl gives 0, 3, 4 or 5; fcls the
 // class (f3, f4, f5) that puts a card, row, chip or pill in that color.
@@ -2228,7 +2316,7 @@ function viewAnn(){
     // final, or anywhere else, it opens the card. The ⓘ next to each name always opens it.
     const send = ui.pa && !fin;
     const chipAct = pid => ui.pa ? `data-act="annsaid" data-tm="${tm}" data-pid="${pid}" title="Mark it called once you've announced it (click again to take it back)"` : `data-act="pinfo" data-tm="${tm}" data-pid="${pid}" title="Open the card"`;
-    return `<div class="card" style="${tvars(g, tm)}"><div class="tc-head">${badge(g, tm)}<h3>${esc(tmName(g, tm))}${tm === "them" && oppNick(g) ? ` <small>${esc(oppNick(g))}</small>` : ""}</h3><span class="side">${tm === ha.home ? "Home" : "Away"}</span></div>
+    return `<div class="card" style="${tvars(g, tm)}"><div class="tc-head">${badge(g, tm)}<h3>${esc(tmName(g, tm))}${tm === "them" && oppNick(g) ? ` <small>${esc(oppNick(g))}</small>` : ""}</h3>${shortFlag(g, R, tm) || `<span class="side">${tm === ha.home ? "Home" : "Away"}</span>`}</div>
       ${table.length ? `<div class="table-bar"><span class="kicker">At the table</span>${ui.pa ? "" : `<span class="small">On the PA mic? Tick the box up top to mark subs called.</span>`}${shown.map(({pid, ids}) => { const p = paPlayer(g, tm, pid), done = ids.some(x => said.includes(x)), say = sayShow(g, tm, p); return `<button class="chip ${done ? "dark" : "at"}${fcls(R.box[tm][pid])}" ${chipAct(ids[0])}>${face(p, "", tm === "us")}<b>${esc(p.num)}</b>${esc(p.name || "")}${done ? " ✓ called" : ""}${say ? `<span class="say">${esc(say)}</span>` : ""}</button>`; }).join("")}</div>` : ""}
       ${subs.length ? `<ul class="subs">${subs.map(s => `<li><b>${perLabel(g, s.q)}</b> ${esc(s.txt)}</li>`).join("")}</ul>` : ""}
       ${floor.length ? `<table class="floor"><tr><th class="l">On the floor</th><th>PTS</th><th>Fouls</th></tr>${floor.map(p => { const ln = R.box[tm][p.pid] || LINE(); return `<tr class="${fcls(ln).trim()}"><td class="nm l" data-act="pinfo" data-tm="${tm}" data-pid="${p.pid}" tabindex="0" role="button" title="Open #${esc(p.num)}'s card">${face(p, "", tm === "us")}${esc(p.num)} ${esc(p.name || "")}${justIn.has(p.pid) ? ' <span class="tag green">Just in</span>' : ""}${sayShow(g, tm, p) ? `<div class="say">${esc(sayShow(g, tm, p))}</div>` : ""}</td><td>${ln.pts}</td><td>${foulPill(g, R, ln)}</td></tr>`; }).join("")}</table>` : `<p class="small" style="margin:6px 0">The scorer hasn't set a lineup yet.</p>`}
@@ -2241,7 +2329,7 @@ function viewAnn(){
       ${hl.length ? `<div class="lastplay">${hl.map(x => `<div>${x}</div>`).join("")}</div>` : ""}${g.status === "live" && lastAt ? `<div class="ago small">Last play ${agoWords(lastAt)}</div>` : ""}${dueRead(g, R)}${msPanel(g, R)}
     <div class="ann-cols">${side(sd.left)}${side(sd.right)}</div>
     <div class="lead" style="grid-template-columns:1fr">${leadCard(g, R, "pts", "Points")}</div>
-    <div class="ann-cols"><div class="card"><h3 style="font-size:22px;margin-bottom:4px">Last plays</h3>${playList(g, R, 10, false, p => (["FG", "FT"].includes(p.e.t) && p.e.m) || ["PF", "TF", "TMO", "PER", "NOTE"].includes(p.e.t))}</div>
+    <div class="ann-cols"><div class="card"><h3 style="font-size:22px;margin-bottom:4px">Last plays</h3>${playList(g, R, 10, false, p => (["FG", "FT"].includes(p.e.t) && p.e.m) || ["PF", "TF", "TMO", "PER", "NOTE", "TIP", "JUMP"].includes(p.e.t))}</div>
       <div class="card no-print stack"><div><h3 style="font-size:22px;margin-bottom:6px">PA notes</h3><textarea data-bnotes="notes" data-gid="${g.id}" rows="5" placeholder="Senior night: honor #3 at halftime. Thank the band.">${esc(b.notes)}</textarea></div>
       <p class="small" style="margin:0">${g.practice ? "Practice game: stays on this device." : Sync.live() ? "Shared with everyone signed in. Never on the public page." : "Saved on this device."}</p></div></div></div>`;
 }
@@ -3628,7 +3716,7 @@ function review(g, R){
     if(R.court[tm].size && R.court[tm].size !== 5 && g.status !== "final") out.push(["warn", tmName(g, tm) + " has " + R.court[tm].size + " on the floor."]);
     const left = toLeft(g, R, tm); if(left[60] < 0 || left[30] < 0) out.push(["bad", tmName(g, tm) + " used more timeouts than they have."]);
   }
-  const run = R.plays.filter(p => !p.void && !["IN","OUT","NOTE","TMO","POSS"].includes(p.e.t));
+  const run = R.plays.filter(p => !p.void && !["IN","OUT","NOTE","TMO","POSS","TIP","JUMP"].includes(p.e.t));
   const misses = run.filter((p, i) => (p.e.t === "FG" || p.e.t === "FT") && !p.e.m && !(p.e.t === "FT" && run[i + 1] && run[i + 1].e.t === "FT" && run[i + 1].e.tm === p.e.tm)).length;
   const rebs = R.plays.filter(p => !p.void && p.e.t === "REB").length;
   if(S.settings.extra && misses - rebs > 6) out.push(["warn", misses + " missed shots but only " + rebs + " rebounds logged. Fine if you skipped some."]);
@@ -3686,7 +3774,7 @@ function viewBox(){
     <div class="card">${boxTable(g, R, sd.left)}${st(sd.left)}</div><div class="card">${boxTable(g, R, sd.right)}${st(sd.right)}</div>${bq ? "" : lineupCard(g, R0, clockStats(g, R0))}</div>`;
 }
 const PLAY_KINDS = {all:["All plays", () => true], score:["Scoring", e => (e.t === "FG" || e.t === "FT") && e.m], shots:["Shots", e => e.t === "FG" || e.t === "FT"],
-  fouls:["Fouls", e => e.t === "PF" || e.t === "TF"], to:["Turnovers & steals", e => e.t === "TO" || e.t === "STL"], subs:["Subs", e => e.t === "IN" || e.t === "OUT"], other:["Timeouts, horns & notes", e => ["TMO","PER","POSS","NOTE"].includes(e.t)]};
+  fouls:["Fouls", e => e.t === "PF" || e.t === "TF"], to:["Turnovers & steals", e => e.t === "TO" || e.t === "STL"], subs:["Subs", e => e.t === "IN" || e.t === "OUT"], other:["Timeouts, horns & notes", e => ["TMO","PER","POSS","NOTE","TIP","JUMP"].includes(e.t)]};
 function viewPlays(){
   const g = cur(); if(!g) return needGame();
   const R = replay(g), f = ui.pf || (ui.pf = {q:"all", tm:"all", k:"all"}), Q = Math.max(g.quarters || 4, R.q);
@@ -4121,7 +4209,7 @@ const svgOpen = (w, h, lbl) => `<svg class="stchart" viewBox="0 0 ${w} ${h}" rol
 // it "second chance", and a basket, the other team's rebound or a horn ends it. Every field goal tried gets where it came
 // from (second chance, a putback: the rebounder's own shot right after, transition: within 7 seconds of the game clock
 // after the team's steal or defensive rebound), and every point gets the turnover it came off.
-const IGN = new Set(["IN", "OUT", "TMO", "NOTE", "POSS"]);
+const IGN = new Set(["IN", "OUT", "TMO", "NOTE", "POSS", "TIP", "JUMP"]);
 function chainOf(d){
   if(d.chain) return d.chain;
   const stlTo = new Map(); for(const [toId, s] of d.stl) stlTo.set(s.id, d.P.find(p => p.e.id === toId).e);
@@ -5352,7 +5440,9 @@ function pubSnap(g0){
   const lists = {us:sortRoster(roster(g, "us")).filter(p => played("us", p)), them:sortRoster(roster(g, "them")).filter(p => played("them", p))}, bi = {us:{}, them:{}};
   ["us", "them"].forEach(tm => lists[tm].forEach((p, i) => { bi[tm][p.pid] = i; }));
   const bix = e => e && e.pid && bi[e.tm] && bi[e.tm][e.pid] != null ? bi[e.tm][e.pid] : -1;
-  const line = (tm, p) => { const l = R.box[tm][p.pid] || LINE(); return [p.num, p.name || "", "", "", ""].concat(PUBK.map(k => l[k]), [l.gp ? 1 : 0, R.court[tm].has(p.pid) ? 1 : 0, l.po ? 1 : 0, l.tf || 0]); };
+  // Kevin (0.18.0): fans keep seeing a team's last five until five are on again.
+  const fanFloor = {has:(tm, pid) => (R.court[tm].size < 5 && R.full[tm] ? R.full[tm] : R.court[tm]).has(pid)};
+  const line = (tm, p) => { const l = R.box[tm][p.pid] || LINE(); return [p.num, p.name || "", "", "", ""].concat(PUBK.map(k => l[k]), [l.gp ? 1 : 0, fanFloor.has(tm, p.pid) ? 1 : 0, l.po ? 1 : 0, l.tf || 0]); };
   const all = R.plays.filter(p => !p.void && !["IN","OUT","POSS","NOTE"].includes(p.e.t)), fin = g.status === "final" || gameOver(g0);
   const plays = (fin ? all : all.slice(-40)).map(p => [p.q, p.sc.us, p.sc.them, playText(g, p.e, {far:true}).replace(/<[^>]+>/g, ""), p.scored ? 1 : 0, p.e.t === "PER" ? "" : p.e.tm, p.e.at || 0, gcText(p.e, g, p.q), bix(p.e)]);
   // The shot chart: [team, box row, x and y in thousandths of the half court, made, period, points, game clock ("5:49", or
@@ -5883,6 +5973,17 @@ document.addEventListener("click", async ev => {
     case "tablein": { if(!g || lastTap.k.startsWith("bench:") && Date.now() - lastTap.at < 600) break; const R = replay(g), tm = a.dataset.tm, pid = a.dataset.pid;
       if(R.court[tm].size < 5) subIn(g, tm, pid, null); else { ui.fu = [{k:"out", tm, pin:pid}]; renderFu(); }
       break; }
+    case "swapopen": if(g && !bounced("swapopen", 600)) swapSheet(g, a.dataset.tm); break;
+    case "swin": case "swout": { const s0 = ui.sheet; if(!s0 || s0.k !== "swap") break; const set = a.dataset.act === "swin" ? s0.ins : s0.outs, pid = a.dataset.pid;
+      if(set.has(pid)) set.delete(pid); else set.add(pid); renderSheet(); break; }
+    case "swgo": { const s0 = ui.sheet; if(!g || !s0 || s0.k !== "swap" || s0.gid !== g.id || bounced("swgo", 800)) break; const ins = [...s0.ins], outs = [...s0.outs];
+      if(makeSwap(g, s0.tm, ins, outs)){ closeSheet(); toast(swapWords(g, s0.tm, ins, outs), 3500); } break; }
+    case "tipoff": if(g){ tipSheet(g); if(!ui.sheet) toast("The game's already under way. Tap Arrow to fix the arrow."); } break;
+    case "tipwin": { const s0 = ui.sheet; if(!g || !s0 || s0.k !== "tip" || s0.gid !== g.id || bounced("tipwin", 800)) break; const tm = a.dataset.tm === "them" ? "them" : "us";
+      closeSheet(); if(rec({tm, pid:null, t:"TIP"})) toast(tmName(g, tm) + " controls the tip. Arrow → " + tmName(g, OTHER(tm)) + ".", 3500); break; }
+    case "jump": { if(!g || bounced("jump", 800)) break; const R = replay(g), to = arrowNow(R);
+      if(!to){ toast("No arrow yet. Tap Arrow to set it."); break; }
+      if(rec({tm:to, pid:null, t:"JUMP"})) toast("Held ball: " + tmName(g, to) + " ball. Arrow → " + tmName(g, OTHER(to)) + ".", 3500); break; }
     case "tableclear": if(g){ const tm = a.dataset.tm, l = tableIds(g, tm); setBooth(g, b => { b.table = {us:[], them:[], ...b.table, [tm]:[]}; b.said = b.said.filter(x => !l.includes(x)); }, ["table", "said"]); render(); } break;
     case "annsaid": { const gg = S.games[a.dataset.gid] || g; if(gg){ const pid = a.dataset.pid, on = !(booth(gg.id).said || []).includes(pid), p = paPlayer(gg, a.dataset.tm, pid); markStep(gg, `${on ? "Called" : "Not called"}: #${p ? p.num : "?"}`, "said", [pid], on); render(); } break; }
     case "say": sayEdit(a.dataset.pid, a.dataset.gid, a.dataset.tm); break;
@@ -6002,7 +6103,7 @@ document.addEventListener("click", async ev => {
     case "gclk": { const x = g && g.ev.find(e => e.id === a.dataset.id); if(x && canEdit(g)) clockSheet(g, x); break; }
     case "gclkclear": if(ui.sheet && ui.sheet.gc) setClock(ui.sheet.gc, null); break;
     case "boardok": Board.dismiss(); break;
-    case "boardnotyet": Board.notYet(); break;
+    case "boardnotyet": if(ui.sheet && ui.sheet.k === "tip") closeSheet(); Board.notYet(); break;
     case "playscsv": if(g){ const pid = (ui.pf && ui.pf.pid) || "", pl = pid && (player(g, "us", pid) || player(g, "them", pid));
       download(`${g.id}${pl ? "-" + String(pl.num).replace(/[^\w-]/g, "") : ""}-plays.csv`, playsCsv(g, pl ? pid : ""), "text/csv"); } break;
     case "missed": if(g && canEdit(g)) missedSheet(g); break;
@@ -7234,6 +7335,9 @@ const Sync = (() => {
       fb.onAuthStateChanged(auth, u => onUser(u));
     }catch(e){ st.phase = "error"; st.err = "Couldn't reach the sync service (no signal?). Scoring still works and saves here; it sends when there's signal."; paint(); }
   }
+  // The role this device remembers is for the login that had it. A login made new (same email, new account) starts from
+  // nothing until the cloud answers, instead of riding the old one's role. A copy from before 0.18.0 has no owner: it stands.
+  const mineCached = u => !S.roleUid || S.roleUid === u.uid;
   async function onUser(u){
     clear();
     if(!u){ Object.assign(st, {uid:null, email:"", role:null, phase:"signedout"}); paint(); return; }
@@ -7253,7 +7357,7 @@ const Sync = (() => {
           if(d.role !== "scorer" || d.tier !== "admin") return fb.setDoc(fb.doc(db, "hoopsMembers", u.uid), {role:"scorer", tier:"admin", email:st.email, name:st.name || "", at:Date.now()}); }).catch(() => {});
         goLive(); return; }
       if(S.roleMB){ delete S.roleMB; save(); }
-    }catch(e){ unsure = true; if(S.role === "owner" && S.roleMB){ st.role = "owner"; st.phase = "live"; goLive(); } }
+    }catch(e){ unsure = true; if(S.role === "owner" && S.roleMB && mineCached(u)){ st.role = "owner"; st.phase = "live"; goLive(); } }
     // With the owner check unanswered, this device runs on the role it had last time (Mound Book's, or the entry's cached
     // copy) until the cloud answers here; then the whole check runs again, Mound Book's part included.
     st.unsub.push(fb.onSnapshot(fb.doc(db, "hoopsMembers", u.uid), {includeMetadataChanges:true}, snap => {
@@ -7262,16 +7366,16 @@ const Sync = (() => {
         // Moved down to scoreboard-only while signed in: every listener goes (the rules would stop each one anyway).
         if(was){ clear(); onUser(st.auth.currentUser); return; } paint(); }
       else if(snap.exists()){ const r = roleOf(snap.data()); if(st.phase !== "live"){ st.role = r; st.phase = "live"; goLive(); }
-        else if(r !== st.role){ const people = boss(r) !== boss(st.role); st.role = r; S.role = r; save();
+        else if(r !== st.role){ const people = boss(r) !== boss(st.role); st.role = r; S.role = r; S.roleUid = u.uid; save();
           // Made a Coach or an Admin, or no longer one: the people list comes or goes, so the listeners start over.
           if(people){ clear(); st.phase = "loading"; onUser(st.auth.currentUser); return; }
           paint(); softRender(); } }
       else if(snap.metadata && snap.metadata.fromCache){ if(st.phase === "live") return;
-        if(["owner", "coach", "scorer", "viewer"].includes(S.role)){ st.role = S.role; st.phase = "live"; goLive(); } else { st.phase = "nosignal"; paint(); } }
+        if(["owner", "coach", "scorer", "viewer"].includes(S.role) && mineCached(u)){ st.role = S.role; st.phase = "live"; goLive(); } else { st.phase = "nosignal"; paint(); } }
       // Taken off the list while signed in (the cloud says so, not a cached copy): every listener goes and the check runs
       // again, once. The phase is no longer "live" and the role this device remembers is forgotten on the way back in, or
       // the cached copy would put it back to live and it would come round here for ever, a few reads each time.
-      else { st.role = null; if(S.role){ S.role = null; save(); } if(st.phase === "live"){ clear(); st.phase = "loading"; onUser(st.auth.currentUser); return; } st.phase = "waiting"; fb.setDoc(fb.doc(db, "hoopsRequests", u.uid), {email:st.email, name:st.name || "", at:Date.now()}).catch(fail); paint(); }
+      else { st.role = null; if(S.role){ S.role = null; save(); } if(st.phase === "live"){ clear(); st.phase = "loading"; onUser(st.auth.currentUser); return; } st.phase = "waiting"; fb.setDoc(fb.doc(db, "hoopsRequests", u.uid), {email:st.email, name:(st.name || st.askName || "").slice(0, 200), at:Date.now()}).catch(fail); paint(); }
     }, fail));
   }
   function fail(e){
@@ -7437,7 +7541,7 @@ const Sync = (() => {
     }, dead));
     // Player photos: everyone let in hears them. A hiccup here never marks the scores as stale.
     st.unsub.push(fb.onSnapshot(fb.doc(db, "hoopsBook", "faces"), snap => Faces.heard(snap), () => {}));
-    if(S.role !== st.role){ S.role = st.role; save(); }
+    if(S.role !== st.role || S.roleUid !== st.uid){ S.role = st.role; S.roleUid = st.uid; save(); }
     if(boss(st.role)){
       st.unsub.push(fb.onSnapshot(fb.collection(db, "hoopsRequests"), snap => { st.reqs = snap.docs.map(d => ({uid:d.id, ...d.data()})); paint(); }, fail));
       st.unsub.push(fb.onSnapshot(fb.collection(db, "hoopsMembers"), snap => { st.mems = snap.docs.map(d => ({uid:d.id, ...d.data()})); paint(); }, fail));
@@ -7725,6 +7829,9 @@ const Sync = (() => {
   // A request's name and email are whatever the asker typed (the rules don't check them yet), so they're shown cut to size.
   const clipTo = (v, n) => { const s = String(v || ""); return s.length > n ? s.slice(0, n) + "…" : s; };
   const whoHtml = r => `<b>${esc(clipTo(r.name || r.email, 60))}</b> ${esc(clipTo(r.email, 80))}`;
+  // Kevin (0.18.0): someone who deleted their account and made a new one with the same email asks to get in again. Their
+  // old row is still on the list under the old login; this finds it so one tap moves their level over.
+  const dupOf = r => { const em = String(r.email || "").trim().toLowerCase(); return em ? st.mems.find(m => m.uid !== r.uid && String(m.email || "").trim().toLowerCase() === em) || null : null; };
   const ASK = {viewer:"Make them a Viewer? Viewers see the rosters, the notes, the table and every game, and change nothing.",
     scorer:"Make them a scorer? Scorers score games, keep the table, the notes and the PA's prep, and can take over scoring from another device. A fill-in PA needs Scorer plus a PA pass (the button on their row); parents and the AD only need Viewer.",
     coach:"Make them a coach? Coaches change rosters, the schedule, opponents and game rules, let people in, and see Stats and the PA and broadcast pages. Only Admins delete or reset games.",
@@ -7732,7 +7839,13 @@ const Sync = (() => {
     board:"Make this the scoreboard relay's sign-in? It can send the scoreboard's score and clock and nothing else: no games, rosters, notes or people, and it can't open Brier Stats. It's for the account the relay Mac signs in with, never for a person."};
   async function approve(uid, lvl){ const {fb, db} = st; const r = st.reqs.find(x => x.uid === uid) || st.mems.find(x => x.uid === uid) || {};
     const b = fb.writeBatch(db); b.set(fb.doc(db, "hoopsMembers", uid), {...LVL[lvl], email:String(r.email || "").slice(0, 120), name:String(r.name || "").slice(0, 80), at:Date.now()}); b.delete(fb.doc(db, "hoopsRequests", uid)); await b.commit(); }
-  function authMsg(e){ const c = (e && e.code) || ""; if(c.includes("invalid-credential") || c.includes("wrong-password") || c.includes("user-not-found")) return "That email and password don't match. Same account as Mound Book, if you have one."; if(c.includes("email-already")) return "That email already has an account. Sign in instead."; if(c.includes("weak-password")) return "Password needs at least 6 characters."; if(c.includes("network")) return "No signal. Try again when you have some."; if(c.includes("too-many")) return "Too many tries. Wait a minute."; return (e && e.message) || "Didn't work."; }
+  // Kevin (0.18.0, Jim locked out): the message says which email was tried. Firebase answers the same way for a wrong
+  // password and for an email with no account (it won't say which), so the most common slip, a different address from the
+  // one the account was made with, is named.
+  function authMsg(e, em){ const c = (e && e.code) || "", who = em ? clipTo(em, 80) : "that email";
+    if(c.includes("invalid-credential") || c.includes("wrong-password") || c.includes("user-not-found")) return `No account matches ${who} with that password. Use the exact email the account was made with (Mound Book's, if you have one), or tap Forgot password.`;
+    if(c.includes("invalid-email")) return `${who} isn't an email address. Check it for a typo.`;
+    if(c.includes("email-already")) return `${who} already has an account. Tap Sign in instead (Forgot password if you need it).`; if(c.includes("weak-password")) return "Password needs at least 6 characters."; if(c.includes("network")) return "No signal. Try again when you have some."; if(c.includes("too-many")) return "Too many tries. Firebase has paused sign-in here for a while (it can be an hour). Tap Forgot password, or try again later."; return (e && e.message) || "Didn't work."; }
   // Someone asking to get in shows on Coach's screen whatever tab he's on, not only under Setup: on game night a substitute
   // PA or a new laptop shouldn't wait until he happens to open Setup. Later hides it until someone new asks.
   const later = new Set();
@@ -7763,7 +7876,8 @@ const Sync = (() => {
       h += `<p style="margin:0">Signed in as <b>${esc(st.email)}</b> · ${ROLE_NAME[st.role] || "Viewer"}. ${st.dirty.size ? st.dirty.size + " game(s) waiting to send." : pubOwed() ? "A fix is still on its way to the fan page." : "Everything's sent."}</p><div class="row"><button class="btn" data-act="sy-out">Sign out</button></div>`;
       if(boss(st.role)){
         const row = (who, btns) => `<div class="row between" style="border-bottom:1px solid var(--grey);padding:6px 0"><span>${who}</span><span class="row">${btns}</span></div>`;
-        h += `<div><div class="kicker" style="margin-bottom:4px">Asking to get in</div>${st.reqs.length ? st.reqs.map(r => row(whoHtml(r), `<button class="btn sm primary" data-act="sy-approve" data-uid="${r.uid}" data-lvl="viewer">Viewer</button><button class="btn sm" data-act="sy-approve" data-uid="${r.uid}" data-lvl="scorer">Scorer</button><button class="btn sm" data-act="sy-approve" data-uid="${r.uid}" data-lvl="coach">Coach</button><button class="btn sm" data-act="sy-deny" data-uid="${r.uid}">No</button>`)).join("") : `<p style="margin:0">Nobody waiting.</p>`}</div>
+        h += `<div><div class="kicker" style="margin-bottom:4px">Asking to get in</div>${st.reqs.length ? st.reqs.map(r => { const d = dupOf(r), dl = d && lvlOf(d), carry = d && LVL[dl] && (st.role === "owner" || dl !== "admin"), u = esc(r.uid);
+          return row(whoHtml(r) + (d ? ` <span class="tag solid" title="Same email as someone already let in: a new account">New login · was ${esc(LVL_NAME[dl] || "let in")}</span>` : ""), (carry ? `<button class="btn sm primary" data-act="sy-carry" data-uid="${u}" data-old="${esc(d.uid)}">Same person: keep ${esc(LVL_NAME[dl])}</button>` : "") + `<button class="btn sm${d ? "" : " primary"}" data-act="sy-approve" data-uid="${u}" data-lvl="viewer">Viewer</button><button class="btn sm" data-act="sy-approve" data-uid="${u}" data-lvl="scorer">Scorer</button><button class="btn sm" data-act="sy-approve" data-uid="${u}" data-lvl="coach">Coach</button>${st.role === "owner" ? `<button class="btn sm" data-act="sy-approve" data-uid="${u}" data-lvl="admin">Admin</button>` : ""}<button class="btn sm" data-act="sy-deny" data-uid="${u}">No</button>`); }).join("") : `<p style="margin:0">Nobody waiting.</p>`}</div>
           <div><div class="kicker" style="margin-bottom:4px">Let in</div>${st.mems.length ? st.mems.map(m => { const l = lvlOf(m), mine = m.uid === st.uid, hands = st.role === "owner" || l !== "admin";
             const pass = l === "scorer" ? `<button class="btn sm" data-act="sy-pass" data-uid="${m.uid}" aria-pressed="${paPass(m.uid)}" title="Opens the PA page and the broadcast page for this Scorer">PA pass${paPass(m.uid) ? " ✓" : ""}</button>` : "";
             return row(`${whoHtml(m)} · ${LVL_NAME[l]}${l === "scorer" && paPass(m.uid) ? " + PA pass" : ""}${mine ? " (you)" : ""}`, mine || !hands ? "" : pass + ["viewer", "scorer", "coach", "admin", "board"].filter(x => x !== l && (x !== "admin" || st.role === "owner")).map(x => `<button class="btn sm" data-act="sy-approve" data-uid="${m.uid}" data-lvl="${x}">${LVL_BTN[x]}</button>`).join("") + `<button class="btn sm dark" data-act="sy-remove" data-uid="${m.uid}">Remove</button>`); }).join("") : `<p style="margin:0">Just you so far.</p>`}</div>
@@ -7781,28 +7895,43 @@ const Sync = (() => {
       if(act === "sy-start") await start();
       else if(act === "sy-retry"){ st.err = ""; if(st.fb) onUser(st.auth.currentUser); else { st.phase = "off"; await start(); } }
       else if(act === "sy-mode"){ st.mode = a.dataset.m; render(); }
-      else if(act === "sy-out"){ clear(); await fb.signOut(st.auth); S.sync = false; S.role = null; save(); }
-      else if(act === "sy-reset"){ const e = ($("#sy-auth [name=email]") || {}).value; if(!e){ toast("Type your email first."); return; } await fb.sendPasswordResetEmail(st.auth, e.trim()); toast("Check your email for a reset link."); }
+      else if(act === "sy-out"){ clear(); await fb.signOut(st.auth); S.sync = false; S.role = null; delete S.roleUid; st.askName = ""; save(); }
+      else if(act === "sy-reset"){ const e = ($("#sy-auth [name=email]") || {}).value; if(!e){ toast("Type your email first."); return; } const em = e.trim();
+        try{ await fb.sendPasswordResetEmail(st.auth, em); }
+        catch(x){ if(String((x && x.code) || "").includes("user-not-found")){ toast(`No account uses ${clipTo(em, 80)}. Try the other email you use, or tap New account.`, 9000); return; } throw x; }
+        // Firebase says "sent" whether or not that email has an account (it won't tell), so this can't either.
+        toast(`If an account uses ${clipTo(em, 80)}, a reset link is on its way from noreply@moundbook-ghs.firebaseapp.com. Check spam, use the newest one within an hour, and open it off school Wi-Fi. Nothing in an hour? That email has no account: try the other one you use.`, 15000); }
       else if(act === "sy-approve"){ const l = a.dataset.lvl, r = st.reqs.find(x => x.uid === a.dataset.uid);
         // Someone new: say who's asking, and that the app can't vouch for the name (anyone can make an account).
         const ask = r ? `${clipTo(r.name || r.email, 60)}${r.name ? " (" + clipTo(r.email, 80) + ")" : ""} is asking to get in. Anyone can make an account and type any name and email, so only say yes if you know they just asked.\n\n` : "";
         if(!LVL[l] || (ASK[l] && !confirm(ask + ASK[l]))) return; await approve(a.dataset.uid, l); toast("Done."); }
       else if(act === "sy-deny") await fb.deleteDoc(fb.doc(db, "hoopsRequests", a.dataset.uid));
+      else if(act === "sy-carry"){ const r = st.reqs.find(x => x.uid === a.dataset.uid), m = st.mems.find(x => x.uid === a.dataset.old), l = m && lvlOf(m);
+        if(!r || !m || !boss(st.role) || !LVL[l] || (l === "admin" && st.role !== "owner") || dupOf(r) !== m) return;
+        if(!confirm(`${clipTo(r.name || r.email, 60)} (${clipTo(r.email, 80)}) made a new login with the same email. The old one is a ${LVL_NAME[l]}.\n\nAnyone can sign up with any email (nothing checks it's theirs), so only say yes if you know they just made a new account. The new login gets ${LVL_NAME[l]} and the old one comes off the list.`)) return;
+        const b = fb.writeBatch(db); b.set(fb.doc(db, "hoopsMembers", r.uid), {...LVL[l], email:String(r.email || "").slice(0, 120), name:String(r.name || m.name || "").slice(0, 80), at:Date.now()});
+        b.delete(fb.doc(db, "hoopsRequests", r.uid)); b.delete(fb.doc(db, "hoopsMembers", m.uid)); await b.commit();
+        // A Scorer's PA pass goes with them.
+        if(paPass(m.uid)){ const p = {...(S.settings.paPass || {})}; p[r.uid] = p[m.uid]; delete p[m.uid]; S.settings.paPass = p; S.teamsRev++; save(); Sync.dirtyTeams(); }
+        toast(`Done. ${clipTo(r.name || r.email, 60)} is in as ${LVL_NAME[l]} on the new login.`); }
       else if(act === "sy-later"){ later.add(a.dataset.uid); askCard(); }
       else if(act === "sy-pass"){ if(!boss(st.role)) return; const p = {...(S.settings.paPass || {})}, uid = a.dataset.uid, m = st.mems.find(x => x.uid === uid) || {};
         if(p[uid]) delete p[uid]; else p[uid] = Date.now(); S.settings.paPass = p; S.teamsRev++; save(); Sync.dirtyTeams(); render(); toast(`${m.name || m.email || "They"} ${p[uid] ? "can open the PA and broadcast pages now." : "no longer has the PA pass."}`); }
       else if(act === "sy-remove"){ if(confirm("Remove this person from Brier Stats?")) await fb.deleteDoc(fb.doc(db, "hoopsMembers", a.dataset.uid)); }
       else if(act === "sy-copyrules"){ const ok = await copyText(RULES, $("#rulestxt")); toast(ok ? "Rules copied." : "Select the rules and copy them by hand."); }
-    }catch(e){ toast(authMsg(e), 4000); }
+    }catch(e){ toast(authMsg(e, act === "sy-reset" ? ($("#sy-auth [name=email]") || {}).value : ""), 6000); }
   }
   async function submit(f){
     if(f.id !== "sy-auth") return;
     const d = new FormData(f), em = String(d.get("email")).trim(), pw = String(d.get("pw")), nm = String(d.get("name") || "").trim();
     st.busy = true; render();
     try{
-      if(st.mode === "up"){ const c = await st.fb.createUserWithEmailAndPassword(st.auth, em, pw); if(nm){ try{ await st.fb.updateProfile(c.user, {displayName:nm}); st.name = nm; }catch(e){} } }
+      if(st.mode === "up"){ st.askName = nm; const c = await st.fb.createUserWithEmailAndPassword(st.auth, em, pw);
+        if(nm){ try{ await st.fb.updateProfile(c.user, {displayName:nm}); st.name = nm; }catch(e){}
+          // The request to get in may have gone up before the name was saved: send it again with the name.
+          if(st.phase === "waiting" && st.uid === c.user.uid) st.fb.setDoc(st.fb.doc(st.db, "hoopsRequests", c.user.uid), {email:st.email, name:nm.slice(0, 200), at:Date.now()}).catch(() => {}); } }
       else await st.fb.signInWithEmailAndPassword(st.auth, em, pw);
-    }catch(e){ toast(authMsg(e), 5000); }
+    }catch(e){ toast(authMsg(e, em), 8000); }
     st.busy = false; render();
   }
   return {start, live, ready, settled, dirty, reset, owePids, dirtyBooth, dirtyTeams, dirtySay, dirtyBc, dirtyLib, dirtyScript, dirtyScriptSaves, seedSeason, panel, click, submit,
@@ -7987,6 +8116,14 @@ const Board = (() => {
     if(!autoReady(g)) return;
     startGame(g); autoBy = g.id; touch(g);
     toast("The scoreboard is set for the tip: the game is live. Tap Not yet on the green chip if it isn't.", 5000);
+    if(g === cur()) tipSheet(g, true);
+  }
+  // Kevin (0.18.0): at a quarter break the arrow switches once play starts: the board's clock running in the new period.
+  // With no board, the period's first logged play does it (replay). Only the iPad scoring the game writes it.
+  function arrowGo(g, R, c = clock()){
+    if(!c || !c.r || !R || !R.flip || !Number.isInteger(c.q) || c.q !== R.q) return;
+    if(g.status !== "live" || g !== cur() || !canEdit(g)) return;
+    const to = OTHER(R.poss); if(rec({tm:to, pid:null, t:"POSS", to, auto:true}, {keepFu:true})) toast("Play's on: arrow → " + tmName(g, to) + ".", 3000);
   }
   function notYet(){
     const g = st.gid && S.games[st.gid]; if(!g || g.status !== "live" || !canEdit(g) || g.ev.some(x => !x.v && !PREGAME(x))) return;
@@ -8017,7 +8154,7 @@ const Board = (() => {
   setInterval(() => {
     const g = st.gid && S.games[st.gid]; if(!g) return;
     if(!st.R || st.Rg !== g || st.rev !== g.rev){ st.R = replay(g); st.Rg = g; st.rev = g.rev; }
-    auto(g); st.flag = xcheck(g, st.R); paint();
+    auto(g); arrowGo(g, st.R); st.flag = xcheck(g, st.R); paint();
     const p = pub(g); if(p !== st.pub){ st.pub = p; Sync.pubSoon(g.id); }
     // The last horn: the board at 0:00 in the last period (or an overtime), the book's score settled or not.
     const c = clock(); if(c && !c.r && c.s === 0 && c.q >= (g.quarters || 4) && g.status === "live") final(g);
@@ -8043,7 +8180,7 @@ const Board = (() => {
   }
   // The scorer checked: the book is right. Quiet until the board or the book changes.
   function dismiss(){ const g = st.gid && S.games[st.gid]; if(g && st.flag) st.ok[g.id + "/" + st.flag.key] = true; st.flag = null; paint(); closeSheet(); }
-  return {check, stamp, strip, sheet, dismiss, clock, live:ok, pub, notYet, autoReady};
+  return {check, stamp, strip, sheet, dismiss, clock, live:ok, pub, notYet, autoReady, arrowGo};
 })();
 
 /* ---------- boot ---------- */
