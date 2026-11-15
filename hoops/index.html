@@ -5,7 +5,7 @@
 <!-- The page's lock: the only script that may run is the one in this file (named by the SHA-256 of its text) and files
      from this folder (fb.js). Text that turns up in the page from a roster, a game or the cloud can never run as code.
      After ANY edit to the script, run "python3 hoops/stamp.py hoops": with a stale hash the browser runs nothing. -->
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-/hPHYkT51/nK/8hvKkaVFsHUrhLW/E97HXqVunGrolw='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-/15WPPXdGpSG30pCUyBH78RIIn1J2Z2drF8rIkXiXBA='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#094A28">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -811,7 +811,7 @@ td .face{width:24px;height:24px;margin:-5px 7px -4px 0}
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
 { const n = document.getElementById("nostart"); if(n) n.remove(); }   // the script is running: see #nostart
-const BS_VERSION = "0.19.0";
+const BS_VERSION = "0.19.1";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -5581,90 +5581,12 @@ function pdfDoc(title){
 }
 // The game so far as the paper prints it: the score and the line score, each team's box (visitors first), then the team
 // stats and the four factors. At halftime it's the first half; at the final, the game.
-function boxPdf(g){
-  const R = replay(g), ha = homeAway(g), Q = g.quarters || 4, lq = Math.max(1, lastQ(R)), fin = g.status === "final", order = [ha.away, ha.home];
-  const school = tm => tm === "us" ? "Greenbrier" : g.opp, full = tm => tm === "us" ? (/greenbrier/i.test(usName(g)) ? usName(g) : "Greenbrier " + usName(g)) : oppFull(g);
-  const stage = fin ? "Final" + (lq > Q ? (lq - Q > 1 ? ` (${lq - Q}OT)` : " (OT)") : "") : R.brk ? ({HALFTIME:"Halftime", "END REG":"End of regulation"}[nowLabel(g, R)] || "End of " + perLabel(g, R.q - 1)) : perLabel(g, R.q) + " in progress";
-  const title = `${school(ha.away)} at ${school(ha.home)}, ${g.date}`, D = pdfDoc(title), L = 36, RT = 576; let y = 40;
-  const need = h => { if(y + h > 756){ D.page(); y = 40; } };
-  D.page();
-  D.text(L, y, `${stage} · ${g.team === "girls" ? "Girls" : "Boys"} basketball`.toUpperCase(), {sz:8.5, b:true, g:.35});
-  y += 21; D.text(L, y, `${school(ha.away)} ${R.sc[ha.away]}, ${school(ha.home)} ${R.sc[ha.home]}`, {sz:18, b:true, fit:RT - L});
-  y += 15; D.text(L, y, [fmtDate(g.date) + ", " + g.date.slice(0, 4), fmtTime(g.time), "at " + school(ha.home), g.district ? "District" : "", g.event].filter(Boolean).join(" · "), {sz:9, g:.25, fit:RT - L});
-  // The line score.
-  const per = Array.from({length:lq}, (_, i) => i + 1), cw = 30, lx = L + 200, lc = i => lx + cw * i + cw / 2;
-  y += 24; D.fill(L, y - 9, lx + cw * (lq + 1) - L, 12.5, .9);
-  per.forEach((q, i) => D.text(lc(i), y, perLabel(g, q), {sz:8, b:true, al:"c"})); D.text(lc(lq), y, "T", {sz:8, b:true, al:"c"});
-  for(const tm of order){ y += 13; D.text(L + 3, y, full(tm), {sz:9, b:true, fit:lx - L - 8});
-    per.forEach((q, i) => D.text(lc(i), y, String((R.qs[tm] || [])[q - 1] || 0), {sz:9, al:"c"})); D.text(lc(lq), y, String(R.sc[tm]), {sz:9, b:true, al:"c"}); }
-  // Each team's box.
-  // Ours has minutes played (MIN) when the game has clocks to count them from.
-  const M = clockStats(g, R), base = BOXCOLS.filter(c => c[1] !== "pm" || R.plays.some(p => !p.void && p.e.t === "IN")), sx = 222;
-  for(const tm of order){
-    const cols = tm === "us" && M.show ? [["MIN", "min"]].concat(base) : base, bw = (RT - sx) / cols.length, cx = i => sx + bw * i + bw / 2;
-    // The starters' mark is *, so short minutes get a † on paper.
-    const cv = (ln, k, pid) => k === "min" ? String(pid ? minCell(M, pid) : minSum(M)).replace("*", "†") : cellOf(ln, k);
-    const ps = sortRoster(roster(g, tm)).filter(p => R.box[tm][p.pid]), five = new Set(bookFive(g, tm)), tl = R.team[tm];
-    const tot = sumLines(ps.map(p => R.box[tm][p.pid]).concat([tl]));
-    y += 26; need(40 + 11.5 * (ps.length + 4));
-    D.text(L, y, `${full(tm)} (${R.sc[tm]})`.toUpperCase(), {sz:10.5, b:true, fit:RT - L}); y += 5; D.line(L, y, RT, y, 1);
-    y += 11; D.text(L + 18, y, "#", {sz:7.5, b:true, al:"r", g:.35}); D.text(L + 24, y, "PLAYER", {sz:7.5, b:true, g:.35});
-    cols.forEach((c, i) => D.text(cx(i), y, c[0], {sz:7.5, b:true, al:"c", g:.35}));
-    y += 3.5; D.line(L, y, RT, y, .4, .6);
-    const row = (num, name, ln, b, only, pid) => { y += 11.5; if(b) D.fill(L, y - 8.5, RT - L, 11.5, .92);
-      if(num !== "") D.text(L + 18, y, num, {sz:8.5, al:"r", b});
-      D.text(L + 24, y, name, {sz:8.5, b, fit:sx - L - 30});
-      cols.forEach((c, i) => { if(!only || only.includes(c[1])) D.text(cx(i), y, String(cv(ln, c[1], pid)), {sz:8.5, al:"c", b, fit:bw - 3}); }); };
-    ps.forEach(p => { const ln = R.box[tm][p.pid]; row(String(p.num), (p.name || "") + (five.has(p.pid) ? " *" : "") + (ln.tf >= 2 ? " (ejected)" : ln.pf >= 5 ? " (fouled out)" : ""), ln, false, null, p.pid); });
-    if(tl.oreb + tl.dreb + tl.to) row("", "Team", tl, false, ["oreb", "dreb", "reb", "to"]);
-    row("", "Totals", tot, true, cols.map(c => c[1]).filter(k => k !== "pm"));
-    y += 11.5; D.text(L + 24, y, "Shooting", {sz:8, g:.3});
-    cols.forEach((c, i) => { const s = {fg:["fgm", "fga"], tp:["tpm", "tpa"], ft:["ftm", "fta"]}[c[1]]; if(s) D.text(cx(i), y, tot.po ? "—" : pct(tot[s[0]], tot[s[1]]), {sz:8, al:"c", g:.3}); });
-    const notes = [five.size === 5 ? "* starter" : "", cols[0][1] === "min" && M.short.size ? `Minutes marked † are short: ${M.miss.length} sub${M.miss.length === 1 ? "" : "s"} had no game clock.` : "", tot.po ? "Scored points-only for part of the game: makes are counted, misses weren't, so there's no shooting percentage." : ""].filter(Boolean);
-    notes.forEach(n => { y += 10.5; D.text(L + 24, y, n, {sz:7.5, g:.4, fit:RT - L - 24}); });
-  }
-  // Team stats and the four factors, side by side.
-  if(R.plays.some(p => !p.void && p.scored)){
-    const x = extrasOf(g, R), fl = flowOf(R), has = (...t) => R.plays.some(p => !p.void && t.includes(p.e.t)), ts = [];
-    if(x.spots.us[0] || x.spots.them[0]) ts.push(["Points in the paint", tm => x.spots[tm][0] ? x.paint[tm] : "–"]);
-    if(has("REB")) ts.push(["Second-chance points", tm => x.second[tm]]);
-    if(has("TO", "STL")) ts.push(["Points off turnovers", tm => x.offTo[tm]]);
-    if(x.lu.us || x.lu.them) ts.push(["Bench points", tm => x.lu[tm] ? x.bench[tm] : "–"]);
-    ts.push(["Biggest lead", tm => fl.big[tm] || "–"], ["Best run", tm => x.br[tm] ? x.br[tm] + "-0" : "–"]);
-    const fr = factorRows(factorsOf(g, R), order), half = (RT - L - 30) / 2;
-    y += 28; need(30 + 12 * Math.max(ts.length, fr.length) + 40);
-    const blk = (x0, head, rows) => { let yy = y; const c = [x0 + half - 112, x0 + half - 38];
-      D.text(x0, yy, head, {sz:10.5, b:true}); yy += 5; D.line(x0, yy, x0 + half, yy, 1);
-      yy += 11; order.forEach((tm, i) => D.text(c[i], yy, school(tm), {sz:7.5, b:true, al:"c", g:.35, fit:70}));
-      rows.forEach(rw => { yy += 12; D.text(x0, yy, rw.l, {sz:8.5, fit:c[0] - x0 - 40}); rw.v.forEach((v, i) => D.text(c[i], yy, String(v), {sz:8.5, al:"c", b:rw.best === i})); });
-      return yy; };
-    const y1 = blk(L, "Team stats", ts.map(([l, f]) => ({l, v:order.map(f), best:-1}))), y2 = fr.length ? blk(L + half + 30, "Four factors", fr) : y;
-    y = Math.max(y1, y2);
-    const part = order.filter(tm => x.spots[tm][0] && x.spots[tm][0] < x.spots[tm][1]);
-    [`${fl.lc} lead change${fl.lc === 1 ? "" : "s"}, tied ${fl.ties} time${fl.ties === 1 ? "" : "s"}.`,
-      part.length ? `Paint points count the baskets with a shot spot (${part.map(tm => `${school(tm)} ${x.spots[tm][0]} of ${x.spots[tm][1]}`).join(", ")}).` : "",
-      fr.length ? "Four factors: shooting counts a three as one and a half makes; the better number is in bold, and the team that wins three of the four usually wins." : ""]
-      .filter(Boolean).forEach(n => { y += 12; D.text(L, y, n, {sz:7.5, g:.35, fit:RT - L}); });
-  }
-  // Our most-used lineups, from the game clock.
-  const lu = M.show ? lineupsOf(g, M).slice(0, 6) : [];
-  if(lu.length){
-    const c = [L + 250, L + 300, L + 345, L + 390];
-    y += 26; need(30 + 12 * lu.length);
-    D.text(L, y, `${full("us")} lineups`.toUpperCase(), {sz:10.5, b:true, fit:RT - L}); y += 5; D.line(L, y, L + 420, y, 1);
-    y += 11; D.text(L, y, "ON THE FLOOR", {sz:7.5, b:true, g:.35}); ["MIN", "PTS", "OPP", "+/-"].forEach((h, i) => D.text(c[i], y, h, {sz:7.5, b:true, al:"c", g:.35}));
-    lu.forEach(u => { y += 12; D.text(L, y, u.nums.map(n => "#" + n).join("  "), {sz:8.5, fit:c[0] - L - 30}); [mss(u.sec) + (u.short ? "†" : ""), u.pf, u.pa, pmText(u.pf - u.pa)].forEach((v, i) => D.text(c[i], y, String(v), {sz:8.5, al:"c"})); });
-  }
-  D.text(L, 770, `Brier Stats · ${stage} · made ${new Date().toLocaleString([], {month:"short", day:"numeric", hour:"numeric", minute:"2-digit"})}`, {sz:7, g:.45});
-  const name = `${g.date} ${school(ha.away)} at ${school(ha.home)} box score${fin ? "" : " (" + stage + ")"}.pdf`.replace(/[\\/:*?"<>|]+/g, "-");
-  return {bytes:D.bytes(), name, title};
-}
 /* ---------- Game Book (0.19.0, Kevin) ----------
    The print menu on the Box score page (Coaches and Admins, the same as Stats): any mix of the night's stats for one game,
    both teams (each team's half turns off on its own, or a whole column at once), as one letter-size PDF. "Game Book" is
    all of it; "Basic black & white" is the box scores, team stats and one shot chart per team, in black and white for the
    school's printer. Shot charts are one per team, so a black-and-white page still tells the teams apart (made: a dot,
-   missed: an X). The Box score PDF and Print box score buttons stay as they were. */
+   missed: an X). Since 0.19.1 the Box score PDF and Print box score buttons make the Basic black & white one (Kevin). */
 // [key, label, two halves (a Greenbrier one and an opponent one)]
 const GB_PARTS = [["box", "Box score", true], ["team", "Team stats & four factors", false], ["qtr", "Quarter by quarter", true],
   ["shots", "Shot charts", true], ["shotq", "Shot charts by quarter", true], ["shotp", "Shot charts by player", true],
@@ -5969,7 +5891,9 @@ async function shareFile(name, blob, title){
   }
   download(name, blob, blob.type); return true;
 }
-async function shareBox(g){ const p = boxPdf(g); await shareFile(p.name, new Blob([p.bytes], {type:"application/pdf"}), p.title); }
+// The Box score PDF and Print box score buttons: the Game Book's Basic black & white (box scores, team stats, a shot chart
+// per team), for everyone who sees the Box score page. Printing goes through the share sheet's Print.
+function shareBox(g){ return gbMake(g, gbBasic()); }
 // Everything on this device in one file: every game, both rosters, the library, the scripts and Setup. Setup's Full backup
 // and the Save backup button at every final write the same file, and Restore from a backup reads either.
 function backupJson(){ return JSON.stringify({brierstats:1, at:Date.now(), teams:S.teams, games:S.games, booth:S.booth, say:S.say, bc:S.bc, lib:S.lib, settings:S.settings, opps:S.opps, script:S.script, scriptSaves:S.scriptSaves}, null, 1); }
@@ -6417,7 +6341,7 @@ document.addEventListener("click", async ev => {
       // Remember what went over and when, with the game's booth notes so every device sees it (booth notes aren't stats:
       // any member writes them, and a live game's scorer keeps the game itself).
       const x = s && S.games[s.gid]; if(ok && x && canScore()){ setBooth(x, b => { b.sb = {at:Date.now(), txt:ta.value}; }, ["sb"]); renderSheet(); render(); } break; }
-    case "print": window.print(); break;
+    case "print": if(g) shareBox(g); break;
     case "boxpdf": if(g) shareBox(g); break;
     case "gbopen": if(g) gbSheet(g); break;
     case "gbt": { const s0 = ui.sheet; if(!s0 || s0.k !== "gb") break; const v = s0.o.p[a.dataset.k]; if(!v || !["us", "them"].includes(a.dataset.tm)) break; v[a.dataset.tm] = !v[a.dataset.tm];
