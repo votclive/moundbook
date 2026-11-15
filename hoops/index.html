@@ -5,7 +5,7 @@
 <!-- The page's lock: the only script that may run is the one in this file (named by the SHA-256 of its text) and files
      from this folder (fb.js). Text that turns up in the page from a roster, a game or the cloud can never run as code.
      After ANY edit to the script, run "python3 hoops/stamp.py hoops": with a stale hash the browser runs nothing. -->
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-hbcNws0ZJ4gZ7Z97AOU8gdz95rfDZqhWpXR6XZ8jUDU='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-FYbphQM2GpG/lQzc/J0slNtPG/RmyLD2uF5HVWkBkj8='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#094A28">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -650,7 +650,7 @@ button.srow{cursor:pointer}
 .srow .s1 b{font-family:var(--f-display);font-weight:800;text-transform:uppercase}
 .srow .s2 b.w{color:var(--green)}
 .pubjump{gap:6px;flex-wrap:wrap;justify-content:center;margin-top:6px}
-.flow{width:100%;height:auto;display:block}.flow .fq{stroke:var(--line,#ccc);stroke-dasharray:3 4}.flow .fz{stroke:#888;stroke-width:1}.flow .fln{stroke:var(--black,#111);stroke-width:2}
+.flow{width:100%;height:auto;display:block}.flowcard:not(#pubflow) .flow{max-width:760px;margin:0 auto}.flow .fq{stroke:var(--line,#ccc);stroke-dasharray:3 4}.flow .fz{stroke:#888;stroke-width:1}.flow .fln{stroke:var(--black,#111);stroke-width:2}
 .flow .fl{font-size:11px;fill:#777;font-weight:600}.flow .fv{font-size:12px;font-weight:800;fill:var(--black,#111)}
 .shf{gap:6px;flex-wrap:wrap;margin:4px 0 8px}.shf select{flex:1 1 140px;min-width:0}.shcourt{max-width:460px;margin:0 auto}.shcourt.sm{max-width:300px}.shsum{margin-top:6px}.shsum>div+div{margin-top:4px;color:#777}
 .pnb{all:unset;cursor:pointer;text-decoration:underline;text-decoration-color:rgba(0,0,0,.25);text-underline-offset:3px}.pnb:focus-visible{outline:2px solid var(--green)}
@@ -662,9 +662,21 @@ button.srow{cursor:pointer}
 @media (max-width:700px){ .pubboard .board.big .t{font-size:max(13px, min(20px, calc((50vw - 34px) * 1.5 / var(--n))))} }
 /* Fan box score: the Player column stays put while the numbers swipe, and OR and DR only show where there's room. */
 .fanbox th.l:first-child,.fanbox td.l:first-child{position:sticky;left:0;z-index:1;background:var(--white)}
-@media (max-width:700px){ .fanbox tr > :nth-child(4),.fanbox tr > :nth-child(5){display:none} }
+/* Fan box score fits its card with no sideways swipe: where the card is too narrow for every column it shows one set at
+   a time, Stats (PTS REB AST STL BLK TO PF) or Shooting (PTS FG 3PT FT +/-), picked with the buttons over the table. */
+.fanbox{container-type:inline-size}
+.fanbox .fbtog{display:none;gap:6px;margin:0 0 6px}
+@container (max-width:680px){
+  .fanbox .fbtog{display:flex}
+  .fanbox th,.fanbox td{padding:5px 4px}
+  .fanbox:not(.sh) .c-fg,.fanbox:not(.sh) .c-tp,.fanbox:not(.sh) .c-ft,.fanbox:not(.sh) .c-pm,.fanbox .c-oreb,.fanbox .c-dreb{display:none}
+  .fanbox.sh .c-reb,.fanbox.sh .c-ast,.fanbox.sh .c-stl,.fanbox.sh .c-blk,.fanbox.sh .c-to,.fanbox.sh .c-pf{display:none}
+  .fanbox .pn{display:inline-block;width:max-content;max-width:8.5em;white-space:normal;vertical-align:middle}
+}
+@container (max-width:340px){ .fanbox th,.fanbox td{padding:5px 3px;font-size:14px} .fanbox th{font-size:12px;letter-spacing:.03em} .fanbox .pn{max-width:7em} }
+/* The "At a glance" table on the narrowest phones: tighter cells so the team names and numbers stay on the screen. */
+@media (max-width:360px){ table.glance th,table.glance td{padding:5px 3px} table.glance th.tn{white-space:normal} }
 /* On a phone a long player name takes two lines in the pinned column instead of pushing the numbers off the screen. */
-@media (max-width:700px){ .fanbox .pn{display:inline-block;width:max-content;max-width:9.5em;white-space:normal;vertical-align:middle} }
 .onfl{display:inline-block;width:8px;height:8px;background:var(--green);margin-right:5px;vertical-align:middle}
 /* Coach's screen, any tab: someone asking to get in. Top left, over the game's title line, clear of the desk's buttons. */
 .askin{position:fixed;left:12px;top:calc(56px + env(safe-area-inset-top));z-index:55;max-width:min(640px, calc(100vw - 24px));background:var(--black);color:var(--white);border-radius:8px;padding:5px 6px 5px 12px;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;font-size:14px}
@@ -815,7 +827,7 @@ td .face{width:24px;height:24px;margin:-5px 7px -4px 0}
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
 { const n = document.getElementById("nostart"); if(n) n.remove(); }   // the script is running: see #nostart
-const BS_VERSION = "0.20.3";
+const BS_VERSION = "0.20.4";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -2322,7 +2334,7 @@ function viewAnn(){
       <div class="annbug">${bug(g, R, {meta, quiet:!!signalFlag(g), per:fin ? "FINAL" : g.status === "live" ? nowLabel(g, R) : "PREGAME"})}${foulBar(g, R)}</div>
       <div class="linesc">${lineScore(g, R)}</div>`;
   // Points and fouls only (Kevin): no shooting, rebound or turnover glance here; Jim's page has those.
-  if(ui.annMode === "box") return h + `<div class="ann stack">${head}<div class="ann-cols"><div class="card">${boxTable(g, R, sd.left, false, true)}</div><div class="card">${boxTable(g, R, sd.right, false, true)}</div></div></div>`;
+  if(ui.annMode === "box") return h + `<div class="ann stack">${head}<div class="ann-cols"><div class="card">${boxTable(g, R, sd.left, false, true)}</div><div class="card">${boxTable(g, R, sd.right, false, true)}</div></div>${flowHere(g, R)}</div>`;
   const hl = headline(g, R, {pa:true});
   const side = tm => {
     const c = R.court[tm], list = sortRoster(paRoster(g, tm)), shown = tableShown(g, tm, R), table = shown.map(x => x.pid), subs = subsOf(g, R, tm, 3);
@@ -2348,6 +2360,7 @@ function viewAnn(){
       ${hl.length ? `<div class="lastplay">${hl.map(x => `<div>${x}</div>`).join("")}</div>` : ""}${g.status === "live" && lastAt ? `<div class="ago small">Last play ${agoWords(lastAt)}</div>` : ""}${dueRead(g, R)}${msPanel(g, R)}
     <div class="ann-cols">${side(sd.left)}${side(sd.right)}</div>
     <div class="lead" style="grid-template-columns:1fr">${leadCard(g, R, "pts", "Points")}</div>
+    ${flowHere(g, R)}
     <div class="ann-cols"><div class="card"><h3 style="font-size:22px;margin-bottom:4px">Last plays</h3>${playList(g, R, 10, false, p => (["FG", "FT"].includes(p.e.t) && p.e.m) || ["PF", "TF", "TMO", "PER", "NOTE", "TIP", "JUMP"].includes(p.e.t))}</div>
       <div class="card no-print stack"><div><h3 style="font-size:22px;margin-bottom:6px">PA notes</h3><textarea data-bnotes="notes" data-gid="${g.id}" rows="5" placeholder="Senior night: honor #3 at halftime. Thank the band.">${esc(b.notes)}</textarea></div>
       <p class="small" style="margin:0">${g.practice ? "Practice game: stays on this device." : Sync.live() ? "Shared with everyone signed in. Never on the public page." : "Saved on this device."}</p></div></div></div>`;
@@ -2520,7 +2533,7 @@ function drawBroadcast(pre){
       <div class="bcgrid"><div data-bc="left"></div><aside class="bcrail">
         <div class="card bcpad"><h3>Game notes</h3><textarea data-bcpad="${esc(g.id)}" rows="6" placeholder="Storylines, stat drops, the sponsor read, who to thank. Saves as you type.">${esc(booth(g.id).bnotes || "")}</textarea><p class="small" data-bc="padnote"></p></div>
         <div class="card" data-bc="drops"></div>
-        <div data-bc="line"></div><div data-bc="glance"></div>
+        <div data-bc="line"></div><div data-bc="flow"></div><div data-bc="glance"></div>
         <div class="card"><h3>Last plays</h3><div data-bc="plays"></div></div>
         <div class="card"><h3>Tonight</h3><div data-bc="tonight"></div></div>
       </aside><div data-bc="right"></div></div><div data-bc="box" id="bcbox" class="bcboxes"></div>` : `<div data-bc="none"></div>`}</div>`;
@@ -2543,6 +2556,7 @@ function drawBroadcast(pre){
   put("signal", signalFlag(g));
   put("line", g.ev.length ? `<div class="card"><div class="linesc">${lineScore(g, R)}</div></div>` : "");
   put("glance", g.ev.length ? teamGlance(g, R) : "");
+  put("flow", flowHere(g, R));
   put("plays", playList(g, R, 8, false));
   put("tonight", bcTonight(g));
   put("padnote", g.practice ? "Practice game: stays on this device." : Sync.live() ? "Only signed-in people see these. Never on the fan page." : "Saved on this device. Sign in to have them on every device.");
@@ -3699,8 +3713,8 @@ function grabSegs(){ const s = ui.sheet; if(!s || !s.segs) return; $$("[data-seg
 
 /* ---------- box score ---------- */
 const BOXCOLS = [["PTS","pts"],["FG","fg"],["3PT","tp"],["FT","ft"],["OR","oreb"],["DR","dreb"],["REB","reb"],["AST","ast"],["STL","stl"],["BLK","blk"],["TO","to"],["PF","pf"],["+/-","pm"]];
-// The fan page's order: what parents ask first (points, rebounds, assists, fouls), with OR and DR right after REB so a
-// phone can leave them out (.fanbox, 4th and 5th columns).
+// The fan page's order: what parents ask first (points, rebounds, assists, fouls). Each fan cell carries c-<key> so a
+// narrow card can show the Stats or the Shooting set (.fanbox).
 const PACOLS = [["PTS","pts"],["FOULS","pf"]];
 const FANCOLS = [["PTS","pts"],["REB","reb"],["OR","oreb"],["DR","dreb"],["AST","ast"],["PF","pf"],["FG","fg"],["3PT","tp"],["FT","ft"],["STL","stl"],["BLK","blk"],["TO","to"],["+/-","pm"]];
 const boxCell = (ln, k) => cellOf(ln, k);
@@ -3718,13 +3732,14 @@ function boxTable(g, R, tm, fan, pa){
   const M = tm === "us" && !fan && !pa ? clockStats(g, R) : null, mq = R.minQ || 0;
   const cols = (M && M.show ? [["MIN", "min"]] : []).concat((pa ? PACOLS : fan ? FANCOLS : BOXCOLS).filter(c => c[1] !== "pm" || usePm));
   const cellOf = (ln, k, pid) => k === "min" ? (pid ? minCell(M, pid, mq) : "") : boxCell(ln, k);
+  const ck = c => fan ? ` class="c-${c[1]}"` : "";
   const ps = sortRoster(roster(g, tm)).filter(p => R.box[tm][p.pid]);
   const tot = sumLines(ps.map(p => R.box[tm][p.pid]).concat([R.team[tm]]));
-  return `<div style="${tvars(g, tm)}"><div class="tc-head">${badge(g, tm)}<h3 class="fit" data-min="14">${esc(tmName(g, tm))}</h3><span class="disp" style="font-size:28px;font-weight:900">${R.sc[tm]}</span></div></div><div class="scroll-x"><table><tr><th class="l">Player</th>${cols.map(c => `<th>${c[0]}</th>`).join("")}</tr>
-    ${ps.map(p => { const ln = R.box[tm][p.pid]; return `<tr><td class="l">${fan && g.status === "live" && R.court[tm].has(p.pid) ? '<i class="onfl" title="On the floor"></i>' : ""}<span class="pn">${face(p, "", tm === "us")}${PUB && fan ? `<button class="pnb" data-act="pubpl" data-tm="${tm}" data-i="${esc(p.pid.slice(tm.length))}">${esc(p.num)} ${esc(p.name)}</button>` : esc(p.num) + " " + esc(p.name)}${ln.tf >= 2 ? ' <span class="tag solid">EJ</span>' : ln.pf >= 5 ? ' <span class="tag solid">FO</span>' : ""}</span></td>${cols.map(c => `<td>${cellOf(ln, c[1], p.pid)}</td>`).join("")}</tr>`; }).join("")}
-    ${!pa && R.team[tm].oreb + R.team[tm].dreb + R.team[tm].to + R.team[tm].tf ? `<tr><td class="l">Team</td>${cols.map(c => `<td>${["oreb","dreb","reb","to"].includes(c[1]) ? cellOf(R.team[tm], c[1]) : ""}</td>`).join("")}</tr>` : ""}
-    <tr class="tot"><td class="l">Totals</td>${cols.map(c => `<td>${c[1] === "pm" ? "" : c[1] === "min" ? minSum(M, mq) : cellOf(tot, c[1])}</td>`).join("")}</tr>
-    ${pa ? "" : `<tr><td class="l">Shooting</td>${cols.map(c => `<td>${tot.po && ["fg","tp","ft"].includes(c[1]) ? "—" : c[1] === "fg" ? pct(tot.fgm, tot.fga) : c[1] === "tp" ? pct(tot.tpm, tot.tpa) : c[1] === "ft" ? pct(tot.ftm, tot.fta) : ""}</td>`).join("")}</tr>`}</table></div>
+  return `<div style="${tvars(g, tm)}"><div class="tc-head">${badge(g, tm)}<h3 class="fit" data-min="14">${esc(tmName(g, tm))}</h3><span class="disp" style="font-size:28px;font-weight:900">${R.sc[tm]}</span></div></div><div class="scroll-x"><table><tr><th class="l">Player</th>${cols.map(c => `<th${ck(c)}>${c[0]}</th>`).join("")}</tr>
+    ${ps.map(p => { const ln = R.box[tm][p.pid]; return `<tr><td class="l">${fan && g.status === "live" && R.court[tm].has(p.pid) ? '<i class="onfl" title="On the floor"></i>' : ""}<span class="pn">${face(p, "", tm === "us")}${PUB && fan ? `<button class="pnb" data-act="pubpl" data-tm="${tm}" data-i="${esc(p.pid.slice(tm.length))}">${esc(p.num)} ${esc(p.name)}</button>` : esc(p.num) + " " + esc(p.name)}${ln.tf >= 2 ? ' <span class="tag solid">EJ</span>' : ln.pf >= 5 ? ' <span class="tag solid">FO</span>' : ""}</span></td>${cols.map(c => `<td${ck(c)}>${cellOf(ln, c[1], p.pid)}</td>`).join("")}</tr>`; }).join("")}
+    ${!pa && R.team[tm].oreb + R.team[tm].dreb + R.team[tm].to + R.team[tm].tf ? `<tr><td class="l">Team</td>${cols.map(c => `<td${ck(c)}>${["oreb","dreb","reb","to"].includes(c[1]) ? cellOf(R.team[tm], c[1]) : ""}</td>`).join("")}</tr>` : ""}
+    <tr class="tot"><td class="l">Totals</td>${cols.map(c => `<td${ck(c)}>${c[1] === "pm" ? "" : c[1] === "min" ? minSum(M, mq) : cellOf(tot, c[1])}</td>`).join("")}</tr>
+    ${pa ? "" : `<tr><td class="l">Shooting</td>${cols.map(c => `<td${ck(c)}>${tot.po && ["fg","tp","ft"].includes(c[1]) ? "—" : c[1] === "fg" ? pct(tot.fgm, tot.fga) : c[1] === "tp" ? pct(tot.tpm, tot.tpa) : c[1] === "ft" ? pct(tot.ftm, tot.fta) : ""}</td>`).join("")}</tr>`}</table></div>
     ${tot.po && !pa ? `<p class="small" style="margin:4px 0 0">— Scored points-only for part of the game: makes are counted, misses weren't, so there's no shooting percentage.</p>` : ""}`;
 }
 function review(g, R){
@@ -3787,6 +3802,7 @@ function viewBox(){
       ${sb ? `<div class="small">${sb.changed ? `<b>Changed since it went to the Scorebook</b> ${esc(sbWhen(sb.at))}. Send it again.` : `Sent to Scorebook ${esc(sbWhen(sb.at))}.`}</div>` : ""}</div></div>
     ${ff ? `<div class="flag ${ff === "W" ? "ok" : "bad"}"><b>${esc(ffWords)}.</b> Played ${R0.sc.us}-${R0.sc.them}. The record goes by the ruling; the player stats below still count.</div>` : ""}
     <div class="row" style="align-items:flex-start;gap:12px"><div style="flex:1 1 360px;max-width:520px">${board(g, R0)}</div><div style="flex:1 1 300px;max-width:420px">${boxGlance(g, R0)}</div></div>
+    ${flowHere(g, R0)}
     <div class="card no-print"><h3 style="font-size:22px;margin-bottom:8px">Review</h3>${review(g, R0).map(([k, t]) => `<div class="flag ${k === "bad" ? "bad" : k === "ok" ? "ok" : ""}" style="margin-bottom:6px">${esc(t)}</div>`).join("")}
       ${g.status !== "final" && R0.sc.us !== R0.sc.them && g.ev.length && canEdit(g) ? `<button class="btn primary" data-act="final">Make it final: ${esc(usName(g))} ${R0.sc.us}, ${esc(g.opp)} ${R0.sc.them}</button>` : ""}</div>
     <div class="row no-print"><span class="kicker">Box score</span>${qsel}</div>
@@ -5798,7 +5814,7 @@ function pdfDoc(title){
 /* ---------- Game Book (0.19.0, Kevin) ----------
    The print menu on the Box score page (Coaches and Admins, the same as Stats): any mix of the night's stats for one game,
    both teams (each team's half turns off on its own, or a whole column at once), as one letter-size PDF. "Game Book" is
-   all of it; "Basic black & white" is the box scores, team stats and one shot chart per team, in black and white for the
+   all of it; "Basic black & white" is the box scores, team stats, one shot chart per team and the game flow, in black and white for the
    school's printer. Shot charts are one per team, so a black-and-white page still tells the teams apart (made: a dot,
    missed: an X). Since 0.19.1 the Box score PDF and Print box score buttons make the Basic black & white one (Kevin). */
 // [key, label, two halves (a Greenbrier one and an opponent one)]
@@ -5806,7 +5822,13 @@ const GB_PARTS = [["box", "Box score", true], ["team", "Team stats & four factor
   ["shots", "Shot charts", true], ["shotq", "Shot charts by quarter", true], ["shotp", "Shot charts by player", true],
   ["flow", "Game flow, runs & lead changes", false], ["lu", "Greenbrier lineups", false], ["pbp", "Play-by-play", false]];
 const gbAll = () => ({bw:false, p:Object.fromEntries(GB_PARTS.map(([k]) => [k, {us:true, them:true}]))});
-const gbBasic = () => { const o = gbAll(); o.bw = true; for(const k of ["qtr", "shotq", "shotp", "flow", "lu", "pbp"]) o.p[k] = {us:false, them:false}; return o; };
+// Basic B/W (also the Box score PDF and Print box score buttons): box scores, team stats, a shot chart per team and the game
+// flow. max2: before the final (the halftime print) it shrinks to fit two pages (gbFit).
+const gbBasic = () => { const o = gbAll(); o.bw = true; o.max2 = true; for(const k of ["qtr", "shotq", "shotp", "lu", "pbp"]) o.p[k] = {us:false, them:false}; return o; };
+// A kid with something the box score shows: points, a shot, a rebound, an assist, a steal, a block, a turnover or a foul.
+// Before the final, the PDF's box score leaves out everyone else (Kevin: the halftime print shows only who has stats), unless
+// the scoreboard's clock shows he played (minutes, gbPdf's played()).
+const hasLine = ln => !!ln && !!(ln.pts || ln.fga || ln.fta || ln.oreb || ln.dreb || ln.ast || ln.stl || ln.blk || ln.to || ln.pf || ln.tf);
 const GB_KEY = KEY + ".gb";
 function gbPicks(){ try{ const o = JSON.parse(localStorage.getItem(GB_KEY) || "null"), d = gbAll();
   if(!o || typeof o !== "object" || !o.p) return d;
@@ -5826,10 +5848,11 @@ function gbLogo(bg, gray){
 }
 // art (color only, gbArt): each team's lane as a picture (its main color with our bobcat or their logo) and their logo
 // tile for the line score.
-function gbPdf(g, o, logo, art){
+// tight (0-4, gbFit): smaller type, then smaller shot charts and flow, then no flow, then no shot charts, to fit two pages.
+function gbPdf(g, o, logo, art, tight = 0){
   const artId = {}, artImg = (kind, tm) => { const a = art && art[kind] && art[kind][tm]; return a ? artId[kind + tm] || (artId[kind + tm] = D.addImg(a.data, a.w, a.h)) : ""; };
   const R = replay(g), ha = homeAway(g), Q = g.quarters || 4, lq = Math.max(1, lastQ(R)), fin = g.status === "final", order = [ha.away, ha.home];
-  const bw = !!o.bw, on = (k, tm) => !!(o.p[k] && o.p[k][tm]), any = k => on(k, "us") || on(k, "them");
+  const bw = !!o.bw, on = (k, tm) => !!(o.p[k] && o.p[k][tm]) && !(tight >= 3 && k === "flow") && !(tight >= 4 && k === "shots"), any = k => on(k, "us") || on(k, "them");
   const school = tm => tm === "us" ? "Greenbrier" : g.opp, full = tm => tm === "us" ? (/greenbrier/i.test(usName(g)) ? usName(g) : "Greenbrier " + usName(g)) : oppFull(g);
   const ab = tm => tm === "us" ? "GHS" : (oppInfo(g.opp, g).abbr || g.opp || "OPP").slice(0, 4).toUpperCase();
   const hx = v => { v = String(v || ""); if(/^#[0-9a-f]{3}$/i.test(v)) v = "#" + v.slice(1).split("").map(c => c + c).join(""); return /^#[0-9a-f]{6}$/i.test(v) ? v.toUpperCase() : "#000000"; };
@@ -5859,7 +5882,7 @@ function gbPdf(g, o, logo, art){
     D.text(x0 + 6, y, text.toUpperCase(), {sz:9.5, b:true, tz:90, c:k.ink, fit:x1 - x0 - 12}); y += 4; };
   // A table: cols [{h, w, al:"l"|"r"|undefined (center), b}], rows of strings. The whole table stays on one page when it can.
   const table = (x0, cols, rows, opt = {}) => {
-    const xs = []; let x = x0; cols.forEach(c => { xs.push(x); x += c.w; }); const x1 = x, sz = opt.sz || 8.3, rh = sz + 3.4;
+    const xs = []; let x = x0; cols.forEach(c => { xs.push(x); x += c.w; }); const x1 = x, sz = Math.min(opt.sz || 8.3, tight ? 7.4 : 9), rh = sz + (tight ? 2.8 : 3.4);
     const at = i => cols[i].al === "l" ? xs[i] + 3 : cols[i].al === "r" ? xs[i] + cols[i].w - 3 : xs[i] + cols[i].w / 2, al = i => cols[i].al === "l" ? null : cols[i].al === "r" ? "r" : "c";
     if(!opt.nobreak) need(Math.min(560, 16 + rh * rows.length));
     y += 10; cols.forEach((c, i) => { if(c.h) D.text(at(i), y, c.h, {sz:6.8, b:true, g:.4, al:al(i), fit:c.w - 3}); });
@@ -5908,16 +5931,18 @@ function gbPdf(g, o, logo, art){
 
   /* ---- box scores ---- */
   const M = clockStats(g, R), base = BOXCOLS.filter(c => c[1] !== "pm" || R.plays.some(p => !p.void && p.e.t === "IN"));
+  // Before the final a kid with no stats stays on when the scoreboard's clock gave him minutes (ours, MIN column shown).
+  const played = (tm, pid) => tm === "us" && M.show && (M.sec[pid] > 0 || M.short.has(pid));
   if(any("box")){ sec("Box score", "* starter", 200);
     for(const tm of order){ if(!on("box", tm)) continue;
-      const keys = (tm === "us" && M.show ? [["MIN", "min"]] : []).concat(base), ps = sortRoster(roster(g, tm)).filter(p => R.box[tm][p.pid]), five = new Set(bookFive(g, tm)), tl = R.team[tm];
+      const keys = (tm === "us" && M.show ? [["MIN", "min"]] : []).concat(base), ps = sortRoster(roster(g, tm)).filter(p => R.box[tm][p.pid] && (fin || hasLine(R.box[tm][p.pid]) || played(tm, p.pid))), five = new Set(bookFive(g, tm)), tl = R.team[tm];
       const tot = sumLines(ps.map(p => R.box[tm][p.pid]).concat([tl])), cv = (ln, k, pid) => k === "min" ? String(pid ? minCell(M, pid) : minSum(M)).replace("*", "†") : cellOf(ln, k);
       const nw = 160, cw = (RT - L - 22 - nw) / keys.length, cols = [{h:"#", w:22, al:"r", b:true}, {h:"PLAYER", w:nw, al:"l"}].concat(keys.map(k => ({h:k[0], w:cw, b:k[1] === "pts"})));
       const rows = ps.map(p => { const ln = R.box[tm][p.pid]; return [String(p.num), (p.name || "") + (five.has(p.pid) ? " *" : "") + (ln.tf >= 2 ? " (ejected)" : ln.pf >= 5 ? " (fouled out)" : ""), ...keys.map(k => cv(ln, k[1], p.pid))]; });
       if(tl.oreb + tl.dreb + tl.to) rows.push(["", "Team", ...keys.map(k => ["oreb", "dreb", "reb", "to"].includes(k[1]) ? cellOf(tl, k[1]) : "")]);
       rows.push(["", "Totals", ...keys.map(k => k[1] === "pm" ? "" : cv(tot, k[1]))]);
       rows.push(["", "Shooting", ...keys.map(k => { const s = {fg:["fgm", "fga"], tp:["tpm", "tpa"], ft:["ftm", "fta"]}[k[1]]; return s ? (tot.po ? "—" : pct(tot[s[0]], tot[s[1]])) : ""; })]);
-      need(40 + 11.7 * rows.length); thead(tm, `${full(tm)} · ${R.sc[tm]}`);
+      need(40 + (tight ? 10.2 : 11.7) * rows.length); thead(tm, `${full(tm)} · ${R.sc[tm]}`);
       table(L, cols, rows, {bold:j => j === rows.length - 2, gray:j => j === rows.length - 1});
       if(keys[0][1] === "min" && M.short.size) note(`Minutes marked † are short: ${M.miss.length} sub${M.miss.length === 1 ? "" : "s"} had no game clock.`);
       if(tot.po) note("Scored points-only for part of the game: makes count, misses weren't kept, so there's no shooting percentage.");
@@ -5992,13 +6017,14 @@ function gbPdf(g, o, logo, art){
   const legend = (x0, yy) => { const k = ink("us"); D.dot(x0 + 3, yy - 2.6, 2.6, bw ? 0 : .3); D.text(x0 + 9, yy, "Made", {sz:7, g:.35});
     D.line(x0 + 36, yy - 5, x0 + 41, yy, .9, bw ? 0 : .3); D.line(x0 + 36, yy, x0 + 41, yy - 5, .9, bw ? 0 : .3); D.text(x0 + 45, yy, "Missed", {sz:7, g:.35}); };
   if(any("shots")){ const tms = order.filter(tm => on("shots", tm));
-    const w = tms.length > 1 ? (RT - L - 24) / 2 : 300, h = 470 * w / 500; sec("Shot charts", "every shot with a spot · made: dot, missed: X", h + 130);
+    const w = Math.min(tight >= 2 ? 170 : tight ? 215 : 999, tms.length > 1 ? (RT - L - 24) / 2 : 300), h = 470 * w / 500; sec("Shot charts", "every shot with a spot · made: dot, missed: X", h + (tight >= 2 ? 40 : 130));
     const y0 = y; let yEnd = y;
-    tms.forEach((tm, i) => { const x0 = L + (w + 24) * i, all = shotsOf(tm), sp = spotted(all); y = y0;
+    const gap = tms.length > 1 ? (RT - L - 2 * w) : 24;   // smaller charts sit at the two edges
+    tms.forEach((tm, i) => { const x0 = L + (w + gap) * i, all = shotsOf(tm), sp = spotted(all); y = y0;
       thead(tm, `${full(tm)} · FG ${fgLine(all)}`, x0, x0 + w); y += 6; court(x0, y, w, tm, sp); y += h + 10; legend(x0, y);
       if(all.length > sp.length) D.text(x0 + w, y, `${all.length - sp.length} shot${all.length - sp.length === 1 ? "" : "s"} had no spot`, {sz:7, g:.4, al:"r"});
       // By distance, from the spots.
-      if(sp.length){ y += 4; const cols = [{h:"DISTANCE", w:w - 100, al:"l"}, {h:"FG", w:50}, {h:"%", w:50}];
+      if(sp.length && tight < 2){ y += 4; const cols = [{h:"DISTANCE", w:w - 100, al:"l"}, {h:"FG", w:50}, {h:"%", w:50}];
         table(x0, cols, BANDS.map(([l, f]) => { const b = sp.filter(sh => f(sh.e)), m = b.filter(sh => sh.e.m).length; return [l, `${m}-${b.length}`, pct(m, b.length)]; }), {nobreak:true, sz:7.8}); }
       yEnd = Math.max(yEnd, y); });
     y = yEnd;
@@ -6024,8 +6050,9 @@ function gbPdf(g, o, logo, art){
     const sp = R.plays.filter(p => !p.void && p.scored), qs = Array.from({length:lq}, (_, i) => i + 1);
     const clocked = sp.length && sp.every(p => gcIn(g, p.e, p.q) != null), qStart = q => qs.slice(0, q - 1).reduce((a, k) => a + (clocked ? periodLen(g, k) : 1), 0), tEnd = qStart(lq + 1);
     const tOf = (p, i) => clocked ? qStart(p.q) + periodLen(g, p.q) - gcIn(g, p.e, p.q) : (() => { const inQ = sp.filter(x => x.q === p.q), j = inQ.indexOf(p); return qStart(p.q) + (j + 1) / (inQ.length + 1); })();
-    sec("Game flow", `${ab("us")} ahead above the line, ${ab("them")} below${clocked ? "" : " · spaced by play, no game clock"}`, 230);
-    const cx0 = L + 22, cw = RT - cx0, ch = 150, top = y + 10, mid = top + ch / 2;
+    const ch = tight >= 2 ? 80 : tight ? 110 : 150;
+    sec("Game flow", `${ab("us")} ahead above the line, ${ab("them")} below${clocked ? "" : " · spaced by play, no game clock"}`, ch + 80);
+    const cx0 = L + 22, cw = RT - cx0, top = y + 10, mid = top + ch / 2;
     const pts = sp.map((p, i) => ({t:tOf(p, i), d:p.sc.us - p.sc.them})), mx = Math.max(5, Math.ceil(Math.max(0, ...pts.map(p => Math.abs(p.d))) / 5) * 5);
     const X = t => cx0 + cw * t / (tEnd || 1), Yd = d => mid - (ch / 2) * d / mx;
     if(!bw) D.fill(cx0, top, cw, ch, "#FAFAF8");
@@ -6040,7 +6067,8 @@ function gbPdf(g, o, logo, art){
     y = top + ch + 16;
     const bl = bigLeads(R), runs = runsOf(R), fl = flowOf(R), x = extrasOf(g, R);
     y += 6; D.text(L, y, [`Lead changes: ${fl.lc}`, `Ties: ${fl.ties}`].concat(["us", "them"].map(tm => bl[tm] ? `${ab(tm)} biggest lead: ${bl[tm].n} (${perLabel(g, bl[tm].q)}, ${bl[tm].sc[ha.away]}-${bl[tm].sc[ha.home]})` : "")).filter(Boolean).join("   ·   "), {sz:8.5, b:true, fit:RT - L});
-    if(runs.length){ y += 6; table(L, [{h:"SCORING RUNS (8-0 OR MORE)", w:200, al:"l"}, {h:"RUN", w:60}, {h:"WHEN", w:90}, {h:`SCORE (${ab(ha.away)}-${ab(ha.home)})`, w:190}],
+    if(runs.length && tight >= 2) note("Runs of 8-0 or more: " + runs.map(rn => `${ab(rn.tm)} ${rn.n}-0 (${perLabel(g, rn.q1)})`).join(", ") + ".");
+    else if(runs.length){ y += 6; table(L, [{h:"SCORING RUNS (8-0 OR MORE)", w:200, al:"l"}, {h:"RUN", w:60}, {h:"WHEN", w:90}, {h:`SCORE (${ab(ha.away)}-${ab(ha.home)})`, w:190}],
       runs.map(rn => [full(rn.tm), `${rn.n}-0`, rn.q1 === rn.q2 ? perLabel(g, rn.q1) : perLabel(g, rn.q1) + " to " + perLabel(g, rn.q2), `${rn.from[ha.away]}-${rn.from[ha.home]} to ${rn.to[ha.away]}-${rn.to[ha.home]}`])); }
     else note("No 8-0 runs." + (x.br.us || x.br.them ? ` Best runs: ${ab("us")} ${x.br.us || 0}-0, ${ab("them")} ${x.br.them || 0}-0.` : ""));
   }
@@ -6073,11 +6101,18 @@ function gbPdf(g, o, logo, art){
   }
 
   // Every page: what it is, when it was made, page n of N.
-  const made = new Date().toLocaleString([], {month:"short", day:"numeric", hour:"numeric", minute:"2-digit"});
-  D.each((i, n) => { D.text(L, 772, `Brier Stats · Game Book · ${short} · made ${made}`, {sz:6.8, g:.45, fit:440}); D.text(RT, 772, `Page ${i + 1} of ${n}`, {sz:6.8, g:.45, al:"r"}); });
+  const made = new Date().toLocaleString([], {month:"short", day:"numeric", hour:"numeric", minute:"2-digit"}); let pages = 0;
+  D.each((i, n) => { pages = n; D.text(L, 772, `Brier Stats · Game Book · ${short} · made ${made}`, {sz:6.8, g:.45, fit:440}); D.text(RT, 772, `Page ${i + 1} of ${n}`, {sz:6.8, g:.45, al:"r"}); });
   const parts = GB_PARTS.filter(([k]) => any(k)).length, kind = parts === GB_PARTS.length ? "game book" : "stats";
   const name = `${g.date} ${school(ha.away)} at ${school(ha.home)} ${kind}${bw ? " (BW)" : ""}${fin ? "" : " (" + stage + ")"}.pdf`.replace(/[\\/:*?"<>|]+/g, "-");
-  return {bytes:D.bytes(), name, title};
+  return {bytes:D.bytes(), name, title, pages};
+}
+// Before the final, a max2 print (Basic B/W) tightens step by step until it's two pages (Kevin: the halftime box score).
+function gbFit(g, o, logo, art){
+  let p = gbPdf(g, o, logo, art);
+  if(!o.max2 || g.status === "final") return p;
+  for(let t = 1; t <= 4 && p.pages > 2; t++) p = gbPdf(g, o, logo, art, t);
+  return p;
 }
 // The Game Book's color pictures, drawn the way the app's shot chart draws them: each team's lane in its main color with our
 // bobcat or their logo, see-through (LANE_A) on the court's floor color (the letters stay off: a plain lane where there's no logo), and their logo tile.
@@ -6101,7 +6136,7 @@ function gbArt(g){
 async function gbMake(g, o){
   if(!GB_PARTS.some(([k]) => o.p[k] && (o.p[k].us || o.p[k].them))){ toast("Pick at least one thing to print."); return; }
   toast("Making the PDF…", 8000);
-  const logo = await gbLogo(o.bw ? "#FFFFFF" : "#094A28", o.bw), art = o.bw ? null : await gbArt(g), p = gbPdf(g, o, logo, art);
+  const logo = await gbLogo(o.bw ? "#FFFFFF" : "#094A28", o.bw), art = o.bw ? null : await gbArt(g), p = gbFit(g, o, logo, art);
   toast("PDF ready.", 1500);
   await shareFile(p.name, new Blob([p.bytes], {type:"application/pdf"}), p.title);
 }
@@ -6114,7 +6149,7 @@ function gbHtml(){
   const colOn = tm => GB_PARTS.some(([k, , two]) => (two || tm === "us") && o.p[k][tm]);
   return `<h3>Print stats</h3><p class="small" style="margin:0 0 10px">${esc(usName(g))} ${gameTitle(g)}. One PDF: print it, mail it or save it from the share sheet.</p>
     <div class="gbq"><button class="btn primary" data-act="gbgo" data-k="all"><b>Game Book</b><span>Everything from the night, both teams, in color</span></button>
-      <button class="btn" data-act="gbgo" data-k="bw"><b>Basic black &amp; white</b><span>Box scores, team stats and one shot chart per team</span></button></div>
+      <button class="btn" data-act="gbgo" data-k="bw"><b>Basic black &amp; white</b><span>Box scores, team stats, a shot chart per team and the game flow. Two pages at most before the final</span></button></div>
     <div class="kicker" style="margin:14px 0 6px">Or pick your own</div>
     <table class="gbt"><thead><tr><th></th><th><button class="btn sm" data-act="gbc" data-tm="us" aria-pressed="${colOn("us")}">Greenbrier</button></th><th><button class="btn sm" data-act="gbc" data-tm="them" aria-pressed="${colOn("them")}">${esc(String(g.opp || "Opponent").slice(0, 18))}</button></th></tr></thead><tbody>
     ${GB_PARTS.map(([k, l, two]) => `<tr><td>${esc(l)}</td><td>${sw(k, "us")}</td><td>${two ? sw(k, "them") : `<span class="small">both teams</span>`}</td></tr>`).join("")}</tbody></table>
@@ -6342,6 +6377,7 @@ document.addEventListener("click", async ev => {
     case "pubpl": pubPlayerSheet(a.dataset.tm, a.dataset.i); break;
     case "pubstats": PS.view = a.dataset.v ? "stats" : ""; if(a.dataset.v) ui.pubStT = a.dataset.v; render(); window.scrollTo(0, 0); break;
     case "pubstt": ui.pubStT = a.dataset.v; render(); break;
+    case "pubbx": ui.pubBx = a.dataset.v === "sh" ? "sh" : ""; render(); break;
     case "pubsort": ui.pubStK = /^\d+$/.test(a.dataset.v) ? +a.dataset.v : a.dataset.v; render(); break;
     case "pubsched": { const d = document.getElementById("schedule"); if(d){ d.open = true; d.scrollIntoView({behavior:"smooth", block:"start"}); } break; }
     // The plain fan link (it opens on whatever's on now), with which game this is in the message.
@@ -7604,18 +7640,20 @@ function flowSvg(g, sn){
   let line = `M0 ${mid}`; fw.forEach((f, i) => { line += ` H${X(xs[i])} V${Y(d[i])}`; }); line += ` H${X(endT)}`;
   const area = line + ` V${mid} Z`, us = teamInk(g, "us"), th = teamInk(g, "them"), ab = (g.oi && g.oi.abbr) || oppInfo(g.opp, g).abbr;
   const grid = []; for(let q = 1; q <= nq; q++){ const x = X(st(q) + len(q) / 2); if(q > 1) grid.push(`<line x1="${X(st(q))}" y1="0" x2="${X(st(q))}" y2="${H}" class="fq"/>`); grid.push(`<text x="${x}" y="${H - 3}" text-anchor="middle" class="fl">${esc(perLabel(g, q))}</text>`); }
-  const mark = (i, tm) => i < 0 || !d[i] ? "" : `<circle cx="${X(xs[i])}" cy="${Y(d[i])}" r="4.5" fill="${(tm === "us" ? us : th).fill}" stroke="#fff" stroke-width="1.5"/><text x="${Math.min(W - 18, Math.max(18, +X(xs[i])))}" y="${+Y(d[i]) + (tm === "us" ? -8 : 16)}" text-anchor="middle" class="fv">${tm === "us" ? "GHS" : esc(ab)} +${Math.abs(d[i])}</text>`;
+  const mark = (i, tm) => i < 0 || !d[i] ? "" : `<circle cx="${X(xs[i])}" cy="${Y(d[i])}" r="4.5" fill="${(tm === "us" ? us : th).fill}" stroke="#fff" stroke-width="1.5"/><text x="${Math.min(W - 18, Math.max(18, +X(xs[i])))}" y="${Math.min(H - 16, Math.max(11, +Y(d[i]) + (tm === "us" ? -8 : 16)))}" text-anchor="middle" class="fv">${tm === "us" ? "GHS" : esc(ab)} +${Math.abs(d[i])}</text>`;
   const hi = d.indexOf(Math.max(...d)), lo = d.indexOf(Math.min(...d));
   return `<svg class="flow" viewBox="0 0 ${W} ${H}" role="img" aria-label="Game flow: Greenbrier's lead over the game"><defs><clipPath id="fwu"><rect x="0" y="0" width="${W}" height="${mid}"/></clipPath><clipPath id="fwt"><rect x="0" y="${mid}" width="${W}" height="${mid}"/></clipPath></defs>
     ${grid.join("")}<path d="${area}" fill="${us.fill}" fill-opacity=".35" clip-path="url(#fwu)"/><path d="${area}" fill="${th.fill}" fill-opacity=".35" clip-path="url(#fwt)"/>
     <line x1="0" y1="${mid}" x2="${W}" y2="${mid}" class="fz"/><path d="${line}" fill="none" class="fln"/>${d[hi] > 0 ? mark(hi, "us") : ""}${d[lo] < 0 ? mark(lo, "them") : ""}
     <text x="4" y="12" class="fl">GHS ahead</text><text x="4" y="${H - 16}" class="fl">${esc(ab)} ahead</text></svg>`;
 }
-function flowCard(g, R, sn){
+function flowCard(g, R, sn, id = "pubflow"){
   const s = flowSvg(g, sn); if(!s) return "";
   const fl = sn.fl || {}, run = fl.run && fl.run.a >= 6 ? `${tmName(g, fl.run.tm)} on a ${fl.run.a}-${fl.run.b} run` : "";
-  return `<div class="card" id="pubflow"><h3 style="font-size:22px;margin-bottom:4px">Game flow</h3>${s}<p class="small" style="margin:4px 0 0">${fl.lc || 0} lead change${fl.lc === 1 ? "" : "s"} · tied ${fl.ties || 0} time${fl.ties === 1 ? "" : "s"}${run ? " · <b>" + esc(run) + "</b>" : ""}</p></div>`;
+  return `<div class="card flowcard"${id ? ` id="${id}"` : ""}><h3 style="font-size:22px;margin-bottom:4px">Game flow</h3>${s}<p class="small" style="margin:4px 0 0">${fl.lc || 0} lead change${fl.lc === 1 ? "" : "s"} · tied ${fl.ties || 0} time${fl.ties === 1 ? "" : "s"}${run ? " · <b>" + esc(run) + "</b>" : ""}</p></div>`;
 }
+// The flow card on the staff pages (PA, Broadcast, Box score), from the book itself instead of the fan page's snapshot.
+function flowHere(g, R){ return flowCard(g, R, {fw:flowPts(g, R), ql:[periodLen(g, 1), periodLen(g, (g.quarters || 4) + 1)], q:R.q, status:g.status, fl:flowOf(R)}, ""); }
 // A shot's line for the chart's hover and the player card.
 function shotWords(g, s){ const p = s.e.pid ? player(g, s.e.tm, s.e.pid) : null, who = p ? "#" + p.num + (p.name ? " " + p.name : "") : tmName(g, s.e.tm);
   return `${who}: ${s.e.m ? "made" : "missed"} ${s.e.p === 3 ? "3" : "2"}${shotFar(s.e)}, ${perLabel(g, s.q)}`; }
@@ -7760,7 +7798,8 @@ function viewPublic(){
     // At the final the strip under the board names each team's top scorer instead of the last horn.
     const tops = fin ? [sides(g).left, sides(g).right].map(tm => { const ls = Object.entries(R.box[tm]), m = Math.max(0, ...ls.map(([, l]) => l.pts));
       return m ? ls.filter(([, l]) => l.pts === m).map(([pid]) => player(g, tm, pid)).filter(Boolean).slice(0, 2).map(p => `${faceNm(p, `<b>${esc(p.name ? pShort(p) : "#" + p.num)}</b>`, tm === "us")} ${m}`).join(", ") : ""; }).filter(Boolean) : [];
-    const last = sn.plays[sn.plays.length - 1];
+    const last = sn.plays[sn.plays.length - 1], fbSh = ui.pubBx === "sh" ? " sh" : "";
+    const fbTog = `<div class="fbtog"><button class="btn sm" aria-pressed="${!fbSh}" data-act="pubbx" data-v="">Stats</button><button class="btn sm" aria-pressed="${!!fbSh}" data-act="pubbx" data-v="sh">Shooting</button></div>`;
     h += `<div class="ann stack" style="margin-top:8px"><div><div class="bugcap"><span>${esc(fmtDate(g.date))}${g.event ? " · " + esc(g.event) : ""}${g.district ? " · District" : ""}</span>${ov.tag === "unofficial" ? `<span class="tag solid" title="The gym scoreboard's feed is down: this is the stat keeper's score">Unofficial score</span>` : review ? `<span class="tag">Final · stats under review</span>` : ""}</div>
       ${old ? `<div class="flag" style="margin:0 0 6px"><b>Last update ${esc(agoWords(sn.upd + PS.delay * 1000))}.</b> Waiting on the scorer: the table may have lost signal.</div>` : ""}
       <div class="pubboard" style="--n:${Math.max(usName(g).length, String(g.opp).length)}">${bug(g, Rb, {big:true, quiet:faded && ov.tag !== "board", name:tm => tm === "us" ? usName(g) : g.opp, sub:tm => tm === "us" ? "Greenbrier" : oppNick(g), meta:fin ? null : meta, per:fin ? "FINAL" : ov.per || nowLabel(g, R).replace(/^END (REG|OT\d*)$/, () => perLabel(g, R.q) + " NEXT")})}</div>
@@ -7772,7 +7811,7 @@ function viewPublic(){
       <div class="lead">${leadCard(g, R, "pts", "Points")}${leadCard(g, R, "reb", "Rebounds")}${leadCard(g, R, "ast", "Assists")}${leadCard(g, R, "stl", "Steals")}</div>
       ${sn.fl ? teamGlance(g, R, sn) : ""}
       <div class="row only-narrow"><button class="btn sm" aria-pressed="${ui.pubTm !== "away"}" data-act="pubtm" data-v="home">${esc(tmName(g, ha.home))}</button><button class="btn sm" aria-pressed="${ui.pubTm === "away"}" data-act="pubtm" data-v="away">${esc(tmName(g, ha.away))}</button></div>
-      <div class="ann-cols" id="pubbox"><div class="card fanbox${ui.pubTm === "away" ? " hide-narrow" : ""}">${boxTable(g, R, ha.home, true)}</div><div class="card fanbox${ui.pubTm !== "away" ? " hide-narrow" : ""}">${boxTable(g, R, ha.away, true)}</div></div>${!fin && (R.court.us.size || R.court.them.size) ? `<p class="small" style="margin:-6px 0 0"><i class="onfl"></i>On the floor now</p>` : ""}
+      <div class="ann-cols" id="pubbox"><div class="card fanbox${fbSh}${ui.pubTm === "away" ? " hide-narrow" : ""}">${fbTog}${boxTable(g, R, ha.home, true)}</div><div class="card fanbox${fbSh}${ui.pubTm !== "away" ? " hide-narrow" : ""}">${fbTog}${boxTable(g, R, ha.away, true)}</div></div>${!fin && (R.court.us.size || R.court.them.size) ? `<p class="small" style="margin:-6px 0 0"><i class="onfl"></i>On the floor now</p>` : ""}
       ${pubShots(g, R)}
       <div class="card" id="pubplays"><h3 style="font-size:22px;margin-bottom:4px">${sn.more ? "Last " + sn.plays.length + " plays" : "Play-by-play"}</h3>${sn.plays.length ? `<ul class="plays">${sn.plays.slice().reverse().map(p => `<li class="${p[4] ? "score" : ""}" style="${p[5] === "them" ? tvars(g, "them") : ""}"><span class="pq">${esc(perLabel(g, p[0]))}${p[7] ? `<span class="gcl">${esc(p[7])}</span>` : ""}${p[6] ? `<small>${esc(new Date(p[6]).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}))}</small>` : ""}</span><span class="ps">${ha.home === "us" ? p[1] + "-" + p[2] : p[2] + "-" + p[1]}</span><span class="pt">${p[5] ? `<span class="ptm">${esc(p[5] === "us" ? "GHS" : (g.oi && g.oi.abbr) || oppInfo(g.opp, g).abbr)}</span> ` : ""}${p[5] === "us" ? face(player(g, "us", "us" + p[8]), "", true) : ""}${p[4] ? "<b>" + esc(unent(p[3])) + "</b>" : esc(unent(p[3]))}</span></li>`).join("")}</ul>` : `<p class="small">Plays show up here once the game starts.</p>`}</div>
       ${sn.sponsor ? `<div class="card" style="text-align:center"><div class="kicker">Tonight's game is brought to you by</div><h2 style="margin-top:4px">${esc(sn.sponsor)}</h2></div>` : ""}
