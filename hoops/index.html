@@ -5,7 +5,7 @@
 <!-- The page's lock: the only script that may run is the one in this file (named by the SHA-256 of its text) and files
      from this folder (fb.js). Text that turns up in the page from a roster, a game or the cloud can never run as code.
      After ANY edit to the script, run "python3 hoops/stamp.py hoops": with a stale hash the browser runs nothing. -->
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-/15WPPXdGpSG30pCUyBH78RIIn1J2Z2drF8rIkXiXBA='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-2V7IjibBjUw/fgzm3HB1x+J6zWOW3riXC6IfqSPR+D8='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#094A28">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -131,7 +131,11 @@ html.dz .sheet{max-height:calc(var(--wh) * .9)}
 }
 .tc-head{display:flex;align-items:center;gap:8px;margin-bottom:6px}
 .tc-head img{width:34px;height:33px}
-.tc-head .init,.orow .init{width:34px;height:34px;flex:none;border:2px solid var(--ta,var(--grey));border-radius:4px;background:var(--tf,var(--white));color:var(--ti,var(--black));display:grid;place-items:center;font-family:var(--f-display);font-weight:900;font-size:16px;letter-spacing:.02em}
+.tc-head .init,.orow .init,.lgrow .init{width:34px;height:34px;flex:none;border:2px solid var(--ta,var(--grey));border-radius:4px;background:var(--tf,var(--white));color:var(--ti,var(--black));display:grid;place-items:center;font-family:var(--f-display);font-weight:900;font-size:16px;letter-spacing:.02em}
+.lgo{display:block;width:34px;height:34px;flex:none;box-sizing:border-box;padding:2px;border:2px solid var(--tf,var(--grey));border-radius:4px;background-color:#FFFFFF;background-position:center;background-size:contain;background-repeat:no-repeat;background-origin:content-box}
+.lgo.md{width:40px;height:40px}.lgo.xl,.lgrow .init.xl{width:64px;height:64px;font-size:22px}.lgo.none{border-style:dashed;background-color:transparent}
+.lgrow{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--grey)}.lgpic{border:0;background:none;padding:0;cursor:pointer}.lglist{margin-top:10px}
+.oplogo{display:flex;align-items:center;gap:10px}
 .tc-head h3{font-size:24px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--tl,var(--black))}
 .tc-head h3 small{font-size:.62em;font-weight:700;letter-spacing:.04em}
 button.tc-name{border:0;background:none;padding:0;text-align:left;cursor:pointer;text-transform:inherit;letter-spacing:inherit;font-weight:inherit}
@@ -811,7 +815,7 @@ td .face{width:24px;height:24px;margin:-5px 7px -4px 0}
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
 { const n = document.getElementById("nostart"); if(n) n.remove(); }   // the script is running: see #nostart
-const BS_VERSION = "0.19.1";
+const BS_VERSION = "0.20.0";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -1220,7 +1224,8 @@ window.addEventListener("resize", () => { cancelAnimationFrame(fitRaf); fitRaf =
 if(document.fonts){ document.fonts.ready.then(fitNames); document.fonts.addEventListener("loadingdone", fitNames); }
 // A name too long for a narrow column: the school's own abbreviation (the one on its badge and play chips; pass the game so
 // the fan page uses the one its copy carries), not just its first letters.
-function badge(g, tm){ return tm === "us" ? `<img src="bobcat-head.png" alt="">` : `<span class="init">${esc(oppInfo(g.opp, g).abbr.slice(0, 4))}</span>`; }
+// Our bobcat, or their logo (Logos, 0.20.0) or scoreboard letters.
+function badge(g, tm){ return tm === "us" ? `<img src="bobcat-head.png" alt="">` : oppTile(g.opp, oppInfo(g.opp, g).abbr.slice(0, 4)); }
 
 /* ---------- opponents and team colors ----------
    Greenbrier is always the brand green. The opponent plays in its own colors: the number tiles, make buttons, table chips
@@ -2059,6 +2064,7 @@ function fuPick(tm, pid){
 function courtSvg(shots, mode, g, tm, pick){
   const k = g && tm ? teamInk(g, tm) : null, ab = k && tm !== "us" ? oppInfo(g.opp, g).abbr.slice(0, 4) : "";
   const paint = !k ? "" : `<rect class="pt" x="190" y="0" width="120" height="190" fill="${k.fill}"/>` + (tm === "us" ? `<image href="bobcat-head.png" x="203" y="76" width="94" height="92"/>`
+    : Logos.sym(g.opp) ? `<circle cx="250" cy="122" r="50" fill="#FFFFFF" stroke="${k.alt || k.ink}" stroke-width="3"/><use href="#${Logos.sym(g.opp)}" x="211" y="83" width="78" height="78"/>`
     : `<text x="250" y="${ab.length > 3 ? 138 : 142}" text-anchor="middle" fill="${k.ink}" style="font-family:var(--f-display);font-weight:800;font-size:${ab.length > 3 ? 36 : ab.length > 2 ? 46 : 60}px">${esc(ab)}</text>`);
   const sel = new Set(pick && pick.sel || []), rings = [];
   let s = `<svg class="court${pick ? " pick" : ""}" viewBox="0 0 500 470" ${mode === "loc" ? 'data-court="loc"' : ""}${pick ? ` data-pick="${pick.key}"` : ""} role="img" aria-label="Half court">
@@ -3206,7 +3212,7 @@ function viewLib(){
   const col = team => { const os = [...(by[team] || [])].map(o => ({o, name:libName(team, o), n:libRoster(team, o).length, dup:libRoster(team, o, true).filter(e => !e.del).length})).sort((a, b) => a.name.localeCompare(b.name));
     const more = [...new Set(Object.values(S.games).filter(x => x.team === team && libOk(x)).map(x => okey(x.opp)))].filter(o => !os.some(x => x.o === o)).map(o => [o, libName(team, o)]).sort((a, b) => a[1].localeCompare(b[1]));
     return `<div><div class="kicker" style="margin:12px 0 0">${team === "girls" ? "Girls" : "Boys"} · ${os.length} saved</div><div class="olist">${os.map(x => { const i = oppInfo(x.name);
-      return `<button class="orow" data-act="libopen" data-team="${team}" data-opp="${esc(x.o)}" style="${varsOf(inkOf(i.c1, i.c2))}"><span class="init">${esc(i.abbr)}</span><span style="flex:1;min-width:0"><b>${esc(x.name)}</b><span class="small">${x.n} player${x.n === 1 ? "" : "s"}${x.dup > x.n ? " · two share a number" : ""}</span></span></button>`; }).join("") || `<p class="small" style="margin:0">None yet. They fill in as games are played.</p>`}</div>
+      return `<button class="orow" data-act="libopen" data-team="${team}" data-opp="${esc(x.o)}" style="${varsOf(inkOf(i.c1, i.c2))}">${oppTile(x.name, i.abbr)}<span style="flex:1;min-width:0"><b>${esc(x.name)}</b><span class="small">${x.n} player${x.n === 1 ? "" : "s"}${x.dup > x.n ? " · two share a number" : ""}</span></span></button>`; }).join("") || `<p class="small" style="margin:0">None yet. They fill in as games are played.</p>`}</div>
       ${more.length ? `<select data-libnew="${team}" style="margin-top:6px;width:auto;max-width:100%" aria-label="Start a saved ${team} roster for another opponent"><option value="">Start one for another opponent…</option>${more.map(([o, n]) => `<option value="${esc(o)}">${esc(n)}</option>`).join("")}</select>` : ""}</div>`; };
   return `<div class="card"><div class="kicker">Their players</div><h2>Saved rosters</h2>
     <p class="small" style="margin:6px 0 0">Each opponent's players and how to say their names. A new game against them starts with this list on the Scorer screen and in the PA's Prep. Fixes made during a game come back here; a player left off one night's list stays. Tap one to fix numbers, names and spellings, add or take off players, or paste a roster. Never on the fan page.</p>
@@ -3845,7 +3851,7 @@ function viewShots(){
       <div class="row"><select data-sel="shotTm" style="width:auto"><option value="all">Both teams</option><option value="us" ${ui.shotTm === "us" ? "selected" : ""}>${esc(usName(g))}</option><option value="them" ${ui.shotTm === "them" ? "selected" : ""}>${esc(g.opp)}</option></select>
       <select data-sel="shotPid" style="width:auto"><option value="">Everyone</option>${pl.map(p => `<option value="${p.pid}" ${ui.shotPid === p.pid ? "selected" : ""}>#${esc(p.num)} ${esc(p.name)}</option>`).join("")}</select>
       <select data-sel="shotQ" style="width:auto"><option value="">Every period</option>${Array.from({length:lq}, (_, i) => `<option value="${i + 1}" ${sq === i + 1 ? "selected" : ""}>${perLabel(g, i + 1)}</option>`).join("")}</select></div></div>
-    <div class="row" style="align-items:flex-start;margin-top:10px;gap:20px"><div style="flex:1;min-width:260px;max-width:560px">${courtSvg(shots, "", g, null, {key:"shotSel", sel:picked.map(s => s.k)})}${shotPanel(picked.map(s => shotInfo(g, R, s)), placed.length)}</div>
+    <div class="row" style="align-items:flex-start;margin-top:10px;gap:20px"><div style="flex:1;min-width:260px;max-width:560px">${courtSvg(shots, "", g, ui.shotTm === "us" || ui.shotTm === "them" ? ui.shotTm : null, {key:"shotSel", sel:picked.map(s => s.k)})}${shotPanel(picked.map(s => shotInfo(g, R, s)), placed.length)}</div>
     <table style="max-width:340px"><tr><th class="l">Made/Att</th>${cols.map(tm => `<th class="tn" style="${tvars(g, tm)}"><span style="color:var(--tl,var(--green))">${esc(tmName(g, tm))}</span></th>`).join("")}</tr><tr><td>Paint</td>${zone(inPaint)}</tr><tr><td>Mid-range</td>${zone(e => !inPaint(e) && !isThree(e.x, e.y))}</tr><tr><td>Three</td>${zone(e => isThree(e.x, e.y))}</tr>
     <tr class="tot"><td>Charted</td>${cols.map(tm => `<td>${placed.filter(s => s.e.tm === tm).length} of ${shots.filter(s => s.e.tm === tm).length}</td>`).join("")}</tr></table></div>
     ${shotsByPlayer(g, pool, cols)}
@@ -3877,6 +3883,7 @@ function viewGames(){
   return `<div class="stack"><div class="row between"><div><div class="kicker">${SEASON}</div><h2>Game records</h2></div>
     <div class="row"><select data-sel="gfilter" style="width:auto"><option value="all">Boys &amp; girls</option><option value="boys" ${ui.gfilter === "boys" ? "selected" : ""}>Boys</option><option value="girls" ${ui.gfilter === "girls" ? "selected" : ""}>Girls</option></select>
     ${canCoach() ? `<button class="btn primary" data-act="newgame">+ New game</button>` : ""}${S.games.practice ? `<button class="btn" data-act="open" data-gid="practice">Practice game</button>` : ""}</div></div>
+    ${canCoach() && Sync.live() && logoMissing().length ? (m => `<div class="flag"><span><b>No logo yet for ${esc(m.slice(0, 4).join(", "))}${m.length > 4 ? ` and ${m.length - 4} more` : ""}.</b> ${m.length === 1 ? "That game is" : "Those games are"} coming up: add ${m.length === 1 ? "its logo" : "their logos"} so ${m.length === 1 ? "it shows" : "they show"} on the Scorer screen, the shot charts and the fan page.</span><button class="btn sm" data-act="logos" data-opp="${m.length === 1 ? esc(m[0]) : ""}">Add ${m.length === 1 ? "logo" : "logos"}</button></div>`)(logoMissing()) : ""}
     ${tn.length ? `<div class="tonight"><div class="kicker">Tonight</div><div class="glist">${tn.map(g => row(g, true)).join("")}</div></div><div class="kicker">The season</div>` : ""}<div class="glist">${rows.join("") || `<p>No games yet.</p>`}</div></div>`;
 }
 
@@ -5035,10 +5042,10 @@ function oppNames(){
 }
 function viewOpps(){
   const edit = canCoach();
-  return `<div class="card"><div class="row between"><div><div class="kicker">Who we play</div><h2>Opponents</h2></div>${edit ? `<button class="btn sm" data-act="oppedit" data-opp="">+ Opponent</button>` : ""}</div>
-    <p class="small" style="margin:6px 0 0">Each opponent shows up in its own colors on the Scorer screen, the announcer and public pages and the shot chart.${edit ? " Tap one to change its colors, mascot or scoreboard letters." : ""}</p>
+  return `<div class="card"><div class="row between"><div><div class="kicker">Who we play</div><h2>Opponents</h2></div>${edit ? `<div class="row"><button class="btn sm" data-act="logos" data-opp="">Logos · ${oppNames().filter(n => Logos.has(n)).length} of ${oppNames().length}</button><button class="btn sm" data-act="oppedit" data-opp="">+ Opponent</button></div>` : ""}</div>
+    <p class="small" style="margin:6px 0 0">Each opponent shows up in its own colors and logo on the Scorer screen, the announcer and public pages and the shot chart.${edit ? " Tap one to change its colors, logo, mascot or scoreboard letters." : ""}</p>
     <div class="olist">${oppNames().map(n => { const o = oppInfo(n), k = inkOf(o.c1, o.c2);
-      return `<button class="orow" data-act="oppedit" data-opp="${esc(n)}" style="${varsOf(k)}" ${edit ? "" : "disabled"}><span class="init">${esc(o.abbr)}</span><span style="flex:1;min-width:0"><b>${esc(n)}</b><span class="small">${esc([o.mascot, o.girls].filter(Boolean).join(" · ") || "No mascot yet")}</span></span><i class="sw" style="background:${hexOk(o.c1) ? o.c1 : "#FFFFFF"}"></i><i class="sw" style="background:${hexOk(o.c2) ? o.c2 : "#FFFFFF"}"></i></button>`; }).join("")}</div></div>`;
+      return `<button class="orow" data-act="oppedit" data-opp="${esc(n)}" style="${varsOf(k)}" ${edit ? "" : "disabled"}>${oppTile(n, o.abbr)}<span style="flex:1;min-width:0"><b>${esc(n)}</b><span class="small">${esc([o.mascot, o.girls].filter(Boolean).join(" · ") || "No mascot yet")}${Logos.ready() && !Logos.has(n) ? " · no logo" : ""}</span></span><i class="sw" style="background:${hexOk(o.c1) ? o.c1 : "#FFFFFF"}"></i><i class="sw" style="background:${hexOk(o.c2) ? o.c2 : "#FFFFFF"}"></i></button>`; }).join("")}</div></div>`;
 }
 
 /* ---------- setup ---------- */
@@ -5424,6 +5431,206 @@ const Faces = (() => {
     set:o => { st.heard = true; const ch = apply(o); return ch; }};
 })();
 
+/* ---------- opponents' logos (0.20.0, Kevin) ----------
+   A school's logo goes wherever our bobcat does: the badge beside its name, the lane of its shot charts (its main color,
+   the logo on a white disc), the Game Book, the Opponents list, the fan page. One picture per school, saved once and used
+   every season: hoopsBook/logos {v, l:{school key:{d, at}}, upd} for everyone let in, and hoopsPublic/_logos {v, l:{key:d}}
+   for the fan page while it's on. Each is a PNG (see-through kept), trimmed to the logo and 128 px on its long side. */
+const LOGO_PX = 128, LOGO_MAX = 48000, LOGO_DOC = 900000;
+const logoKeyOk = k => typeof k === "string" && k.length > 0 && k.length <= 60 && !/^__.*__$/.test(k);
+function logoOk(s){
+  if(typeof s !== "string" || s.length < 100 || s.length > LOGO_MAX || !/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/.test(s)) return false;
+  try{ const b = atob(s.slice(22, 66)), at = i => b.charCodeAt(i), u32 = i => ((at(i) << 24) | (at(i + 1) << 16) | (at(i + 2) << 8) | at(i + 3)) >>> 0;
+    if(b.slice(0, 8) !== "\x89PNG\r\n\x1a\n" || b.slice(12, 16) !== "IHDR") return false;
+    const w = u32(16), h = u32(20); return w >= 8 && h >= 8 && w <= 256 && h <= 256; }catch(e){ return false; }
+}
+// A logo file's school: its name holds the school (white-house-logo.png, WatertownTigers.jpg), else its scoreboard letters
+// as a word (WH.png), else its mascot. Two schools that fit equally: none, so Coach picks.
+function logoMatch(fname){
+  const f = String(fname).replace(/\.[a-z0-9]+$/i, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim(), flat = f.replace(/ /g, ""), toks = f.split(" ");
+  let best = "", bl = 0, tie = false;
+  for(const n of oppNames()){ const o = oppInfo(n), nm = okey(n).replace(/[^a-z0-9]/g, ""), ab = o.abbr.toLowerCase(), ms = String(o.mascot || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const l = nm.length >= 3 && flat.includes(nm) ? 10 + nm.length : ab.length >= 2 && toks.includes(ab) ? 3 : ms.length >= 4 && flat.includes(ms) ? 2 : 0;
+    if(l > bl){ bl = l; best = n; tie = false; } else if(l && l === bl) tie = true; }
+  return tie ? "" : best;
+}
+// The schools on the schedule in the next three weeks (not played yet) with no logo, soonest first.
+function logoMissing(){
+  if(!Logos.ready()) return [];
+  const t0 = pubToday(), t1 = pubToday(21), seen = new Set(), out = [];
+  Object.values(S.games).filter(g => !g.deleted && !g.practice && g.opp && g.date >= t0 && g.date <= t1 && g.status !== "final" && !g.off)
+    .sort((a, b) => (a.date + (a.time || "")).localeCompare(b.date + (b.time || "")))
+    .forEach(g => { const k = okey(g.opp); if(!seen.has(k) && !Logos.has(g.opp)){ seen.add(k); out.push(g.opp); } });
+  return out;
+}
+// Their badge, a tile: the logo on white, or the scoreboard letters when there's none.
+function oppTile(name, abbr, cls){ const c = Logos.cls(name); return c ? `<i class="lgo ${c}${cls ? " " + cls : ""}" role="img" aria-label="${esc(name)}"></i>` : `<span class="init${cls ? " " + cls : ""}">${esc(abbr)}</span>`; }
+const Logos = (() => {
+  const st = {map:new Map(), idx:new Map(), n:0, el:null, spr:null, sig:"", heard:false, dbp:null, pubT:null, pubBusy:false, pubAgain:false, pubSig:null, loadAt:0, loadBusy:false};
+  const hash = s => { let h = 2166136261; for(let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619); return (h >>> 0).toString(36) + "." + s.length; };
+  const sigOf = o => Object.keys(o).sort().map(k => k + ":" + hash(o[k])).join("|");
+  // Checked logos only, by school key. A key keeps one class name for as long as the page is open. The shot charts draw a
+  // logo from one copy of it (an SVG symbol), not one per chart.
+  function apply(o){
+    const m = new Map();
+    for(const k of Object.keys(o || {}).sort()){ if(m.size >= 120) break; if(logoKeyOk(k) && logoOk(o[k])) m.set(k, o[k]); }
+    const sig = sigOf(Object.fromEntries(m)); if(sig === st.sig) return false;
+    st.sig = sig; st.map = m;
+    for(const k of m.keys()) if(!st.idx.has(k)) st.idx.set(k, ++st.n);
+    if(!st.el){ st.el = document.createElement("style"); st.el.id = "logos-css"; document.head.appendChild(st.el); }
+    st.el.textContent = [...m].map(([k, d]) => `.lg${st.idx.get(k)}{background-image:url("${d}")}`).join("\n");
+    if(!st.spr){ st.spr = document.createElementNS("http://www.w3.org/2000/svg", "svg"); st.spr.id = "logos-svg"; st.spr.setAttribute("aria-hidden", "true");
+      st.spr.setAttribute("width", "0"); st.spr.setAttribute("height", "0"); st.spr.style.position = "absolute"; st.spr.style.overflow = "hidden"; document.body.appendChild(st.spr); }
+    st.spr.innerHTML = [...m].map(([k, d]) => `<symbol id="lgs${st.idx.get(k)}" viewBox="0 0 100 100"><image href="${d}" width="100" height="100" preserveAspectRatio="xMidYMid meet"/></symbol>`).join("");
+    document.querySelectorAll("[data-lgk]").forEach(el => { const c = cls(el.dataset.lgk); el.className = "lgo xl " + (c || "none"); });
+    return true;
+  }
+  const keyOf = name => okey(name);
+  const has = name => st.map.has(keyOf(name));
+  const cls = name => has(name) ? "lg" + st.idx.get(keyOf(name)) : "";
+  const sym = name => has(name) ? "lgs" + st.idx.get(keyOf(name)) : "";
+  const data = name => st.map.get(keyOf(name)) || "";
+  // This device's copy (the same IndexedDB store the photos use). None: the logos come from the cloud each time.
+  function idb(){ return st.dbp || (st.dbp = new Promise((res, rej) => { const q = indexedDB.open("brierstats", 1); q.onupgradeneeded = () => q.result.createObjectStore("kv"); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); })); }
+  function kv(mode, f){ return Promise.resolve().then(idb).then(db => new Promise((res, rej) => { const tx = db.transaction("kv", mode), r = f(tx.objectStore("kv")); tx.oncomplete = () => res(r && r.result); tx.onerror = tx.onabort = () => rej(tx.error); })).catch(() => undefined); }
+  function boot(){ kv("readonly", s => s.get("logos")).then(o => { if(o && typeof o === "object" && !st.heard && apply(o)) softRender(); }); }
+  // The cloud's copy (Sync's listener on hoopsBook/logos).
+  function heard(snap){
+    if(!snap.exists() && snap.metadata && snap.metadata.fromCache) return;
+    const l = snap.exists() ? snap.data().l : null, o = {};
+    if(l && typeof l === "object") for(const k of Object.keys(l)){ const x = l[k]; if(x && typeof x === "object" && typeof x.d === "string" && x.d) o[k] = x.d; }
+    const first = !st.heard; st.heard = true;
+    if(apply(o)){ kv("readwrite", s => s.put(Object.fromEntries(st.map), "logos")); softRender(); if(ui.sheet && ui.sheet.logos) renderSheet(); }
+    else if(first) softRender();   // "no logo yet" reminders wait for the cloud's answer
+    pubSoon();
+  }
+  // {school key: data URL, or "" to take one off}. Coaches and Admins, with the cloud in reach.
+  async function put(ch){
+    const c = Sync.cloud(); if(!c || !canCoach()) throw new Error("off");
+    const now = Date.now(), l = {}; for(const k of Object.keys(ch)) l[k] = {d:ch[k], at:now};
+    await c.fb.setDoc(c.fb.doc(c.db, "hoopsBook", "logos"), {v:1, l, upd:now}, {merge:true});
+  }
+  const room = ch => { let n = 0; const all = {...Object.fromEntries(st.map), ...ch}; for(const k of Object.keys(all)) n += k.length + String(all[k]).length + 40; return n < LOGO_DOC; };
+  // The fan page's copy: every logo, nothing while the fan page is off. Put right by a Coach's or Admin's live device.
+  function pubWant(){ return S.settings.pub === false ? {} : Object.fromEntries(st.map); }
+  function pubSoon(ms){ if(PUB || OBS) return; clearTimeout(st.pubT); st.pubT = setTimeout(pubSync, ms == null ? 3000 : ms); }
+  async function pubSync(){
+    const c = Sync.cloud(); if(!c || !canCoach() || !st.heard) return;
+    if(st.pubBusy){ st.pubAgain = true; return; }
+    const want = pubWant(), sig = sigOf(want); if(sig === st.pubSig) return;
+    st.pubBusy = true;
+    try{
+      const ref = c.fb.doc(c.db, "hoopsPublic", "_logos"), d = await c.fb.getDoc(ref), has = d.exists() && d.data().l && typeof d.data().l === "object" ? d.data().l : null;
+      if(!Object.keys(want).length){ if(d.exists()) await c.fb.deleteDoc(ref); }
+      else if(!has || Object.values(has).some(v => typeof v !== "string") || sigOf(has) !== sig) await c.fb.setDoc(ref, {v:1, l:want, upd:Date.now()});
+      st.pubSig = sig;
+    }catch(e){}
+    finally{ st.pubBusy = false; if(st.pubAgain){ st.pubAgain = false; pubSoon(); } }
+  }
+  // The fan page and the score bug: one read, and not again for "every" ms.
+  async function pubLoad(fb, db, every){
+    if(st.loadBusy || (st.loadAt && Date.now() - st.loadAt < every)) return;
+    st.loadBusy = true; st.loadAt = Date.now();
+    try{ const d = await fb.getDoc(fb.doc(db, "hoopsPublic", "_logos")), l = d.exists() ? d.data().l : null, o = {};
+      if(l && typeof l === "object") for(const k of Object.keys(l)) if(typeof l[k] === "string") o[k] = l[k];
+      if(apply(o)) render(); }
+    catch(e){ st.loadAt = Date.now() - every + 60000; }
+    finally{ st.loadBusy = false; }
+  }
+
+  /* Reading a picture: drawn at 512 px at most, trimmed to what isn't see-through or white around the edges, then made
+     128 px on its long side in halving steps (smooth edges on Safari), see-through kept. */
+  const loadImg = file => new Promise((res, rej) => { const u = URL.createObjectURL(file), im = new Image(); im.onload = () => { URL.revokeObjectURL(u); res(im); }; im.onerror = () => { URL.revokeObjectURL(u); rej(new Error("not a picture")); }; im.src = u; });
+  function shrink(src, sx, sy, sw, sh, px){
+    const k = px / Math.max(sw, sh), tw = Math.max(8, Math.round(sw * k)), th = Math.max(8, Math.round(sh * k));
+    let cur = src, x = sx, y = sy, w = sw, h = sh;
+    while(w / tw > 2){ const nw = Math.max(tw, Math.round(w / 2)), nh = Math.max(th, Math.round(h / 2)), c = document.createElement("canvas"); c.width = nw; c.height = nh;
+      const q = c.getContext("2d"); q.imageSmoothingQuality = "high"; q.drawImage(cur, x, y, w, h, 0, 0, nw, nh); cur = c; x = 0; y = 0; w = nw; h = nh; }
+    const o = document.createElement("canvas"); o.width = tw; o.height = th; const q = o.getContext("2d"); q.imageSmoothingQuality = "high"; q.drawImage(cur, x, y, w, h, 0, 0, tw, th); return o;
+  }
+  async function read(file){
+    const im = await loadImg(file), w0 = im.naturalWidth, h0 = im.naturalHeight; if(!w0 || !h0) throw new Error("empty");
+    const k = Math.min(1, 512 / Math.max(w0, h0)), w = Math.max(1, Math.round(w0 * k)), h = Math.max(1, Math.round(h0 * k)), c = document.createElement("canvas"); c.width = w; c.height = h;
+    const q = c.getContext("2d"); q.imageSmoothingQuality = "high"; q.drawImage(im, 0, 0, w, h);
+    const p = q.getImageData(0, 0, w, h).data; let x0 = w, y0 = h, x1 = -1, y1 = -1;
+    for(let y = 0; y < h; y++) for(let x = 0; x < w; x++){ const i = (y * w + x) * 4; if(p[i + 3] > 24 && !(p[i] > 244 && p[i + 1] > 244 && p[i + 2] > 244)){ if(x < x0) x0 = x; if(x > x1) x1 = x; if(y < y0) y0 = y; if(y > y1) y1 = y; } }
+    if(x1 < 0){ x0 = 0; y0 = 0; x1 = w - 1; y1 = h - 1; }
+    const pad = Math.round(Math.max(x1 - x0, y1 - y0) * .03); x0 = Math.max(0, x0 - pad); y0 = Math.max(0, y0 - pad); x1 = Math.min(w - 1, x1 + pad); y1 = Math.min(h - 1, y1 + pad);
+    for(const px of [LOGO_PX, 104, 88, 72]){ const d = shrink(c, x0, y0, x1 - x0 + 1, y1 - y0 + 1, px).toDataURL("image/png"); if(logoOk(d)) return d; }
+    throw new Error("too busy");
+  }
+
+  /* The Logos card (Rosters › Opponents, Coaches and Admins): every school, its logo or the letters, and what's new.
+     s.items: {name (the file), out (the logo), opp ("" = no school found)}. */
+  function sheet(forOpp){ if(!canCoach()) return; openSheet({logos:true, wide:true, items:[], busy:"", html}); if(forOpp) pick(forOpp); }
+  function html(){
+    const s = ui.sheet, live = Sync.live(), miss = new Set(logoMissing().map(okey)), names = oppNames();
+    const it = n => s.items.findIndex(x => x.opp && okey(x.opp) === okey(n)), nNew = s.items.filter(x => x.opp).length, lost = s.items.map((x, i) => [x, i]).filter(([x]) => !x.opp);
+    const opts = names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join("");
+    const row = n => { const i = it(n), x = s.items[i], o = oppInfo(n), k = inkOf(o.c1, o.c2), on = has(n);
+      const tile = x ? `<i class="lgo xl" style="background-image:url('${x.out}')"></i>` : on ? `<i class="lgo xl ${cls(n)}"></i>` : `<span class="init xl">${esc(o.abbr)}</span>`;
+      const tag = x ? `<span class="tag green">New</span>` : on ? "" : miss.has(okey(n)) ? `<span class="tag solid">Coming up: no logo</span>` : `<span class="small">No logo</span>`;
+      return `<div class="lgrow" style="${varsOf(k)}"><button class="lgpic" data-act="logopick" data-opp="${esc(n)}" title="${on || x ? "Pick a new logo" : "Pick a logo"}" ${live && !s.busy ? "" : "disabled"}>${tile}</button>
+        <div style="flex:1;min-width:0"><b>${esc(n)}</b><div class="fmeta">${tag}</div></div>
+        <div class="row" style="gap:6px">${x ? `<button class="btn sm" data-act="logodrop" data-i="${i}">Skip</button>` : on ? `<button class="btn sm" data-act="logodel" data-opp="${esc(n)}" ${live ? "" : "disabled"}>Remove</button>` : `<button class="btn sm" data-act="logopick" data-opp="${esc(n)}" ${live && !s.busy ? "" : "disabled"}>Pick</button>`}</div></div>`; };
+    const sorted = names.slice().sort((a, b) => (miss.has(okey(b)) - miss.has(okey(a))) || a.localeCompare(b));
+    const save = nNew ? `<button class="btn primary" data-act="logosave" ${s.busy ? "disabled" : ""}>Save ${nNew} logo${nNew === 1 ? "" : "s"}</button>` : "";
+    return `<h3>Team logos</h3>
+      <p class="small" style="margin:8px 0">Each school's logo shows wherever our bobcat does: its badge on the Scorer, PA and broadcast screens, its shot charts (the lane in its main color), the Game Book and the fan page. Saved once, every device and every season gets it. Pick one file, or a whole folder at once: a file named for the school (Watertown.png, white-house-logo.jpg) finds its team by itself. A PNG with a see-through background looks best.</p>
+      ${live ? "" : `<div class="flag"><span>Logos are saved to the cloud so every device gets them. Turn on live sync and sign in (Setup) to add or remove one.</span></div>`}
+      <div class="row"><button class="btn${nNew ? "" : " primary"}" data-act="logopick" data-opp="" ${live && !s.busy ? "" : "disabled"}>Add logos</button><input type="file" id="logo-file" accept="image/*" multiple hidden>${save}${s.busy ? `<span class="small" role="status"><b>${esc(s.busy)}</b></span>` : ""}</div>
+      ${lost.length ? `<div class="flag" style="margin-top:10px;display:block"><b>No school found for ${lost.length === 1 ? "this one" : "these " + lost.length}.</b> Pick whose it is, or leave it out.
+        ${lost.map(([x, i]) => `<div class="flost"><i class="lgo md" style="background-image:url('${x.out}')"></i><span class="small">${esc(x.name)}</span><select data-logowho="${i}" aria-label="Whose logo is this"><option value="">Leave it out</option>${opts}</select></div>`).join("")}</div>` : ""}
+      <div class="lglist">${sorted.map(row).join("") || `<p class="small">No opponents yet. Add games or opponents first.</p>`}</div>
+      <div class="row" style="margin-top:12px">${save}<button class="btn" data-close>${nNew ? "Cancel" : "Close"}</button></div>`;
+  }
+  function pick(opp){ const s = ui.sheet; if(!s || !s.logos || !Sync.live() || s.busy) return; s.forOpp = opp || ""; const f = $("#logo-file"); if(f){ f.multiple = !s.forOpp; f.click(); } }
+  async function files(list, forOpp){
+    const s = ui.sheet; if(!s || !s.logos || !canCoach()) return;
+    const all = [...list].filter(f => /^image\//.test(f.type) || /\.(jpe?g|png|webp|gif|svg)$/i.test(f.name)); let bad = 0;
+    for(let i = 0; i < all.length; i++){
+      if(ui.sheet !== s) return;
+      s.busy = `Reading ${i + 1} of ${all.length}…`; renderSheet();
+      try{ const out = await read(all[i]), opp = forOpp || logoMatch(all[i].name);
+        if(opp) s.items = s.items.filter(x => !x.opp || okey(x.opp) !== okey(opp));   // a second file for the same school replaces the first
+        s.items.push({name:all[i].name, out, opp}); }
+      catch(e){ bad++; }
+    }
+    if(ui.sheet !== s) return;
+    s.busy = ""; renderSheet();
+    const got = s.items.filter(x => x.opp).length;
+    if(all.length) toast([got ? `${got} logo${got === 1 ? "" : "s"} matched. Look them over, then Save.` : "", s.items.length - got ? `${s.items.length - got} with no school found.` : "", bad ? `${bad} couldn't be read as a picture.` : ""].filter(Boolean).join(" "), 5000);
+  }
+  const within = (p, ms) => Promise.race([p.then(() => "ok"), new Promise(r => setTimeout(() => r("slow"), ms))]);
+  async function saveAll(){
+    const s = ui.sheet; if(!s || !s.logos || s.busy) return; const got = s.items.filter(x => x.opp); if(!got.length) return;
+    const ch = Object.fromEntries(got.map(x => [keyOf(x.opp), x.out]));
+    if(got.some(x => !logoOk(x.out)) || Object.keys(ch).some(k => !logoKeyOk(k))){ toast("One of these didn't come out as a logo. Skip it and try that picture again."); return; }
+    if(!room(ch)){ toast("That's more logos than fit. Remove a few for schools you don't play any more first."); return; }
+    s.busy = "Saving…"; renderSheet();
+    try{ const r = await within(put(ch), 20000);
+      if(ui.sheet === s){ s.busy = ""; s.items = s.items.filter(x => !x.opp); renderSheet(); }
+      render(); toast(r === "ok" ? `${got.length} logo${got.length === 1 ? "" : "s"} saved. Every device gets ${got.length === 1 ? "it" : "them"}.` : "No answer from the cloud yet (weak signal?). The logos go up as soon as it's back: keep Brier Stats open until they do.", 5000); }
+    catch(e){ if(ui.sheet === s){ s.busy = ""; renderSheet(); } toast(/permission/.test((e && e.code) || "") ? "The cloud wouldn't take the logos: only a Coach or an Admin adds them." : "The logos weren't saved (no signal?). Try again.", 5000); }
+  }
+  function act(k, a){
+    if(k === "logos"){ sheet(a.dataset.opp || ""); return; }
+    const s = ui.sheet && ui.sheet.logos ? ui.sheet : null; if(!s || !canCoach()) return;
+    if(k === "logopick") pick(a.dataset.opp || "");
+    else if(k === "logosave") saveAll();
+    else if(k === "logodrop"){ if(s.items[+a.dataset.i]){ s.items.splice(+a.dataset.i, 1); renderSheet(); } }
+    else if(k === "logodel"){ const n = a.dataset.opp || ""; if(!has(n) || !Sync.live() || !confirm(`Take ${n}'s logo off every page?`)) return;
+      within(put({[keyOf(n)]:""}), 20000).then(r => toast(r === "ok" ? "Logo removed." : "No answer from the cloud yet. It comes off as soon as there's signal: keep Brier Stats open.", 4000), () => toast("The logo wasn't removed (no signal?). Try again.", 4000)); }
+  }
+  document.addEventListener("change", ev => { const t = ev.target, s = ui.sheet && ui.sheet.logos ? ui.sheet : null; if(!s || !t) return;
+    if(t.id === "logo-file"){ const l = [...t.files]; t.value = ""; files(s.forOpp ? l.slice(0, 1) : l, s.forOpp); s.forOpp = ""; }
+    else if(t.dataset && t.dataset.logowho != null){ const x = s.items[+t.dataset.logowho]; if(!x || !t.value) return;
+      s.items = s.items.filter(y => y === x || !y.opp || okey(y.opp) !== okey(t.value)); x.opp = t.value; renderSheet(); } });
+  return {cls, sym, has, data, boot, heard, pubLoad, tick:pubSoon, act, ready:() => st.heard || PUB || OBS, count:() => st.map.size,
+    // For the tests: logos straight in, as if the cloud had sent them.
+    set:o => { st.heard = true; return apply(o); }};
+})();
+
 /* ---------- the public copy of a game (hoopsPublic/{gid}) ----------
    Small on purpose: every fan's phone downloads it on every update. One JSON string, because Firestore can't hold lists
    inside lists. Box lines: [num, name, pos, year, height, pts, fgm, fga, tpm, tpa, ftm, fta, oreb, dreb, ast, stl, blk, to, pf, played, on floor]. */
@@ -5610,7 +5817,10 @@ function gbLogo(bg, gray){
       const u = c.toDataURL("image/jpeg", .9); end({data:atob(u.slice(u.indexOf(",") + 1)), w:n, h:n}); }catch(e){ end(null); } };
     im.onerror = () => end(null); im.src = "bobcat-head.png"; });
 }
-function gbPdf(g, o, logo){
+// art (color only, gbArt): each team's lane as a picture (its main color with our bobcat or their logo) and their logo
+// tile for the line score.
+function gbPdf(g, o, logo, art){
+  const artId = {}, artImg = (kind, tm) => { const a = art && art[kind] && art[kind][tm]; return a ? artId[kind + tm] || (artId[kind + tm] = D.addImg(a.data, a.w, a.h)) : ""; };
   const R = replay(g), ha = homeAway(g), Q = g.quarters || 4, lq = Math.max(1, lastQ(R)), fin = g.status === "final", order = [ha.away, ha.home];
   const bw = !!o.bw, on = (k, tm) => !!(o.p[k] && o.p[k][tm]), any = k => on(k, "us") || on(k, "them");
   const school = tm => tm === "us" ? "Greenbrier" : g.opp, full = tm => tm === "us" ? (/greenbrier/i.test(usName(g)) ? usName(g) : "Greenbrier " + usName(g)) : oppFull(g);
@@ -5671,7 +5881,9 @@ function gbPdf(g, o, logo){
     D.fill(L, y - 9, x1 - L, 13, bw ? .85 : GREEN);
     per.forEach((q, i) => D.text(c(i), y, perLabel(g, q), {sz:8, b:true, al:"c", c:W1 === 0 ? 0 : "#FFFFFF"})); D.text(c(lq), y, "T", {sz:8, b:true, al:"c", c:W1 === 0 ? 0 : "#FFFFFF"});
     for(const tm of order){ y += 17; const k = ink(tm);
-      if(!bw){ D.fill(L, y - 10, 9, 13, k.fill); if(pale(k.fill)) D.poly([[L, y - 10], [L + 9, y - 10], [L + 9, y + 3], [L, y + 3]], {c:k.line, lw:.5, close:true}); }
+      const tile = bw ? "" : artImg("tile", tm);
+      if(tile) D.img(tile, L - 2, y - 11, 14, 14);
+      else if(!bw){ D.fill(L, y - 10, 9, 13, k.fill); if(pale(k.fill)) D.poly([[L, y - 10], [L + 9, y - 10], [L + 9, y + 3], [L, y + 3]], {c:k.line, lw:.5, close:true}); }
       D.text(L + (bw ? 0 : 14), y, full(tm), {sz:10, b:true, fit:nw - 20});
       per.forEach((q, i) => D.text(c(i), y, String((R.qs[tm] || [])[q - 1] || 0), {sz:10, al:"c"})); D.text(c(lq), y, String(R.sc[tm]), {sz:11, b:true, al:"c"});
       D.line(L, y + 4, x1, y + 4, .4, .75); }
@@ -5754,7 +5966,8 @@ function gbPdf(g, o, logo){
   // misses an X.
   const court = (x0, y0, w, tm, shots) => {
     const s = w / 500, P = (x, yy) => [x0 + x * s, y0 + yy * s], k = ink(tm), lc = bw ? .3 : .35, lw = Math.max(.45, w / 420);
-    if(!bw){ D.fill(x0, y0, w, 470 * s, "#FBFAF6"); D.fill(x0 + 190 * s, y0, 120 * s, 190 * s, tint(k.fill, .84)); }
+    const lane = bw ? "" : artImg("paint", tm);
+    if(!bw){ D.fill(x0, y0, w, 470 * s, "#FBFAF6"); if(lane) D.img(lane, x0 + 190 * s, y0, 120 * s, 190 * s); else D.fill(x0 + 190 * s, y0, 120 * s, 190 * s, tint(k.fill, .84)); }
     const box = (x, yy, ww, hh) => D.poly([P(x, yy), P(x + ww, yy), P(x + ww, yy + hh), P(x, yy + hh)], {c:lc, lw, close:true});
     const arc = (cx, cy, r, a0, a1, n) => Array.from({length:n + 1}, (_, i) => { const a = (a0 + (a1 - a0) * i / n) * Math.PI / 180; return P(cx + r * Math.cos(a), cy + r * Math.sin(a)); });
     box(0, 0, 500, 470); box(190, 0, 120, 190); D.poly(arc(250, 190, 60, 0, 360, 40), {c:lc, lw, close:true});
@@ -5763,7 +5976,8 @@ function gbPdf(g, o, logo){
     const rad = Math.max(1.9, 9.5 * s), xr = Math.max(1.7, 7.5 * s), mf = bw ? 0 : k.fill, mo = bw ? 0 : pale(k.fill) || contrast(k.fill, "#FFFFFF") < 1.5 ? k.line : "#FFFFFF", xc = bw ? 0 : k.line;
     for(const sh of shots){ const e = sh.e; if(e.x == null || e.y == null) continue; const [px, py] = P(e.x * 500, e.y * 470);
       if(e.m){ D.dot(px, py, rad + Math.max(.4, rad * .22), mo); D.dot(px, py, rad, mf); }
-      else { D.line(px - xr, py - xr, px + xr, py + xr, Math.max(.7, xr * .38), xc); D.line(px - xr, py + xr, px + xr, py - xr, Math.max(.7, xr * .38), xc); } }
+      else { const lw2 = Math.max(.7, xr * .38); if(lane){ D.line(px - xr, py - xr, px + xr, py + xr, lw2 + 1.3, "#FFFFFF"); D.line(px - xr, py + xr, px + xr, py - xr, lw2 + 1.3, "#FFFFFF"); }
+        D.line(px - xr, py - xr, px + xr, py + xr, lw2, xc); D.line(px - xr, py + xr, px + xr, py - xr, lw2, xc); } }
     return 470 * s; };
   const shotsOf = (tm, f) => R.shots.filter(sh => sh.e.tm === tm && (!f || f(sh))), spotted = l => l.filter(sh => sh.e.x != null && sh.e.y != null);
   const fgLine = l => { const m = l.filter(sh => sh.e.m).length, t3 = l.filter(sh => sh.e.p === 3), m3 = t3.filter(sh => sh.e.m).length;
@@ -5858,10 +6072,29 @@ function gbPdf(g, o, logo){
   const name = `${g.date} ${school(ha.away)} at ${school(ha.home)} ${kind}${bw ? " (BW)" : ""}${fin ? "" : " (" + stage + ")"}.pdf`.replace(/[\\/:*?"<>|]+/g, "-");
   return {bytes:D.bytes(), name, title};
 }
+// The Game Book's color pictures, drawn the way the app's shot chart draws them: each team's lane in its main color with our
+// bobcat or their logo on a white disc (the letters stay off: a plain lane where there's no logo), and their logo tile.
+function gbArt(g){
+  const pic = src => new Promise(res => { if(!src) return res(null); const im = new Image(); let done = false; const end = v => { if(!done){ done = true; res(v); } };
+    setTimeout(() => end(null), 4000); im.onload = () => end(im); im.onerror = () => end(null); im.src = src; });
+  const jpg = c => { const u = c.toDataURL("image/jpeg", .9); return {data:atob(u.slice(u.indexOf(",") + 1)), w:c.width, h:c.height}; };
+  const fit = (k, im, x, y, w, h) => { const z = Math.min(w / im.naturalWidth, h / im.naturalHeight), iw = im.naturalWidth * z, ih = im.naturalHeight * z; k.drawImage(im, x + (w - iw) / 2, y + (h - ih) / 2, iw, ih); };
+  return Promise.all([pic("bobcat-head.png"), pic(Logos.data(g.opp))]).then(([cat, theirs]) => {
+    const art = {paint:{}, tile:{}};
+    try{
+      for(const tm of ["us", "them"]){ const k = teamInk(g, tm), Z = 2.5, c = document.createElement("canvas"); c.width = 120 * Z; c.height = 190 * Z; const q = c.getContext("2d");
+        q.imageSmoothingQuality = "high"; q.fillStyle = k.fill; q.fillRect(0, 0, c.width, c.height);
+        if(tm === "us" && cat) q.drawImage(cat, 13 * Z, 76 * Z, 94 * Z, 92 * Z);
+        if(tm === "them" && theirs){ q.fillStyle = "#FFFFFF"; q.strokeStyle = k.alt || k.ink; q.lineWidth = 3 * Z; q.beginPath(); q.arc(60 * Z, 122 * Z, 50 * Z, 0, Math.PI * 2); q.fill(); q.stroke(); fit(q, theirs, 21 * Z, 83 * Z, 78 * Z, 78 * Z); }
+        if(tm === "us" ? cat : theirs) art.paint[tm] = jpg(c); }
+      if(theirs){ const c = document.createElement("canvas"); c.width = c.height = 96; const q = c.getContext("2d"); q.imageSmoothingQuality = "high"; q.fillStyle = "#FFFFFF"; q.fillRect(0, 0, 96, 96); fit(q, theirs, 4, 4, 88, 88); art.tile.them = jpg(c); }
+    }catch(e){}
+    return art; });
+}
 async function gbMake(g, o){
   if(!GB_PARTS.some(([k]) => o.p[k] && (o.p[k].us || o.p[k].them))){ toast("Pick at least one thing to print."); return; }
   toast("Making the PDF…", 8000);
-  const logo = await gbLogo(o.bw ? "#FFFFFF" : "#094A28", o.bw), p = gbPdf(g, o, logo);
+  const logo = await gbLogo(o.bw ? "#FFFFFF" : "#094A28", o.bw), art = o.bw ? null : await gbArt(g), p = gbPdf(g, o, logo, art);
   toast("PDF ready.", 1500);
   await shareFile(p.name, new Blob([p.bytes], {type:"application/pdf"}), p.title);
 }
@@ -6447,6 +6680,7 @@ document.addEventListener("click", async ev => {
     case "drvcopy": { const ta = $("#drvtxt"); if(ta) ta.closest("details").open = true; const ok = await copyText(DRIVE_GS, ta); toast(ok ? "Script copied. Paste it into a new project at script.google.com." : "Open Show the script, select it all and copy it by hand.", 5000); break; }
     case "restore": if(canAdmin()) $("#restore-file").click(); break;
     case "faces": case "faceshow": case "facesteam": case "facespick": case "facessave": case "facedrop": case "faceadj": case "faceadjok": case "faceadjreset": case "facedel": Faces.act(act, a); break;
+    case "logos": case "logopick": case "logosave": case "logodrop": case "logodel": Logos.act(act, a); break;
     default: Sync.click(act, a);
   }
 });
@@ -6989,6 +7223,8 @@ function oppSheet(name){
     <label class="fld" style="flex:1;min-width:150px"><span>Girls team name</span><input type="text" name="girls" value="${esc(o.girls)}" placeholder="Lady Commandos"></label>
     <label class="fld" style="width:110px"><span>Scoreboard</span><input type="text" name="abbr" value="${esc(o.abbr)}" maxlength="4" style="text-transform:uppercase"></label></div>
     <div class="row">${[["c1", "Main color"], ["c2", "Second color"]].map(([k, l]) => `<label class="fld" style="flex:1;min-width:150px"><span>${l}</span><span class="row" style="flex-wrap:nowrap"><input type="color" data-hex="${k}" value="${hexOk(o[k]) ? o[k] : "#000000"}" style="width:52px;height:40px;padding:2px;flex:none"><input type="text" name="${k}" value="${esc(o[k])}" placeholder="#4B2E83" maxlength="7" data-hext="${k}"></span></label>`).join("")}</div>
+    ${name ? `<div class="oplogo"><i class="lgo xl ${Logos.cls(name) || "none"}" data-lgk="${esc(name)}"></i><div><b>Logo</b><div class="small">${Logos.has(name) ? "On every page, the shot chart lane and the Game Book." : "None yet: the scoreboard letters show instead."}</div>
+      <button class="btn sm" type="button" data-act="logos" data-opp="${esc(name)}" style="margin-top:4px" ${Sync.live() ? "" : "disabled"}>${Logos.has(name) ? "Change logo" : "Add logo"}</button></div></div>` : ""}
     <div class="opreview" id="opreview" style="${varsOf(inkOf(o.c1, o.c2))}"><button type="button" class="pnum">10</button><div class="sb"><button type="button" class="mk">+2</button><button type="button" class="mk">+3</button><button type="button" class="ms">3 ✗</button></div><span class="chip at"><b>10</b>Smith</span><b style="color:var(--tl);font-family:var(--f-display);font-size:20px;text-transform:uppercase">${esc(name || "Opponent")}</b></div>
     <p class="small" style="margin:0">If the main color is too light to read white on, or too close to our green, the second color leads. A team in green with nothing else, or with no colors yet, shows in grey.</p>
     <div class="row"><button class="btn primary" type="submit">Save</button>${p ? `<button class="btn" type="button" data-act="oppreset">Back to the researched colors</button>` : ""}<button class="btn" type="button" data-close>Cancel</button></div></form>`});
@@ -7192,7 +7428,7 @@ const PubRead = (() => {
       // same season heard again after a lock: the game on screen gets its listener back (stop() took it), or it freezes.
       const j = JSON.stringify(d.exists() ? d.data() : {}); if(PS.phase === "live" && (j === PS.seasonJ || (off && !d.exists()))){ watch(); return; } PS.seasonJ = j;
       const r = d.exists() ? pubSafe(d.data()) : {}; PS.season = r.games || {}; PS.off = !!r.off; PS.phase = "live"; PS.err = "";
-      if(!PS.off) Faces.pubLoad(PS.fb, PS.db, 6 * 3600e3);   // the players' photos: one read a visit
+      if(!PS.off){ Faces.pubLoad(PS.fb, PS.db, 6 * 3600e3); Logos.pubLoad(PS.fb, PS.db, 6 * 3600e3); }   // the players' photos and the schools' logos: one read each a visit
       // A game back before tip-off (Coach reset it): the copy this phone holds goes, and its listener with it (a new one
       // starts when the game does, and gets the new copy).
       for(const [id, x] of Object.entries(PS.season)) if(x && x.status === "pre"){ delete PS.snap[id]; if(PS.due) delete PS.due[id]; if(PS.watching === id){ PS.unG(); PS.unG = null; PS.watching = null; } }
@@ -7256,7 +7492,7 @@ const BugRead = (() => {
       Object.assign(BS, {fb, db, board:boardFeed(fb, db, render)});
       fb.onSnapshot(fb.doc(db, "hoopsPublic", "_bug"), d => { let b = null; try{ b = d.exists() ? pubSafe(JSON.parse(d.data().j)) : null; }catch(e){}
         BS.bug = b; BS.phase = "live"; BS.board.want(!!b && b.status === "live" && b.brd === 1, 0); full(); render();
-        if(b) Faces.pubLoad(fb, db, 600e3); }, () => { BS.phase = "error"; render(); });
+        if(b){ Faces.pubLoad(fb, db, 600e3); Logos.pubLoad(fb, db, 600e3); } }, () => { BS.phase = "error"; render(); });
       // The board's clock ticks in place; anything else the board changes redraws the bug.
       setInterval(() => { if(!BS.board.on()) return; const v = BS.board.view(), k = v ? [v.fresh, v.home, v.vis, v.hf, v.vf, v.q, v.run].join() : "";
         if(k !== BS.bkey){ BS.bkey = k; render(); return; } const el = document.querySelector(".obug .per .pl"), o = bugOver();
@@ -7760,7 +7996,7 @@ const Sync = (() => {
       // would put them over the cloud's the moment the signal's back.
       if(!snap.exists() && snap.metadata && snap.metadata.fromCache) return;
       st.teamsSeen = true;   // rosters go up only after this device has heard the cloud's copy once
-      Faces.tick();   // a family's choice or the fan page switch may have changed: the fan page's photos follow
+      Faces.tick(); Logos.tick();   // a family's choice or the fan page switch may have changed: the fan page's photos and logos follow
       // This device's own save, not the cloud's answer yet: if the cloud refuses it, the cloud's copy comes next.
       if(snap.metadata && snap.metadata.hasPendingWrites) return;
       if(!snap.exists()){ st.adminSet = {}; if(canCoach()){ st.teamsDirty = true; kick(300); } return; }
@@ -7797,6 +8033,7 @@ const Sync = (() => {
     }, dead));
     // Player photos: everyone let in hears them. A hiccup here never marks the scores as stale.
     st.unsub.push(fb.onSnapshot(fb.doc(db, "hoopsBook", "faces"), snap => Faces.heard(snap), () => {}));
+    st.unsub.push(fb.onSnapshot(fb.doc(db, "hoopsBook", "logos"), snap => Logos.heard(snap), () => {}));
     if(S.role !== st.role || S.roleUid !== st.uid){ S.role = st.role; S.roleUid = st.uid; save(); }
     if(boss(st.role)){
       st.unsub.push(fb.onSnapshot(fb.collection(db, "hoopsRequests"), snap => { st.reqs = snap.docs.map(d => ({uid:d.id, ...d.data()})); paint(); }, fail));
@@ -8459,6 +8696,7 @@ if(!ui.gid || !S.games[ui.gid]){
 }
 render();
 Faces.boot();
+Logos.boot();
 if(S.sync) Sync.start();
 setInterval(() => Drive.tick(), 10000); window.addEventListener("online", () => setTimeout(() => Drive.tick(), 3000));
 if("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
