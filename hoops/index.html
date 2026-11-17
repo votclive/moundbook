@@ -5,7 +5,7 @@
 <!-- The page's lock: the only script that may run is the one in this file (named by the SHA-256 of its text) and files
      from this folder (fb.js). Text that turns up in the page from a roster, a game or the cloud can never run as code.
      After ANY edit to the script, run "python3 hoops/stamp.py hoops": with a stale hash the browser runs nothing. -->
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-9HMvjOvHS5OcRGdZjBjGh1aAaodsFUWFbAZd9vUfoc8='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-xTie2BMo0nvAmTwNWfB+hsgsDMTevIEaH/o3lrGdS8k='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#094A28">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -754,6 +754,11 @@ table.rect tr.sub td{background:transparent;padding-top:10px}
 .sheet{background:var(--white);border-radius:8px;padding:16px;max-width:580px;width:100%;max-height:90vh;overflow:auto;border-top:6px solid var(--green)}
 .sheet h3{font-size:26px;margin-bottom:8px}
 .sheet.wide{max-width:900px}
+.ckshow{font-size:64px;line-height:1.1;font-weight:800;text-align:center;font-variant-numeric:tabular-nums;font-family:var(--f-display)}
+.ckshow.bad{color:var(--f5)}
+.ckpad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:360px;margin:0 auto}
+.ckpad .btn{min-height:64px;font-size:30px;font-weight:700;justify-content:center;touch-action:manipulation}
+.ckpad .btn.primary{font-size:22px}
 
 @media (max-width:1180px){ .bcgrid{grid-template-columns:minmax(0,1fr) 320px minmax(0,1fr)} .desk{grid-template-columns:minmax(0,1fr) 272px minmax(0,1fr)} .board .n{font-size:54px} .tabs button{font-size:16px;padding-left:7px;padding-right:7px} }
 /* iPad portrait: both teams side by side under a scoreboard strip */
@@ -843,7 +848,7 @@ td .face{width:24px;height:24px;margin:-5px 7px -4px 0}
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
 { const n = document.getElementById("nostart"); if(n) n.remove(); }   // the script is running: see #nostart
-const BS_VERSION = "0.24.0";
+const BS_VERSION = "0.24.1";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -1661,12 +1666,55 @@ function rec(e, opts = {}){
   // The gym scoreboard's period and clock, while its feed is up (Board). A follow-up (the assist, the steal that goes
   // with a turnover) happened with its play, so it shares that play's.
   if(!e.gc){ const f = e.ref && g.ev.find(x => x.id === e.ref), gc = f && f.gc && !f.gc.m ? f.gc : Board.stamp(g); if(gc) e.gc = {...gc}; }
+  if(!e.gc){ const c = deadClock(g, e, g.ev.length - 1); if(c) e.gc = {q:c.q, s:c.s, m:1}; }
   if(g.status === "pre" && !PREGAME(e)) startGame(g);
   g.ev.push(e);
   // Play's under way: the "who controlled the tip?" question has had its chance.
   if(!PREGAME(e) && ui.sheet && ui.sheet.k === "tip") closeSheet();
   if(!opts.keepFu) ui.fu = [];
+  if(CK_ASK.has(e.t) && !e.gc && !opts.quiet) clockAsk(g, e);
   if(!opts.quiet) touch(g); return e;
+}
+/* ---------- the clock on a foul or a timeout (Kevin, 0.24.1) ----------
+   With no gym scoreboard feed (on the road, or the feed dropped), a foul or timeout tapped in pops up a number pad for
+   the time left on the clock: 5 4 2 is 5:42. No clock, or a tap outside, closes it. The free throws and subs of that same
+   dead ball take its time with no tap: a free throw within two minutes of it, a sub within one (two after a timeout).
+   Later than that, play may have gone on with nothing tapped, so a sub gets no clock rather than a wrong one. */
+const CK_ASK = new Set(["PF", "TF", "TMO"]);
+function deadClock(g, e, from){
+  if(!["FT", "IN", "OUT"].includes(e.t)) return null;
+  for(let i = from; i >= 0; i--){ const x = g.ev[i]; if(x.v || x === e || ["NOTE", "POSS", "IN", "OUT"].includes(x.t)) continue;
+    if(!["PF", "TF", "TMO", "FT"].includes(x.t) || !x.gc || x.gc.r) return null;
+    const lim = (e.t === "FT" ? 120000 : 60000) * (x.t === "TMO" ? 2 : 1);
+    return (e.la || e.at || 0) - (x.la || x.at || 0) <= lim ? x.gc : null; }
+  return null;
+}
+// 542 typed is 5:42, 45 is 0:45. NaN when the seconds are over 59.
+function ckVal(v){ if(!v) return null; const sec = +v.slice(-2), min = +(v.slice(0, -2) || 0); return sec < 60 ? min * 60 + sec : NaN; }
+function clockAsk(g, e){
+  const R = replay(g), p = R.plays.find(x => x.e === e), q = p ? p.q : R.q, L = periodLen(g, q);
+  let last = null; for(let i = R.plays.length - 1; i >= 0 && last == null; i--){ const x = R.plays[i]; if(x.q !== q) break; if(!x.void && x.e !== e && x.e.gc && x.e.gc.q === q) last = x.e.gc.s; }
+  openSheet({ck:{gid:g.id, id:e.id, q, L, v:"", last}, html:() => { const s = ui.sheet.ck, sec = ckVal(s.v), bad = !!s.v && (!Number.isFinite(sec) || sec > s.L);
+    const shown = s.v ? (s.v.length > 2 ? s.v.slice(0, -2) : "0") + ":" + s.v.slice(-2).padStart(2, "0") : "–:––";
+    const note = bad ? (Number.isFinite(sec) ? `${esc(perLabel(g, s.q))} starts at ${clockText(s.L)}.` : "Seconds go up to 59.") : s.last != null ? `Last clock this period: ${clockText(s.last)}` : "Type it like the board: 5 4 2 is 5:42.";
+    return `<h3>Time on the clock?</h3><p style="margin:0 0 6px">${esc(perLabel(g, s.q))} · ${e.pid ? esc(tmName(g, e.tm)) + " " : ""}${playText(g, e)}</p>
+      <div class="ckshow${bad ? " bad" : ""}" aria-live="polite">${shown}</div><p class="small" style="text-align:center;margin:2px 0 10px;min-height:1.4em">${note}</p>
+      <div class="ckpad">${["1", "2", "3", "4", "5", "6", "7", "8", "9", "del", "0", "ok"].map(k => k === "del" ? `<button class="btn" data-act="ckkey" data-k="del" aria-label="Back">⌫</button>`
+        : k === "ok" ? `<button class="btn primary" data-act="ckok"${!s.v || bad ? " disabled" : ""}>Save</button>` : `<button class="btn" data-act="ckkey" data-k="${k}">${k}</button>`).join("")}</div>
+      <div class="row" style="margin-top:10px;justify-content:center"><button class="btn" data-close>No clock</button></div>`; }});
+}
+function ckKey(s, k){ if(k === "del") s.v = s.v.slice(0, -1); else if(/^\d$/.test(k) && s.v.length < 4) s.v = (s.v + k).replace(/^0+/, ""); renderSheet(); }
+function ckSave(s){ const sec = ckVal(s.v); if(sec == null || !Number.isFinite(sec) || sec > s.L) return; setClock(s, sec); }
+// A clock typed on a foul, timeout or free throw: the free throws and subs right after it take it too (deadClock), and
+// ones that had copied its old time follow the change, or go when it's taken off.
+function ckSpread(g, x, old, ed){
+  const same = c => !!old && !!c && !!c.m && c.q === old.q && c.s === old.s;
+  for(let i = g.ev.indexOf(x) + 1; i < g.ev.length; i++){ const y = g.ev[i]; if(y.v || y.t === "NOTE" || y.t === "POSS") continue;
+    if(!["FT", "IN", "OUT"].includes(y.t)) break;
+    if(y.gc && !same(y.gc)) continue;
+    const c = x.gc ? deadClock(g, y, i - 1) : null;
+    if(c && !(y.gc && y.gc.q === c.q && y.gc.s === c.s)){ y.gc = {q:c.q, s:c.s, m:1}; y.ed = ed; }
+    else if(!c && y.gc){ delete y.gc; y.ed = ed; } }
 }
 // The last play that matters for linking (subs, notes and the arrow don't count).
 function lastPlay(g){ for(let i = g.ev.length - 1; i >= 0; i--){ const e = g.ev[i]; if(!e.v && !["IN","OUT","NOTE","POSS","TIP","JUMP"].includes(e.t)) return e; } return null; }
@@ -2217,7 +2265,7 @@ function teamBox(g, R, tm, edit){
 // A play's game clock in the list, next to its period. On the Plays page, for whoever can fix the game, it's a button that
 // sets it (and our subs with none say + clock: minutes played need them; lineup taps before the tip don't).
 function playClock(g, e, p, edit){ const c = gcText(e, g, p.q);
-  if(edit && !p.void && (c || ((e.t === "IN" || e.t === "OUT") && e.tm === "us" && !e.lu))) return `<button class="gcl" data-act="gclk" data-id="${e.id}" title="Set this play's game clock">${c || "+ clock"}</button>`;
+  if(edit && !p.void && (c || ((e.t === "IN" || e.t === "OUT") && e.tm === "us" && !e.lu) || CK_ASK.has(e.t) || e.t === "FT")) return `<button class="gcl" data-act="gclk" data-id="${e.id}" title="Set this play's game clock">${c || "+ clock"}</button>`;
   return c ? `<span class="gcl">${c}</span>` : ""; }
 function playList(g, R, limit, edit, keep, fix){
   const rows = R.plays.filter(p => (limit === 0 || (p.e.t !== "IN" && p.e.t !== "OUT")) && (!keep || keep(p)));
@@ -7032,6 +7080,8 @@ document.addEventListener("click", async ev => {
     case "rvagain": { const x = ui.sheet && ui.sheet.rv && S.games[ui.sheet.rv.gid]; if(x && canEdit(x)){ openReview(x); touch(x); reconSheet(x); } break; }
     case "gclk": { const x = g && g.ev.find(e => e.id === a.dataset.id); if(x && canEdit(g)) clockSheet(g, x); break; }
     case "gclkclear": if(ui.sheet && ui.sheet.gc) setClock(ui.sheet.gc, null); break;
+    case "ckkey": if(ui.sheet && ui.sheet.ck) ckKey(ui.sheet.ck, a.dataset.k); break;
+    case "ckok": if(ui.sheet && ui.sheet.ck) ckSave(ui.sheet.ck); break;
     case "boardok": Board.dismiss(); break;
     case "boardnotyet": if(ui.sheet && ui.sheet.k === "tip") closeSheet(); Board.notYet(); break;
     case "playscsv": if(g){ const pid = (ui.pf && ui.pf.pid) || "", pl = pid && (player(g, "us", pid) || player(g, "them", pid));
@@ -7144,6 +7194,9 @@ document.addEventListener("click", async ev => {
     default: Sync.click(act, a);
   }
 });
+// The clock pop-up from a laptop's keys: digits, Backspace, Enter.
+document.addEventListener("keydown", ev => { const s = ui.sheet && ui.sheet.ck; if(!s || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+  if(/^\d$/.test(ev.key)) ckKey(s, ev.key); else if(ev.key === "Backspace") ckKey(s, "del"); else if(ev.key === "Enter") ckSave(s); else return; ev.preventDefault(); });
 document.addEventListener("keydown", ev => { if(ev.key !== "Escape") return;
   if(ui.sheet) sheetAway(); else if(ui.fu[0] && ui.fu[0].k === "loc" && $(".fu.loc")){ ui.fu.shift(); renderFu(); } });
 // A Prep box saved: on leaving it, and (Kevin, 0.16.10) after a short pause in typing, so the script shows it without
@@ -7450,8 +7503,9 @@ function reconSave(g, f, how){
 }
 function setClock(s, sec){
   const g = S.games[s.gid]; if(!g || !canEdit(g)) return; const e = g.ev.find(x => x.id === s.id); if(!e) return;
-  const grp = e.grp && (e.t === "IN" || e.t === "OUT") ? g.ev.filter(x => x.grp === e.grp && (x.t === "IN" || x.t === "OUT")) : [e], ed = Date.now();
+  const grp = e.grp && (e.t === "IN" || e.t === "OUT") ? g.ev.filter(x => x.grp === e.grp && (x.t === "IN" || x.t === "OUT")) : [e], ed = Date.now(), old = e.gc ? {...e.gc} : null;
   grp.forEach(x => { if(sec == null) delete x.gc; else x.gc = {q:s.q, s:sec, m:1}; x.ed = ed; });
+  if(CK_ASK.has(e.t) || e.t === "FT") ckSpread(g, e, old, ed);
   closeSheet(); touch(g); toast(sec == null ? "Clock taken off." : "Clock set: " + clockText(sec) + ".");
 }
 function newGameSheet(){
