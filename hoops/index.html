@@ -5,7 +5,7 @@
 <!-- The page's lock: the only script that may run is the one in this file (named by the SHA-256 of its text) and files
      from this folder (fb.js). Text that turns up in the page from a roster, a game or the cloud can never run as code.
      After ANY edit to the script, run "python3 hoops/stamp.py hoops": with a stale hash the browser runs nothing. -->
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-/kdZUK+rt+5owr244v2nC8BhHd1zsiUqDtPbYNjK2sI='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-Rjmi93GfHORmXjQctJjJPvFRk94QYvBiRYBCnD0gV4w='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#094A28">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -859,7 +859,7 @@ td .face{width:24px;height:24px;margin:-5px 7px -4px 0}
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
 { const n = document.getElementById("nostart"); if(n) n.remove(); }   // the script is running: see #nostart
-const BS_VERSION = "0.27.0";
+const BS_VERSION = "0.28.0";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -4332,11 +4332,11 @@ function viewBox(){
   const sb = sbSent(g);
   const qsel = `<select data-boxq style="width:auto"><option value="all">Whole game</option>${Array.from({length:lastQ(R0)}, (_, i) => `<option value="${i + 1}" ${bq === i + 1 ? "selected" : ""}>${perLabel(g, i + 1)} only</option>`).join("")}</select>`;
   return `<div class="stack"><div class="row between"><div><div class="kicker">Box score · ${ff ? esc(ffWords) : g.status === "final" ? "final" : nowLabel(g, R)}</div><h2>${esc(usName(g))} ${gameTitle(g)}</h2><div class="small">${gameSub(g)}</div></div>
-      <div class="no-print" style="display:flex;flex-direction:column;align-items:flex-end;gap:4px"><div class="row">${played ? `<button class="btn" data-act="rw-open">▶ Re-watch</button>` : ""}<button class="btn" data-act="boxpdf">Box score PDF</button><button class="btn" data-act="print">Print box score</button>${canCoach() ? `<button class="btn" data-act="gbopen">More prints · Game Book</button>` : ""}<button class="btn" data-act="csv">Player stats CSV</button><button class="btn primary" data-act="send">${sb && sb.changed ? "Send again" : "Send to Scorebook"}</button></div>
+      <div class="no-print" style="display:flex;flex-direction:column;align-items:flex-end;gap:4px"><div class="row">${played ? `<button class="btn" data-act="rw-open">▶ Re-watch</button>` : ""}<button class="btn" data-act="boxpdf">Box score PDF</button><button class="btn" data-act="print">Print box score</button>${canCoach() ? `<button class="btn" data-act="gbopen">More prints · Game Book</button>` : ""}<button class="btn" data-act="csv">Player stats CSV</button>${canCoach() && g.status === "final" ? `<button class="btn" data-act="mpfile" title="A file MaxPreps imports: Schedule, the game, Edit Score, Save &amp; Import Stats">MaxPreps file</button>` : ""}<button class="btn primary" data-act="send">${sb && sb.changed ? "Send again" : "Send to Scorebook"}</button></div>
       ${sb ? `<div class="small">${sb.changed ? `<b>Changed since it went to the Scorebook</b> ${esc(sbWhen(sb.at))}. Send it again.` : `Sent to Scorebook ${esc(sbWhen(sb.at))}.`}</div>` : ""}</div></div>
     ${ff ? `<div class="flag ${ff === "W" ? "ok" : "bad"}"><b>${esc(ffWords)}.</b> Played ${R0.sc.us}-${R0.sc.them}. The record goes by the ruling; the player stats below still count.</div>` : ""}
     <div class="row" style="align-items:flex-start;gap:12px"><div style="flex:1 1 360px;max-width:520px">${board(g, R0)}</div><div style="flex:1 1 300px;max-width:420px">${boxGlance(g, R0)}</div></div>
-    ${flowHere(g, R0)}${edgeCard(g, R0, "box")}
+    ${flowHere(g, R0)}${edgeCard(g, R0, "box")}${lateCard(g, R0)}${chgCard(g, R0)}
     <div class="card no-print"><h3 style="font-size:22px;margin-bottom:8px">Review</h3>${review(g, R0).map(([k, t]) => `<div class="flag ${k === "bad" ? "bad" : k === "ok" ? "ok" : ""}" style="margin-bottom:6px">${esc(t)}</div>`).join("")}
       ${g.status !== "final" && R0.sc.us !== R0.sc.them && g.ev.length && canEdit(g) ? `<button class="btn primary" data-act="final">Make it final: ${esc(usName(g))} ${R0.sc.us}, ${esc(g.opp)} ${R0.sc.them}</button>` : ""}</div>
     ${balanceCard(g, R0)}
@@ -4823,7 +4823,7 @@ function recSheet(team, id){
    Anything that needs the game clock counts only clock games: games where the board's (or a typed) clock is on at least
    9 plays in 10, so a game with no clock never waters down a per-minute number, and those numbers say how many games
    they come from. Anything that needs who was on the floor counts only plays with five of ours on it (subs tapped). */
-const ST_SECS = [["team", "Team"], ["players", "Players"], ["shooting", "Shooting"], ["flow", "Game flow"], ["lineups", "Lineups"], ["scout", "Scouting"], ["records", "Records"]];
+const ST_SECS = [["team", "Team"], ["players", "Players"], ["shooting", "Shooting"], ["flow", "Game flow"], ["lineups", "Lineups"], ["scout", "Scouting"], ["leaks", "Leaks"], ["records", "Records"]];
 const STAT_T = new Set(["FG", "FT", "REB", "AST", "STL", "BLK", "TO", "PF", "TF"]);
 const DIG = new WeakMap();
 const gSig = g => [g.ev.length, g.rev || 0, g.upd || 0, g.status, g.scrim ? 1 : 0, g.qlen || 0].join(":");
@@ -6105,7 +6105,7 @@ function viewSeason(){
   const sum = any || ui.stComp ? `<div class="small" style="margin-top:6px;font-weight:600">${n} of ${S0.all.length} game${S0.all.length === 1 ? "" : "s"} · ${w}-${l}${n ? ` · ${fx1(S0.ds.reduce((s, d) => s + d.sc.us, 0) / n)}-${fx1(S0.ds.reduce((s, d) => s + d.sc.them, 0) / n)} a game` : ""}${ui.stComp ? " · competitive minutes only" : ""}</div>` : teamRecord(team);
   const csv = `<div class="row" style="margin-top:10px"><p class="small" style="margin:0;flex:1 1 260px">Season numbers count games that are over. Shooting percentages leave out points-only games. ⏱ needs the game clock, 🔁 needs subs tapped.</p><button class="btn sm" data-act="seasoncsv" data-team="${team}">Season CSV</button><button class="btn sm" data-act="allcsv" data-team="${team}">All games CSV</button></div>`;
   const empty = `<div class="card"><p style="margin:0">${S0.all.length ? "No games match these picks." : "No games over yet. A game counts here once it's over."}</p></div>`;
-  const body = sec === "records" ? recordsView(S0) : sec === "scout" ? scoutCard(S0) : !n ? empty : `<div class="card">${{
+  const body = sec === "records" ? recordsView(S0) : sec === "scout" ? scoutCard(S0) + mpScout(team) : sec === "leaks" ? leaksView(team) : !n ? empty : `<div class="card">${{
     team:() => stLeaders(S0, L) + `<div class="stblk">${teamLineOf(S0)}</div>` + resultsChart(S0) + trendCard(S0) + keysCard(S0) + ffTable(S0) + tripCard(S0) + restTable(S0) + groupTable(S0, L) + teamHighs(S0) + oppTable(S0) + districtCard(team) + bookCard(S0) + csv,
     players:() => playersTable(S0, L) + rangeChart(S0, L) + scatterChart(S0, L) + compareCard(S0, L) + assistNet(S0) + csv,
     shooting:() => shotChartCard(S0, L) + shotQualCard(S0, L) + howTeam(S0) + ftTeam(S0) + rebMissCard(S0) + rimCard(S0),
@@ -6113,7 +6113,7 @@ function viewSeason(){
     lineups:() => unitsCard(S0) + tripUnitsCard(S0) + rotationCard(S0) + minutesCard(S0, L) + fatigueCard(S0, L) + benchCard(S0) + foulCard(S0, L) + foulCostCard(S0, L) + bigCard(S0) + roadCard(S0) + `<p class="small" style="margin:12px 0 0">Each player on and off the floor (+/-, shares, rebounding, defense): Players, On the floor.</p>`}[sec]()}</div>`;
   return `<div class="stack stv"><div class="card rcard"><div class="row between"><div class="tc-head" style="margin:0"><img src="bobcat-head.png" alt=""><div><div class="kicker">${SEASON} · Season stats</div><h2>${esc(T.name)}</h2></div></div>
       <div class="row">${["boys", "girls"].map(t => `<button class="btn sm" data-act="stteam" data-v="${t}" aria-pressed="${t === team}">${t === "girls" ? "Girls" : "Boys"}</button>`).join("")}</div></div>
-      ${sec === "records" ? "" : filterBar(S0) + sum}
+      ${sec === "records" || sec === "leaks" ? "" : filterBar(S0) + sum}
       <div class="stnav" role="group" aria-label="Stats section">${ST_SECS.map(([k, lb]) => `<button data-act="stsec" data-v="${k}" aria-pressed="${k === sec}">${lb}</button>`).join("")}</div></div>${body}</div>`;
 }
 /* ---- The player page: more on top of the game log ---- */
@@ -7514,6 +7514,248 @@ function csvOf(g){
   return lines.join("\n") + "\n";
 }
 
+/* ---------- bench edge (0.28.0) ----------
+   Kevin picked these from Round 3 of the pro comparison (2026-11-17): a late-game card for the bench, a MaxPreps file
+   for each final, and a new opponent's MaxPreps stats pasted once. None of it adds a tap for the scorer. It's for
+   Coaches and Admins only, and none of it reaches a fan page, the PA page, Jim's page, a print or the public feed. */
+
+// MaxPreps' stat import (maxpreps.com/utility/stat_import/field_specs.aspx, read 2026-11-17; boys and girls basketball
+// take the same fields). It's a .txt file with every field pipe-delimited. Line 1 names the fields: Jersey first, then the
+// names exactly as MaxPreps spells them. After that comes one line per athlete. Registered stat partners put a Supplier
+// ID line first; without one MaxPreps still takes the stats (its "unaccredited" sample). A field left out isn't touched,
+// so a column goes in only when the book kept it. Jersey numbers have to match the MaxPreps roster exactly ("02" isn't "2").
+const MP_COLS = [["Points", l => l.pts], ["TwoPointsMade", l => l.fgm - l.tpm], ["TwoPointAttempts", l => l.po ? "" : l.fga - l.tpa],
+  ["ThreePointsMade", l => l.tpm], ["ThreePointAttempts", l => l.po ? "" : l.tpa], ["FreeThrowsMade", l => l.ftm], ["FreeThrowAttempts", l => l.po ? "" : l.fta],
+  ["OffensiveRebounds", l => l.oreb], ["DefensiveRebounds", l => l.dreb], ["Rebounds", l => l.oreb + l.dreb], ["Assists", l => l.ast],
+  ["BlockedShots", l => l.blk], ["Steals", l => l.stl], ["Turnovers", l => l.to], ["Charges", l => l.chg, 1], ["PersonalFouls", l => l.pf], ["TechnicalFouls", l => l.tf, 1]];
+const mpCell = v => String(v ?? "").replace(/[|\r\n]/g, "").trim();
+function mpFile(g){
+  const R = replay(g), M = clockStats(g, R), rows = [];
+  for(const p of sortRoster(roster(g, "us"))){ const ln = R.box.us[p.pid]; if(ln && ln.gp && mpCell(p.num)) rows.push({p, ln}); }
+  const cols = MP_COLS.filter(([, f, opt]) => !opt || rows.some(r => +f(r.ln) > 0));
+  // Minutes only from a game the clock ran (the box score's MIN); a kid whose minutes are short or unknown gets a blank.
+  const min = M.show ? r => { const sec = M.sec[r.p.pid]; return !sec || M.short.has(r.p.pid) ? "" : Math.round(sec / 60); } : null;
+  const head = ["Jersey", ...(min ? ["MinutesPlayed"] : []), ...cols.map(c => c[0])];
+  return [head.join("|"), ...rows.map(r => [r.p.num, ...(min ? [min(r)] : []), ...cols.map(([, f]) => f(r.ln))].map(mpCell).join("|"))].join("\n") + "\n";
+}
+// MaxPreps turns down a file name with quotes or parentheses.
+function mpName(g){ const w = v => String(v || "").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, ""); return `maxpreps-${w(g.team)}-${w(g.date)}-${w(g.opp) || "game"}.txt`; }
+
+// A new opponent's MaxPreps stats, pasted once. These are the tables from the team's Stats, Player Stats page on
+// maxpreps.com (Shooting and Totals, or Overall), any number of them in one paste. Each table starts "# Name GP ...". A row
+// is the jersey, the name ("A. Smith (Sr)") and one number per column, and "Season Total" ends the table. Copying on an
+// iPad can put every cell on its own line, so this reads words, not lines. Per-game columns (PPG, RPG ...) become season
+// totals using GP. Kept per opponent and per team in S.opps[key].mp[team] = {at, rows:{jersey:{nm, gp, pts, ...}}}.
+const MP_HEAD = {gp:"gp", min:"min", mpg:"min/", pts:"pts", ppg:"pts/", fgm:"fgm", fga:"fga", "3pm":"tpm", "3pa":"tpa", ftm:"ftm", fta:"fta",
+  oreb:"oreb", offr:"oreb/", dreb:"dreb", defr:"dreb/", reb:"reb", rpg:"reb/", ast:"ast", apg:"ast/", stl:"stl", spg:"stl/", blk:"blk", bpg:"blk/", to:"to", tpg:"to/", pf:"pf", pfpg:"pf/"};
+const MP_KEYS = ["gp", "min", "pts", "fgm", "fga", "tpm", "tpa", "ftm", "fta", "oreb", "dreb", "reb", "ast", "stl", "blk", "to", "pf"];
+function mpParse(text){
+  const w = String(text || "").replace(/ /g, " ").split(/\s+/).filter(Boolean), rows = {};
+  const isNum = x => /^-?(\d+\.?\d*|\.\d+)%?$/.test(x) || /^[-–—]$/.test(x), val = x => /^[-–—]$/.test(x) ? null : parseFloat(x);
+  let tables = 0, i = 0;
+  while(i < w.length){
+    if(!(w[i] === "#" && /^(name|athlete|player)$/i.test(w[i + 1] || ""))){ i++; continue; }
+    i += 2; while(i < w.length && /^name$/i.test(w[i])) i++;
+    const head = []; while(i < w.length && !isNum(w[i]) && w[i] !== "#" && !/^season$/i.test(w[i])) head.push(w[i++].toLowerCase());
+    const K = head.length; if(!K || !head.includes("gp")) continue;
+    let got = 0;
+    while(i < w.length && w[i] !== "#"){
+      if(/^season$/i.test(w[i])){ i++; while(i < w.length && !isNum(w[i])) i++; i += K; break; }
+      const num = w[i]; if(!/^\d{1,3}$/.test(num)){ i++; continue; }
+      let j = i + 1; const nm = []; while(j < w.length && !isNum(w[j]) && w[j] !== "#" && nm.length < 8) nm.push(w[j++]);
+      const vs = w.slice(j, j + K);
+      if(!nm.length || vs.length < K || !vs.every(isNum)){ i++; continue; }
+      const r = rows[num] || (rows[num] = {nm:nm.join(" ").slice(0, 40)}), per = {};
+      head.forEach((h, k) => { const key = MP_HEAD[h], v = val(vs[k]); if(!key || v == null || !Number.isFinite(v) || v < 0) return;
+        if(key.endsWith("/")) per[key.slice(0, -1)] = v; else r[key] = v; });
+      for(const [k, v] of Object.entries(per)) if(r[k] == null && r.gp) r[k] = Math.round(v * r.gp);
+      got++; i = j + K;
+    }
+    if(got) tables++;
+  }
+  return {rows, tables, n:Object.keys(rows).length};
+}
+// What's saved, read back with every value checked (it rides the cloud, so anything odd is dropped).
+function mpOf(opp, team){
+  const o = (S.opps || {})[okey(opp)], m = o && o.mp && typeof o.mp === "object" ? o.mp[team] : null;
+  if(!m || typeof m !== "object" || !m.rows || typeof m.rows !== "object") return null;
+  const rows = {};
+  for(const [n, r] of Object.entries(m.rows)){ if(!/^\d{1,3}$/.test(n) || !r || typeof r !== "object") continue;
+    const x = {nm:typeof r.nm === "string" ? r.nm.slice(0, 40) : ""}; for(const k of MP_KEYS){ const v = +r[k]; if(Number.isFinite(v) && v >= 0 && v < 1e5) x[k] = v; }
+    rows[n] = x; }
+  return Object.keys(rows).length ? {at:+m.at || 0, rows, n:Object.keys(rows).length} : null;
+}
+function mpLine(opp, team){ const m = mpOf(opp, team); return m ? `${m.n} player${m.n === 1 ? "" : "s"}, pasted ${esc(new Date(m.at).toLocaleDateString(undefined, {month:"short", day:"numeric"}))}` : "nothing yet"; }
+// Rosters, Opponents, an opponent's sheet: the paste box.
+function mpBox(name){
+  if(!name || !canCoach()) return "";
+  const t = (cur() || {}).team === "girls" ? "girls" : "boys";
+  return `<div class="card stack" style="padding:10px;margin:0"><div><b>Their MaxPreps stats</b> <span class="small">· Coaches and Admins only</span></div>
+    <div class="small">Boys: ${mpLine(name, "boys")} · Girls: ${mpLine(name, "girls")}. Used on the late-game card (who to foul) and on Stats, Scout.</div>
+    <div class="row"><label class="fld" style="width:130px"><span>Team</span><select name="mpteam"><option value="boys" ${t === "boys" ? "selected" : ""}>Boys</option><option value="girls" ${t === "girls" ? "selected" : ""}>Girls</option></select></label></div>
+    <textarea name="mppaste" rows="4" placeholder="On maxpreps.com: their team, Stats, Player Stats. Copy the Shooting and Totals tables, from the # through Season Total, and paste them here."></textarea>
+    <div class="row"><button class="btn sm" type="button" data-act="mpsave">Read their stats</button>${["boys", "girls"].filter(x => mpOf(name, x)).map(x => `<button class="btn sm" type="button" data-act="mpclear" data-team="${x}">Clear ${x}</button>`).join("")}</div></div>`;
+}
+// Stats, Scout: the next opponent's MaxPreps leaders, for a team we haven't played yet (or have).
+function mpScout(team){
+  const today = pubToday(), nx = Object.values(S.games).filter(g => g.team === team && !g.deleted && !g.practice && !g.off && g.opp && g.date >= today && !gameOver(g)).sort((a, b) => (a.date + (a.time || "")).localeCompare(b.date + (b.time || "")));
+  const g = nx.find(x => mpOf(x.opp, team)); if(!g) return "";
+  const m = mpOf(g.opp, team), pg = (r, k) => r.gp && r[k] != null ? fx1(r[k] / r.gp) : "–", pc = (r, a, b) => r[b] ? pctS(r[a] / r[b]) : "–";
+  const rows = Object.entries(m.rows).sort((a, b) => (b[1].pts || 0) - (a[1].pts || 0)).slice(0, 10);
+  const head = ["#", "Player", "GP", "PPG", "3PM a game", "3P%", "FT%", "FTA", "RPG", "APG"];
+  return `<div class="card"><div class="stblk"><div class="kicker">${esc(g.opp)} from MaxPreps</div>${stTable(head, rows.map(([n, r]) => [esc(n), esc(r.nm), r.gp ?? "–", pg(r, "pts"), pg(r, "tpm"), pc(r, "tpm", "tpa"), pc(r, "ftm", "fta"), r.fta ?? "–", pg(r, "reb"), pg(r, "ast")]))}
+    <p class="small" style="margin:4px 0 0">Their season as pasted under Rosters, Opponents (${mpLine(g.opp, team)}), ahead of ${esc(fmtDate(g.date))}. MaxPreps only has what their staff typed in.</p></div></div>`;
+}
+
+// The late-game card: who should have the ball and who to foul, by free-throw percentage, plus fouls to give, timeouts,
+// the bonus and the arrow. It opens by itself in the last 2:00 of the 4th or overtime, within 6 points, while the board
+// clock is live (home games). Anywhere else a tap opens it. Our kids: this season's games plus tonight. Theirs: tonight,
+// plus their pasted MaxPreps season, or our earlier games against them when there's no MaxPreps line for that number.
+const LATE_S = 120, LATE_M = 6, FT_C = {};
+function seasonFtLines(team){ const gs = seasonGames(team), k = gs.map(gSig).join("|") + gs.map(x => x.id).join(), c = FT_C[team];
+  if(c && c.k === k) return c.v; const v = seasonLines(team, gs); FT_C[team] = {k, v}; return v; }
+function ftUs(g, R){
+  const by = {}, add = (pid, m, a) => { const x = by[pid] || (by[pid] = {m:0, a:0}); x.m += m; x.a += a; };
+  for(const [pid, ln] of Object.entries(seasonFtLines(g.team))) add(pid, ln.x.ftm, ln.x.fta);
+  if(!seasonGames(g.team).some(x => x.id === g.id)) for(const [pid, ln] of Object.entries(R.box.us)) if(!ln.po) add(pid, ln.ftm, ln.fta);
+  return by;
+}
+function ftThem(g, R){
+  const by = {}, add = (n, nm, m, a, src) => { n = String(n ?? "").trim(); if(!/^\d{1,3}$/.test(n)) return; const x = by[n] || (by[n] = {m:0, a:0, nm:"", src:[]}); x.m += m; x.a += a; if(nm && !x.nm) x.nm = nm; if(a && !x.src.includes(src)) x.src.push(src); };
+  const mp = mpOf(g.opp, g.team);
+  for(const [pid, ln] of Object.entries(R.box.them)){ const p = player(g, "them", pid); if(p && !ln.po) add(p.num, pShort(p), ln.ftm, ln.fta, "tonight"); }
+  if(mp) for(const [n, r] of Object.entries(mp.rows)) if(r.fta != null) add(n, r.nm, r.ftm || 0, r.fta, "MaxPreps");
+  for(const x of seasonGames(g.team)) if(x.id !== g.id && okey(x.opp) === okey(g.opp)){ const R2 = replay(x);
+    for(const [pid, ln] of Object.entries(R2.box.them)){ const p = player(x, "them", pid); if(p && !ln.po && !(mp && mp.rows[String(p.num).trim()])) add(p.num, pShort(p), ln.ftm, ln.fta, "vs us"); } }
+  return by;
+}
+const ftPct = f => f && f.a ? Math.round(100 * f.m / f.a) + "% (" + f.m + "/" + f.a + ")" : "no free throws yet";
+// Best first for our end: under 5 tries sorts below anyone with 5 or more. Worst first for theirs: a kid with 5 or more tries
+// leads, then the ones with a try or two, then the ones with none.
+const ftRate = f => !f || !f.a ? -1 : f.a < 5 ? f.m / f.a - 1 : f.m / f.a;
+const ftFoul = f => !f || !f.a ? 3 : f.a < 5 ? 2 + f.m / f.a : f.m / f.a;
+function lateCard(g, R){
+  if(!g || !canCoach() || PUB || OBS || g.status !== "live" || g.practice || !g.ev.some(e => !e.v && !PREGAME(e))) return "";
+  const Q = g.quarters || 4, c = Board.stamp(g), mg = R.sc.us - R.sc.them, auto = !!c && Number.isInteger(c.q) && c.q >= Q && c.s <= LATE_S && Math.abs(mg) <= LATE_M;
+  const lt = ui.late || {}, open = lt[g.id] === 1 || (auto && lt[g.id] !== 0);
+  if(!open) return `<div class="row no-print"><button class="btn sm" data-act="lateopen">Late-game card</button></div>`;
+  const fu = ftUs(g, R), ft = ftThem(g, R), us = tmName(g, "us"), them = tmName(g, "them");
+  const pick = (tm) => { const on = [...R.court[tm]].filter(pid => player(g, tm, pid)); return on.length === 5 ? {pids:on, five:true} : {pids:Object.keys(R.box[tm]).filter(pid => player(g, tm, pid) && R.box[tm][pid].gp), five:false}; };
+  const li = (p, f, note) => `<li><b>#${esc(p.num)}</b> ${esc(pShort(p))} <span class="small">${esc(ftPct(f))}${note ? " · " + esc(note) : ""}</span></li>`;
+  const o = pick("us"), ours = o.pids.map(pid => ({p:player(g, "us", pid), f:fu[pid]})).sort((a, b) => ftRate(b.f) - ftRate(a.f));
+  const floorWorst = o.five && ours.length ? Math.min(...ours.map(x => ftRate(x.f))) : null;
+  const bench = o.five ? roster(g, "us").filter(p => !R.court.us.has(p.pid) && fu[p.pid] && fu[p.pid].a >= 10 && ftRate(fu[p.pid]) > floorWorst).sort((a, b) => ftRate(fu[b.pid]) - ftRate(fu[a.pid])).slice(0, 2) : [];
+  const t = pick("them"), theirs = t.pids.map(pid => ({p:player(g, "them", pid)})).map(x => ({...x, f:ft[String(x.p.num).trim()]})).sort((a, b) => ftFoul(a.f) - ftFoul(b.f));
+  const bonus = S.settings.bonus || 5, give = tm => Math.max(0, bonus - 1 - teamFouls(g, R, tm)), tl = tm => { const x = toLeft(g, R, tm); return `${x[60]} + ${x[30]}`; };
+  const when = c && Number.isInteger(c.q) ? `${perLabel(g, c.q)} ${clockText(c.s)}` : nowLabel(g, R), score = mg > 0 ? `up ${mg}` : mg < 0 ? `down ${-mg}` : "tied";
+  const sit = [`Team fouls: ${esc(us)} ${teamFouls(g, R, "us")} (${give("us")} to give), ${esc(them)} ${teamFouls(g, R, "them")} (${give("them")} to give).`,
+    inBonus(g, R, "us") ? `We shoot on every foul.` : `We're not in the bonus yet.`, inBonus(g, R, "them") ? `They shoot on every foul.` : `They're not in the bonus yet.`,
+    `Timeouts left (60s + 30s): ${esc(us)} ${tl("us")}, ${esc(them)} ${tl("them")}.`, `Arrow: ${R.poss ? esc(tmName(g, R.poss)) : "not set"}.`,
+    c && c.s >= 28 && c.s <= 45 ? `<b>2-for-1 window:</b> a shot up by about 0:30 gets the last one too.` : ""].filter(Boolean);
+  const srcs = [...new Set(theirs.flatMap(x => x.f ? x.f.src : []))];
+  return `<div class="card no-print late" data-late="${esc(g.id)}"><div class="row between"><div><div class="kicker">${esc(when)} · ${score}</div><h3 style="font-size:22px;margin:0">Late game</h3></div><button class="btn sm" data-act="lateclose">Hide</button></div>
+    <div class="row" style="align-items:flex-start;gap:16px;margin-top:6px"><div style="flex:1 1 240px"><b>Get it to</b> <span class="small">(season free throws${o.five ? ", the five on the floor" : ", everyone who's played"})</span><ol style="margin:4px 0 0 18px;padding:0">${ours.map(x => li(x.p, x.f)).join("")}</ol>
+      ${bench.length ? `<div class="small" style="margin-top:4px">Better at the line on the bench: ${bench.map(p => `#${esc(p.num)} ${esc(pShort(p))} ${esc(ftPct(fu[p.pid]))}`).join("; ")}.</div>` : ""}</div>
+    <div style="flex:1 1 240px"><b>Foul</b> <span class="small">(their free throws${t.five ? ", the five on the floor" : ", everyone who's played"}, worst first)</span><ol style="margin:4px 0 0 18px;padding:0">${theirs.map(x => li(x.p, x.f, x.f && x.f.src.length ? x.f.src.join(" + ") : "")).join("")}</ol>
+      <div class="small" style="margin-top:4px">${srcs.length ? "From " + esc(srcs.join(", ")) + "." : "Nothing on them yet beyond tonight."}${mpOf(g.opp, g.team) ? "" : " Paste their MaxPreps stats under Rosters, Opponents for a season's worth."}</div></div></div>
+    <div class="small" style="margin-top:8px">${sit.join(" ")}</div></div>`;
+}
+
+// "What's changed" (edge 2): three to five lines for the bench at a timeout or a break on what's different tonight from
+// the season. The top lines are ranked by about how many points each is worth so far tonight, good news or bad: their
+// shooting (eFG% against what we usually allow, times their shots) and ours, our turnovers, their offensive rebounds, both
+// teams' free throws against the season's pace, and points a trip by how the trip started (the possession log, 0.27.0).
+// Then who's carrying them tonight and whose fouls to go at. Coaches and Admins, Box score, live games only.
+const CHG_C = {}, HOW_W = {stl:"off a steal", dreb:"off a defensive rebound", make:"after a basket", dead:"after a dead ball", per:"to start a period"}, howW = (tm, k) => k === "make" ? (tm === "us" ? "after they score" : "after we score") : HOW_W[k];
+function tripsLog(g){ if(typeof tripsOf !== "function") return null; const d = dig(g, false); if(typeof tripsOk === "function" && !tripsOk(d)) return null;
+  const t = tripsOf(d); return t && Array.isArray(t.L) ? t.L : null; }
+function seasonBase(team, skip){
+  const gs = seasonGames(team).filter(x => x.id !== skip), k = gs.map(x => x.id + ":" + gSig(x)).join("|"), c = CHG_C[team];
+  if(c && c.k === k) return c.v;
+  const v = {n:gs.length, us:LINE(), them:LINE(), trips:{}};
+  for(const x of gs){ const R = replay(x); for(const tm of ["us", "them"]){ const t = totalsOf(R, tm); for(const kk of Object.keys(v[tm])) v[tm][kk] += t[kk]; }
+    for(const tr of tripsLog(x) || []){ const a = v.trips[tr.tm + ":" + tr.how] || (v.trips[tr.tm + ":" + tr.how] = {n:0, pts:0}); a.n++; a.pts += +tr.pts || 0; } }
+  CHG_C[team] = {k, v}; return v;
+}
+// How much of the game is behind us: whole periods, plus the one being played from the board clock (else half of it).
+function playedFrac(g, R){ const Q = g.quarters || 4, c = Board.stamp(g), len = periodLen(g, Math.min(R.q, Q)) || 1;
+  const done = R.brk ? R.q - 1 : R.q - 1 + (c && c.q === R.q ? Math.max(0, Math.min(1, 1 - c.s / len)) : .5);
+  return Math.max(.25, Math.min(1, done / Q)); }
+function chgCard(g, R){
+  if(!g || !canCoach() || PUB || OBS || g.status !== "live" || g.practice || !g.ev.some(e => !e.v && !PREGAME(e))) return "";
+  const B = seasonBase(g.team, g.id), head = `<h3 style="font-size:22px;margin:0">What's changed</h3>`;
+  if(B.n < 2) return `<div class="card no-print chg">${head}<p class="small" style="margin:4px 0 0">Once two games are over, this compares tonight with the season.</p></div>`;
+  const f = playedFrac(g, R), n = B.n, us = totalsOf(R, "us"), th = totalsOf(R, "them"), by = k => fx1(k / n * f);
+  const efg = t => t.fga ? (t.fgm + .5 * t.tpm) / t.fga : null, out = [];
+  const eT = efg(th), eT0 = efg(B.them), eU = efg(us), eU0 = efg(B.us);
+  if(eT != null && eT0 != null && th.fga >= 8) out.push({v:(eT - eT0) * 2 * th.fga, t:`They're shooting ${pctS(eT)} eFG, ${th.fgm} of ${th.fga} with ${th.tpm} three${th.tpm === 1 ? "" : "s"} (we usually allow ${pctS(eT0)}).`});
+  if(eU != null && eU0 != null && us.fga >= 8) out.push({v:-(eU - eU0) * 2 * us.fga, t:`We're shooting ${pctS(eU)} eFG, ${us.fgm} of ${us.fga} with ${us.tpm} three${us.tpm === 1 ? "" : "s"} (season ${pctS(eU0)}).`});
+  out.push({v:us.to - B.us.to / n * f, t:`${us.to} turnover${us.to === 1 ? "" : "s"} so far (we'd usually have about ${by(B.us.to)} by now).`});
+  out.push({v:1.1 * (th.oreb - B.them.oreb / n * f), t:`They have ${th.oreb} offensive rebound${th.oreb === 1 ? "" : "s"} (we usually allow about ${by(B.them.oreb)} by now).`});
+  out.push({v:.7 * (th.fta - B.them.fta / n * f), t:`They've shot ${th.fta} free throw${th.fta === 1 ? "" : "s"} (about ${by(B.them.fta)} by now most nights).`});
+  out.push({v:-.7 * (us.fta - B.us.fta / n * f), t:`We've shot ${us.fta} free throw${us.fta === 1 ? "" : "s"} (about ${by(B.us.fta)} by now most nights).`});
+  const T = tripsLog(g);
+  if(T){ const now = {}; for(const tr of T){ if(!HOW_W[tr.how]) continue; const a = now[tr.tm + ":" + tr.how] || (now[tr.tm + ":" + tr.how] = {tm:tr.tm, how:tr.how, n:0, pts:0}); a.n++; a.pts += +tr.pts || 0; }
+    for(const a of Object.values(now)){ const s = B.trips[a.tm + ":" + a.how]; if(a.n < 3 || !s || s.n < 10) continue; const p = a.pts / a.n, p0 = s.pts / s.n;
+      out.push(a.tm === "us" ? {v:-(p - p0) * a.n, t:`We're getting ${p.toFixed(2)} points a trip ${howW("us", a.how)} (season ${p0.toFixed(2)}).`} : {v:(p - p0) * a.n, t:`They're getting ${p.toFixed(2)} a trip ${howW("them", a.how)} (we usually allow ${p0.toFixed(2)}).`}); } }
+  const top = out.filter(x => Math.abs(x.v) >= 1.5).sort((a, b) => Math.abs(b.v) - Math.abs(a.v)).slice(0, 3);
+  const ppl = Object.entries(R.box.them).map(([pid, ln]) => ({p:player(g, "them", pid), ln, pid})).filter(x => x.p);
+  const go = ppl.filter(x => x.ln.fga >= 6 && th.fga && x.ln.fga / th.fga >= .3).sort((a, b) => b.ln.fga - a.ln.fga)[0];
+  const half1 = R.q <= (g.quarters || 4) / 2 && !(R.brk && R.q > (g.quarters || 4) / 2), hot = ln => ln.pf >= 3 || (half1 && ln.pf >= 2);
+  const atk = ppl.filter(x => R.court.them.has(x.pid) && hot(x.ln) && x.ln.pf < 5).sort((a, b) => b.ln.pf - a.ln.pf);
+  const ours = Object.entries(R.box.us).map(([pid, ln]) => ({p:player(g, "us", pid), ln})).filter(x => x.p && hot(x.ln) && x.ln.pf < 5).sort((a, b) => b.ln.pf - a.ln.pf);
+  const who = x => `#${esc(x.p.num)}${pShort(x.p) ? " " + esc(pShort(x.p)) : ""}`;
+  const more = [go ? `${who(go)} has taken ${go.ln.fga} of their ${th.fga} shots (${go.ln.pts} point${go.ln.pts === 1 ? "" : "s"}).` : "",
+    atk.length ? `Go at ${atk.map(x => `${who(x)} (${x.ln.pf} fouls)`).join(", ")}.` : "", ours.length ? `Our foul trouble: ${ours.map(x => `${who(x)} (${x.ln.pf})`).join(", ")}.` : ""].filter(Boolean);
+  const lis = top.map(x => `<li${x.v > 0 ? ' class="bad"' : ""}>${x.v > 0 ? "▲" : "▼"} ${x.t}</li>`).concat(more.map(t => `<li>${t}</li>`));
+  return `<div class="card no-print chg"><div class="kicker">${esc(nowLabel(g, R))} · against the season (${n} games)</div>${head}
+    ${lis.length ? `<ul style="margin:6px 0 0 18px;padding:0">${lis.join("")}</ul>` : `<p style="margin:6px 0 0">Nothing's far off the season so far.</p>`}
+    <p class="small" style="margin:6px 0 0">▲ is hurting us, ▼ is going our way, biggest first by about how many points it's worth so far tonight.</p></div>`;
+}
+
+// Where the points went (edge 4): the leaks for a stretch of games, ranked by points a game, against the whole season.
+// From the play chains Stats already keeps (chainOf): points off our live-ball and dead-ball turnovers, their second
+// chances, their transition baskets (clock games only), the free throws we missed and their points at the line.
+const LK_RANGES = [["7", "Last 7 days"], ["3", "Last 3 games"], ["5", "Last 5 games"], ["all", "Whole season"]];
+function leakGames(team, rg){
+  const all = seasonGames(team); if(rg === "all") return all; if(rg === "3" || rg === "5") return all.slice(-+rg);
+  const d = new Date(pubToday() + "T12:00:00"); d.setDate(d.getDate() - 7); const from = d.toISOString().slice(0, 10); return all.filter(g => g.date >= from);
+}
+const LEAKS = [["live", "Points off our live-ball turnovers"], ["dead", "Points off our dead-ball turnovers"], ["sec", "Their second-chance points"],
+  ["trans", "Their transition points (clock games)"], ["ftx", "Free throws we missed"], ["ftthem", "Their points at the line"]];
+function leaksOf(gs){
+  const a = {n:gs.length, ck:0}; for(const [k] of LEAKS) a[k] = 0;
+  for(const g of gs){ const d = dig(g, false), R = d.R || replay(g), us = totalsOf(R, "us"), th = totalsOf(R, "them"), ch = chainOf(d);
+    for(const p of ch.pts) if(p.tm === "them"){ if(p.to) a[p.to.stl ? "live" : "dead"] += p.n; if(p.sec) a.sec += p.n; }
+    if(d.ck){ a.ck++; for(const x of ch.fga) if(x.tm === "them" && x.tr && x.e.m) a.trans += x.e.p; }
+    if(!us.po) a.ftx += us.fta - us.ftm; a.ftthem += th.ftm; }
+  return a;
+}
+function leaksView(team){
+  const rg = LK_RANGES.some(r => r[0] === ui.lkRange) ? ui.lkRange : "7", gs = leakGames(team, rg), all = seasonGames(team);
+  const pick = `<div class="row no-print"><span class="kicker">Games</span><select data-sel="lkRange" style="width:auto">${LK_RANGES.map(([k, l]) => `<option value="${k}" ${k === rg ? "selected" : ""}>${l}</option>`).join("")}</select>${gs.length ? `<button class="btn sm" data-act="lkpdf" data-team="${team}">PDF</button>` : ""}</div>`;
+  if(!gs.length) return `<div class="card stack">${pick}<p style="margin:0">No games over in that stretch. Pick a longer one.</p></div>`;
+  const A = leaksOf(gs), S1 = leaksOf(all), per = (x, k) => k === "trans" ? (x.ck ? x[k] / x.ck : null) : x[k] / x.n;
+  const rows = LEAKS.map(([k, l]) => ({k, l, v:per(A, k), s:per(S1, k)})).filter(r => r.v != null).sort((a, b) => b.v - a.v);
+  const top = rows.filter(r => r.v > 0).slice(0, 3).map((r, i) => `<li><b>${esc(r.l)}:</b> ${fx1(r.v)} a game${rg !== "all" && r.s != null ? `, season ${fx1(r.s)}` : ""}.</li>`).join("");
+  return `<div class="card stack">${pick}<div><h3 style="font-size:22px;margin:0">Where the points went</h3><p class="small" style="margin:2px 0 0">${gs.length} game${gs.length === 1 ? "" : "s"}: ${esc(gs.map(g => `${fmtDate(g.date)} ${g.ha === "Away" ? "at" : "vs."} ${g.opp}`).join(", "))}.</p></div>
+    ${top ? `<ol style="margin:0 0 0 18px;padding:0">${top}</ol>` : `<p style="margin:0">Nothing leaked in that stretch.</p>`}
+    ${stTable(["Leak", "A game", ...(rg !== "all" ? ["Season", "Change"] : [])], rows.map(r => [esc(r.l), fx1(r.v), ...(rg !== "all" ? [r.s == null ? "–" : fx1(r.s), r.s == null ? "–" : (r.v - r.s >= 0 ? "+" : "") + fx1(r.v - r.s)] : [])]))}
+    <p class="small" style="margin:0">Points a game, biggest first. A turnover is live-ball when a steal came with it. Transition is a basket within 7 seconds of getting the ball, so it counts only games with the board clock (${A.ck} of ${A.n}).</p></div>`;
+}
+function leaksPdf(team){
+  const rg = LK_RANGES.some(r => r[0] === ui.lkRange) ? ui.lkRange : "7", gs = leakGames(team, rg); if(!gs.length) return;
+  const A = leaksOf(gs), S1 = leaksOf(seasonGames(team)), per = (x, k) => k === "trans" ? (x.ck ? x[k] / x.ck : null) : x[k] / x.n;
+  const rows = LEAKS.map(([k, l]) => ({l, v:per(A, k), s:per(S1, k)})).filter(r => r.v != null).sort((a, b) => b.v - a.v);
+  const title = `Where the points went: ${team === "girls" ? "girls" : "boys"}, ${(LK_RANGES.find(r => r[0] === rg) || [, ""])[1].toLowerCase()}`, D = pdfDoc(title), Lx = 36, RT = 576; let y = 40;
+  D.page(); D.text(Lx, y, `${team === "girls" ? "Girls" : "Boys"} varsity · ${SEASON} · staff only`.toUpperCase(), {sz:8.5, b:true, g:.35});
+  y += 22; D.text(Lx, y, "Where the points went", {sz:20, b:true});
+  y += 15; D.text(Lx, y, `${gs.length} game${gs.length === 1 ? "" : "s"}: ${gs.map(g => `${fmtDate(g.date)} ${g.ha === "Away" ? "at" : "vs."} ${g.opp}`).join(", ")}`, {sz:9, g:.25, fit:RT - Lx});
+  y += 26; D.text(Lx, y, "Leak", {sz:8, b:true, g:.4}); D.text(380, y, "A GAME", {sz:8, b:true, g:.4, al:"r"}); D.text(470, y, "SEASON", {sz:8, b:true, g:.4, al:"r"}); D.text(RT, y, "CHANGE", {sz:8, b:true, g:.4, al:"r"});
+  rows.forEach(r => { y += 18; D.text(Lx, y, r.l, {sz:11, fit:320}); D.text(380, y, fx1(r.v), {sz:11, b:true, al:"r"}); D.text(470, y, r.s == null ? "-" : fx1(r.s), {sz:11, al:"r"}); D.text(RT, y, r.s == null ? "-" : (r.v - r.s >= 0 ? "+" : "") + fx1(r.v - r.s), {sz:11, al:"r"}); });
+  y += 26; D.text(Lx, y, `Brier Stats ${BS_VERSION} · ${new Date().toLocaleDateString()} · Points a game. Transition counts only games with the board clock (${A.ck} of ${A.n}).`, {sz:7, g:.45, fit:RT - Lx});
+  shareFile(`brier-stats-points-went-${team}-${pubToday()}.pdf`, new Blob([D.bytes()], {type:"application/pdf"}), title);
+}
 /* ---------- events ---------- */
 // Viewers only watch. What would change the table, notes, name notes, the PA's prep and script, Jim's notes or the saved
 // rosters is read-only on their screens, and a tap on it says why (the cloud refuses it anyway).
@@ -7675,7 +7917,7 @@ document.addEventListener("click", async ev => {
     case "lineuppa": { if(!g || !canEdit(g)) break; const tm = a.dataset.tm, R = replay(g), want = startersOf(g, tm).filter(pid => !R.court[tm].has(pid)).slice(0, 5 - R.court[tm].size);
       const grp = rid(); want.forEach(pid => rec({tm, pid, t:"IN", lu:true, grp}, {quiet:true})); ui.lineup = null; touch(g); break; }
     case "oppedit": if(canCoach()) oppSheet(a.dataset.opp); break;
-    case "oppreset": if(s && s.opp && canCoach()){ delete S.opps[okey(s.opp)]; S.teamsRev++; save(); Sync.dirtyTeams(); closeSheet(); render(); toast(s.opp + " is back to its researched colors."); } break;
+    case "oppreset": if(s && s.opp && canCoach()){ const mpKeep = (S.opps[okey(s.opp)] || {}).mp; delete S.opps[okey(s.opp)]; if(mpKeep) S.opps[okey(s.opp)] = {mp:mpKeep}; S.teamsRev++; save(); Sync.dirtyTeams(); closeSheet(); render(); toast(s.opp + " is back to its researched colors."); } break;
     case "copythem": { if(!g || !canEdit(g)) break; const src = S.games[a.dataset.from]; if(!src) break; claim(g); g.them = JSON.parse(JSON.stringify(src.them)); touch(g); toast(g.them.length + " players copied. Fix numbers that changed with Edit."); break; }
     case "pastethem": if(g && canEdit(g)) sheetText("Their roster · " + g.opp, "Just the numbers (2 3 4 12 14), or one player per line with the number first", "", txt => {
         if(!canEdit(g)) return; const add = themParse(txt); if(!add.length){ toast("Didn't find any numbers. Try: 2 3 4 12 14"); return; }
@@ -7916,6 +8158,16 @@ document.addEventListener("click", async ev => {
     case "glopp": if(ui.sheet){ ui.sheet.opp = a.dataset.opp; ui.glSel = null; const top = ($("#sheet .sheet") || {}).scrollTop || 0; renderSheet(); const nb = $("#sheet .sheet"); if(nb) nb.scrollTop = top; } break;
     case "logbox": { const x = S.games[a.dataset.gid]; if(!x) break; closeSheet(); ui.gid = x.id; ui.follow = false; ui.tab = "box"; saveUi(); render(); window.scrollTo(0, 0); break; }
     case "csv": if(g) download(`${g.id}-box.csv`, csvOf(g), "text/csv"); break;
+    case "mpfile": if(g && canCoach() && g.status === "final"){ const f = mpFile(g), n = f.trim().split("\n").length - 1, miss = sortRoster(roster(g, "us")).filter(p => { const ln = replay(g).box.us[p.pid]; return ln && ln.gp && !mpCell(p.num); }).length;
+      download(mpName(g), f, "text/plain"); toast(`MaxPreps file saved: ${n} player${n === 1 ? "" : "s"}${miss ? `, ${miss} left out with no number` : ""}. In MaxPreps: Schedule, this game, Edit Score, Save & Import Stats. The numbers have to match the MaxPreps roster.`, 7000); } break;
+    case "lateopen": if(g){ (ui.late || (ui.late = {}))[g.id] = 1; render(); } break;
+    case "lateclose": if(g){ (ui.late || (ui.late = {}))[g.id] = 0; render(); } break;
+    case "mpsave": { if(!s || !s.opp || !canCoach()) break; const ta = $('#sheet [name="mppaste"]'), ts = $('#sheet [name="mpteam"]'), team = ts && ts.value === "girls" ? "girls" : "boys"; if(!ta) break;
+      const r = mpParse(ta.value); if(!r.n){ toast("No MaxPreps stats table in that. Copy from the # column header through the Season Total row.", 5000); break; }
+      const k = okey(s.opp), o = S.opps[k] || (S.opps[k] = {}); o.mp = {...(o.mp && typeof o.mp === "object" ? o.mp : {}), [team]:{at:Date.now(), rows:r.rows}};
+      S.teamsRev++; save(); Sync.dirtyTeams(); render(); renderSheet(); toast(`Read ${r.n} ${team} player${r.n === 1 ? "" : "s"} from ${r.tables} table${r.tables === 1 ? "" : "s"}.`, 3500); break; }
+    case "mpclear": { if(!s || !s.opp || !canCoach()) break; const o = S.opps[okey(s.opp)], team = a.dataset.team; if(o && o.mp && (team === "boys" || team === "girls")){ delete o.mp[team]; S.teamsRev++; save(); Sync.dirtyTeams(); render(); renderSheet(); toast("Cleared."); } break; }
+    case "lkpdf": if(canCoach() && (a.dataset.team === "boys" || a.dataset.team === "girls")) leaksPdf(a.dataset.team); break;
     case "voidtog": { if(!g || !canEdit(g)) break; const e = g.ev.find(x => x.id === a.dataset.id); if(e){ const v = !e.v, ed = Date.now(); (e.grp ? g.ev.filter(x => x.grp === e.grp) : [e]).forEach(x => { x.v = v; x.ed = ed; }); touch(g); } break; }
     case "fix": { if(!g || !canEdit(g)) break; const e = g.ev.find(x => x.id === a.dataset.id); if(e) fixSheet(g, e); break; }
     case "autofix": if(g && canEdit(g)) autoFixSheet(g, a.dataset.id); break;
@@ -8159,7 +8411,8 @@ document.addEventListener("submit", ev => {
     closeSheet(); s.opts.onSave(p); return; }
   if(f.id === "oform" && s){ if(!canCoach()) return; const d = new FormData(f), name = s.opp || String(d.get("name") || "").trim(); if(!name){ toast("Name the school first."); return; }
     const hx = k => { const v = String(d.get(k) || "").trim(); return hexOk(v) ? v.toUpperCase() : hexOk("#" + v) ? ("#" + v).toUpperCase() : ""; };
-    S.opps[okey(name)] = {name, mascot:String(d.get("mascot") || "").trim(), girls:String(d.get("girls") || "").trim(), abbr:String(d.get("abbr") || "").trim().toUpperCase().slice(0, 4), c1:hx("c1"), c2:hx("c2"), upd:Date.now()};
+    const mpKeep = (S.opps[okey(name)] || {}).mp;
+    S.opps[okey(name)] = {...(mpKeep ? {mp:mpKeep} : {}), name, mascot:String(d.get("mascot") || "").trim(), girls:String(d.get("girls") || "").trim(), abbr:String(d.get("abbr") || "").trim().toUpperCase().slice(0, 4), c1:hx("c1"), c2:hx("c2"), upd:Date.now()};
     S.teamsRev++; save(); Sync.dirtyTeams(); closeSheet(); render(); toast(name + " saved."); return; }
   if(f.id === "rform" && s && s.rec){ if(!canCoach()) return; const d = new FormData(f), k = String(d.get("k")), st = String(d.get("s")), t = String(d.get("t") || "").trim(), v = parseFloat(t.replace(/,/g, ""));
     if(!RK[k] || !RS[st] || isNaN(v)){ toast("Type the record as a number, like 689, 23.4, 62% or 26-10."); return; }
@@ -8617,6 +8870,7 @@ function oppSheet(name){
     <div class="row">${[["c1", "Main color"], ["c2", "Second color"]].map(([k, l]) => `<label class="fld" style="flex:1;min-width:150px"><span>${l}</span><span class="row" style="flex-wrap:nowrap"><input type="color" data-hex="${k}" value="${hexOk(o[k]) ? o[k] : "#000000"}" style="width:52px;height:40px;padding:2px;flex:none"><input type="text" name="${k}" value="${esc(o[k])}" placeholder="#4B2E83" maxlength="7" data-hext="${k}"></span></label>`).join("")}</div>
     ${name ? `<div class="oplogo"><i class="lgo xl ${Logos.cls(name) || "none"}" data-lgk="${esc(name)}"></i><div><b>Logo</b><div class="small">${Logos.has(name) ? "On every page, the shot chart lane and the Game Book." : "None yet: the scoreboard letters show instead."}</div>
       <button class="btn sm" type="button" data-act="logos" data-opp="${esc(name)}" style="margin-top:4px" ${Sync.live() ? "" : "disabled"}>${Logos.has(name) ? "Change logo" : "Add logo"}</button></div></div>` : ""}
+    ${mpBox(name)}
     <div class="opreview" id="opreview" style="${varsOf(inkOf(o.c1, o.c2))}"><button type="button" class="pnum">10</button><div class="sb"><button type="button" class="mk">+2</button><button type="button" class="mk">+3</button><button type="button" class="ms">3 ✗</button></div><span class="chip at"><b>10</b>Smith</span><b style="color:var(--tl);font-family:var(--f-display);font-size:20px;text-transform:uppercase">${esc(name || "Opponent")}</b></div>
     <p class="small" style="margin:0">If the main color is too light to read white on, or too close to our green, the second color leads. A team in green with nothing else, or with no colors yet, shows in grey.</p>
     <div class="row"><button class="btn primary" type="submit">Save</button>${p ? `<button class="btn" type="button" data-act="oppreset">Back to the researched colors</button>` : ""}<button class="btn" type="button" data-close>Cancel</button></div></form>`});
