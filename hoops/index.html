@@ -5,7 +5,7 @@
 <!-- The page's lock: the only script that may run is the one in this file (named by the SHA-256 of its text) and files
      from this folder (fb.js). Text that turns up in the page from a roster, a game or the cloud can never run as code.
      After ANY edit to the script, run "python3 hoops/stamp.py hoops": with a stale hash the browser runs nothing. -->
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-XuAcbuc/xgPxj7plJOhnRQTt5BzmFjBq3AqCn+laMNg='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-BpkWJCugKKolPS6i6zXS1PI1el1mgKm3URfhQaD9EbM='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#094A28">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -355,6 +355,10 @@ th.tn{white-space:normal}
 /* The arrow's team is spelled out: a long one moves to its own line rather than being cut to letters. */
 .cact .an{display:inline-block}
 .cact .wide{grid-column:span 2}
+.btn.chk{flex-direction:column;gap:0;min-width:0}.btn.chk small{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-weight:500}
+.btn.chk.good{background:var(--green);border-color:var(--green);color:var(--white)}.btn.chk.bad{background:var(--f5);border-color:var(--f5);color:var(--white)}
+.closel{list-style:none;margin:0 0 8px;padding:0}.closel li{padding:3px 0;display:flex;gap:6px;align-items:center;flex-wrap:wrap}.closel .no{font-weight:700}
+.tag.flg{background:var(--f3);border-color:var(--f3);color:var(--black)}
 .cact .pair{display:flex;gap:4px;min-width:0}.cact .pair .btn{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;overflow:hidden}.cact .pair .btn+.btn{flex:.8}
 .desk .center .cact,.cact{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.cact .pair .an{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
 .cact .pair .ak{display:block;font-size:10px;letter-spacing:.08em;text-transform:uppercase;line-height:1}
@@ -853,7 +857,7 @@ td .face{width:24px;height:24px;margin:-5px 7px -4px 0}
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
 { const n = document.getElementById("nostart"); if(n) n.remove(); }   // the script is running: see #nostart
-const BS_VERSION = "0.25.1";
+const BS_VERSION = "0.26.0";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -1013,7 +1017,12 @@ function practiceGame(){
 }
 
 /* ---------- replay: every number comes from here ---------- */
-const LINE = () => ({pts:0,fgm:0,fga:0,tpm:0,tpa:0,ftm:0,fta:0,oreb:0,dreb:0,ast:0,stl:0,blk:0,to:0,pf:0,tf:0,pm:0,gp:0,po:0});
+const LINE = () => ({pts:0,fgm:0,fga:0,tpm:0,tpa:0,ftm:0,fta:0,oreb:0,dreb:0,ast:0,stl:0,blk:0,to:0,pf:0,tf:0,pm:0,gp:0,po:0,fd:0,chg:0});
+// Kevin (0.26.0): turnover types, as college books keep them (a violation: 3, 5 or 10 seconds, the lane, backcourt, a
+// double dribble). A steal's turnover is a bad pass or a lost ball.
+const TT = {bp:"bad pass", lb:"lost ball", tr:"traveling", of:"offensive foul", vi:"violation", ob:"out of bounds"};
+const TT_CHIP = {bp:"Bad pass", lb:"Lost ball", tr:"Travel", of:"Off. foul", vi:"Violation", ob:"Out of bounds"}, TT_LIVE = ["bp", "lb"];
+const ttOf = e => e && typeof e.tt === "string" && Object.prototype.hasOwnProperty.call(TT, e.tt) ? e.tt : "";
 const OTHER = tm => tm === "us" ? "them" : "us";
 // A game clock as the board shows it: 5:49, and under a minute 0:45.3 (the horn is 0:00). "" without one.
 function clockText(s){ if(typeof s !== "number" || !isFinite(s) || s < 0) return ""; if(s < .05) return "0:00"; if(s < 60) return "0:" + (Math.floor(s * 10 + 1e-6) / 10).toFixed(1).padStart(4, "0");
@@ -1085,9 +1094,14 @@ function replay(g){
   const reb = (tm, why) => { const m = R.open; R.open = null; if(!m) return;
     const e = {id:"auto:" + m.e.id, t:"REB", tm, pid:null, o:tm === m.tm, ref:m.e.id, auto:why, at:m.e.at, ...(m.e.gc ? {gc:m.e.gc} : {})};
     R.rebOf.set(m.e.id, {e, auto:why}); R.auto++; R.lastAuto = m.e.auto ? null : {miss:m.e.id, tm}; derive(e, e.o ? "oreb" : "dreb"); };
-  let flip = false;
+  let flip = false, pendF = null;
+  // Kevin (0.26.0): fouls drawn. The fouled player named on the foul (on; a charge taken counts too), or with none named,
+  // the other team's next free-throw shooter.
+  const drew = (tm, pid, chg) => { if(typeof pid !== "string" || !pid) return; const l = L(tm, pid), lq = LQ(tm, pid); l.fd++; lq.fd++; l.gp = 1; lq.gp = 1; if(chg){ l.chg++; lq.chg++; } };
   for(const e of g.ev){
     if(e.v){ R.plays.push({e, q:R.q, sc:{us:R.sc.us, them:R.sc.them}, void:true}); continue; }
+    if(pendF && !["IN", "OUT", "NOTE", "POSS", "TMO", "AST", "FT", "TF"].includes(e.t)) pendF = null;
+    if(e.t === "FT" && pendF && pendF === e.tm){ drew(e.tm, e.pid); pendF = null; }
     // An assist belongs to its basket: when that basket is removed, turned into a miss or moved to the passer, the
     // assist stops counting too (and comes back if the basket does). One assist a basket (Sec. 5), none on the defense's
     // tip-in.
@@ -1128,7 +1142,7 @@ function replay(g){
       // A block needs a missed shot (Sec. 7): one with no shot named is a team miss.
       case "BLK": inc("blk"); if(!K.blk.has(e.id)) after.push([{id:"auto:" + e.id, t:"FG", tm:OTHER(tm), pid:null, p:2, m:false, ref:e.id, auto:"blk", at:e.at, ...(e.gc ? {gc:e.gc} : {})}, "fga"]); break;
       case "TO": inc("to"); break;
-      case "PF": inc("pf"); R.tf[tm][q] = (R.tf[tm][q] || 0) + 1; break;
+      case "PF": inc("pf"); R.tf[tm][q] = (R.tf[tm][q] || 0) + 1; if(typeof e.on === "string" && e.on) drew(OTHER(tm), e.on, !!e.ch); else pendF = OTHER(tm); break;
       case "TF": inc("tf"); if(e.pid) inc("pf"); R.tf[tm][q] = (R.tf[tm][q] || 0) + 1; break;
       case "TMO": R.tmo[tm][e.len === 30 ? 30 : 60]++; break;
       // full: the last five a team had on the floor. While a sub leaves it short, the fan page keeps showing those five.
@@ -1457,8 +1471,8 @@ function playText(g, e, o = {}){
     case "AST": return who + " assist";
     case "STL": return who + " steal";
     case "BLK": return who + " block";
-    case "TO": return (e.pid ? who : team + " team") + " turnover" + (e.of ? " (offensive foul)" : "");
-    case "PF": return who + " foul";
+    case "TO": return (e.pid ? who : team + " team") + " turnover" + (e.ch ? " (charge)" : e.of ? " (offensive foul)" : ttOf(e) ? " (" + TT[ttOf(e)] + ")" : "");
+    case "PF": return who + (e.ch ? " offensive foul" : " foul") + (typeof e.on === "string" && e.on ? (e.ch ? ", charge taken by " : " on ") + esc(pLabel(g, OTHER(e.tm), e.on)) : "");
     case "TF": return (e.pid ? who : team + " bench/coach") + " technical foul";
     case "TMO": return "Timeout " + team + ", " + (e.len === 30 ? "30 seconds" : "60 seconds");
     case "IN": return who + " checks in";
@@ -1502,7 +1516,20 @@ function mine(g){ return !g.writer || g.writer === S.dev; }
 // over. The writer stays the same (the rules take an update that keeps it), so the device that scored it keeps its copy.
 // A game that ended (regulation horn, score not tied) with nobody tapping Final counts once it's been quiet 20 minutes.
 function openGame(g){ return !!g && !g.practice && (g.status === "final" || (g.status === "live" && Date.now() - lastAtOf(g) > 20 * 60000 && gameOver(g))); }
-function canEdit(g){ return g && canScore() && (mine(g) || openGame(g)); }
+function canEdit(g){ return g && canScore() && (mine(g) || openGame(g)) && !locked(g); }
+// Kevin (0.26.0): a final locks 24 hours after it's marked final, so its stats stay put. A Coach or Admin unlocks it with
+// a reason (it goes in the change log); it stays open 24 hours from then, or until a coach locks it again.
+const LOCK_MS = 24 * 3600e3;
+function unlOf(g){ return (Array.isArray(g.unl) ? g.unl : []).filter(x => x && typeof x === "object" && typeof x.at === "number"); }
+function finAt(g){ const f = g.fed && typeof g.fed.status === "number" ? g.fed.status : 0; return f || lastAtOf(g); }
+function lockOpen(g){ const u = unlOf(g).slice(-1)[0]; return u && !u.lock && Date.now() - u.at < LOCK_MS ? u : null; }
+function locked(g){ return !!g && !g.practice && g.status === "final" && Date.now() - finAt(g) >= LOCK_MS && !lockOpen(g); }
+function lockLine(g){
+  if(!g || g.practice || g.status !== "final" || Date.now() - finAt(g) < LOCK_MS) return "";
+  const u = lockOpen(g);
+  if(!u) return `<div class="flag no-print" style="margin:0 0 8px"><span><b>Locked.</b> Final for over 24 hours, so its stats stay put.${canCoach() ? "" : " A coach can unlock it to fix something."}</span>${canCoach() ? `<button class="btn sm" data-act="unlock">Unlock to fix</button>` : ""}<button class="btn sm" data-act="chglog">Change log</button></div>`;
+  return `<div class="flag no-print" style="margin:0 0 8px"><span><b>Unlocked</b> by ${esc(u.by || "a coach")}: ${esc(String(u.why || ""))}. It locks again in ${Math.max(1, Math.ceil((u.at + LOCK_MS - Date.now()) / 3600e3))} h.</span>${canCoach() ? `<button class="btn sm" data-act="relock">Lock it now</button>` : ""}<button class="btn sm" data-act="chglog">Change log</button></div>`;
+}
 let toastT;
 function toast(msg, ms = 2400){ const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, ms); }
 
@@ -1608,11 +1635,18 @@ function subsOf(g, R, tm, n){
 }
 
 /* ---------- recording ---------- */
-function touch(g){ g.rev = (g.rev || 0) + 1; g.upd = Date.now(); save(); Sync.dirty(g.id); render(); }
+// Who changed a play (Kevin, 0.26.0: the change log). A play a person changed on this device (a tap or a typed fix just
+// now) carries their name, their sign-in and which change it names (eb, eu, ebt = that change's ed); the board's own
+// clock fixes and copies from other devices don't get this device's name.
+const HUMAN = {at:0};
+["pointerdown", "click", "submit", "keydown"].forEach(t => document.addEventListener(t, () => { HUMAN.at = Date.now(); }, true));
+function byWho(g){ const now = Date.now(); if(now - HUMAN.at > 1500 || !Array.isArray(g.ev)) return; let w = null;
+  for(const e of g.ev){ const t = e && Math.max(+e.ed || 0, +e.la || 0); if(t && now - t < 1500 && e.ebt !== t){ if(w === null) w = {n:Sync.who(), u:Sync.uid() || ""}; e.eb = w.n; e.eu = w.u; e.ebt = t; } } }
+function touch(g){ byWho(g); g.rev = (g.rev || 0) + 1; g.upd = Date.now(); save(); Sync.dirty(g.id); render(); }
 function claim(g){ if(!g.writer){ g.writer = S.dev; g.writerAt = Date.now(); } }
 // The game fields the edit sheet, Final and Reopen change. g.fed keeps when each was last changed, so two devices fixing a
 // game that's over at the same time keep each other's fields (mergeGame). A copy from before stamps counts as 0.
-const GFIELDS = ["date", "time", "opp", "ha", "event", "district", "off", "forfeit", "ppdFrom", "offWas", "status", "quarters", "qlen", "bfin", "rv", "scrim", "uni"];
+const GFIELDS = ["date", "time", "opp", "ha", "event", "district", "off", "forfeit", "ppdFrom", "offWas", "status", "quarters", "qlen", "bfin", "rv", "scrim", "uni", "unl", "site", "att"];
 function edField(g, ks){ if(!ks.length) return; const t = Date.now(); g.fed = {...(g.fed || {})}; ks.forEach(k => { g.fed[k] = t; }); }
 // One game from two copies of it: base, plus every change in other that's newer (plays by mergeEv, players by their edit
 // stamp ed, game fields by g.fed, numbers the PA's list put in). Where neither side's change is newer, base's stands.
@@ -1665,6 +1699,7 @@ function startGame(g){ if(g.off){ g.offWas = g.off; delete g.off; } g.status = "
 const PREGAME = e => e.t === "POSS" || e.t === "NOTE" || e.t === "OUT" || (e.t === "IN" && e.lu);
 function rec(e, opts = {}){
   const g = cur(); if(!g) return null;
+  if(locked(g)){ toast("This final is locked. A coach can unlock it to fix something."); return null; }
   if(!canEdit(g)){ toast(canScore() ? "Another device is scoring this game. Take over first." : "Viewers can't score."); return null; }
   if(g.status === "final"){ toast("This game is final. Tap Reopen to add plays, or fix plays under Plays."); return null; }
   claim(g); e.id = rid(); e.at = Date.now();
@@ -1724,6 +1759,37 @@ function ckSpread(g, x, old, ed){
 // The last play that matters for linking (subs, notes and the arrow don't count).
 function lastPlay(g){ for(let i = g.ev.length - 1; i >= 0; i--){ const e = g.ev[i]; if(!e.v && !["IN","OUT","NOTE","POSS","TIP","JUMP"].includes(e.t)) return e; } return null; }
 const linked = (g, t, id) => g.ev.some(x => !x.v && x.t === t && x.ref === id);
+// Kevin (0.26.0): a play the scorer isn't sure of gets a flag (the desk's Flag takes the last play, Plays any play), and the
+// Book check at the break lists the flagged ones to settle against the official book, as a college crew's flagger does.
+function flagTog(g, e){ if(!g || !e || !canEdit(g)) return false; if(e.fl) delete e.fl; else e.fl = 1; e.ed = Date.now(); touch(g); return true; }
+// The team fouls a period ended with, as the board shows them (overtime counts with the fourth quarter).
+function perFouls(g, R, tm, q){ const Q = g.quarters || 4; if(q <= Q) return R.tf[tm][q] || 0; let n = 0; for(let k = Q; k <= q; k++) n += R.tf[tm][k] || 0; return n; }
+// How far a spot is past the arc in feet (less than 0: inside it), on the court's 50 x 47 ft half.
+function arcDist(x, y){ const fx = x * 50, fy = y * 47; return fy < 5.25 ? Math.abs(fx - 25) - 19.75 : Math.hypot(fx - 25, fy - 5.25) - 19.75; }
+// Kevin (0.26.0): a charted shot whose spot is clearly on the other side of the arc (1.5 ft or more) from the 2 or 3 it
+// went in as. One the scorer kept as it was (sk) isn't asked about again.
+// Make a shot the 2 or 3 its spot says, or keep it as tapped (and stop asking).
+function spotSet(g, e, p){ if(!g || !e || !canEdit(g) || e.t !== "FG" || e.dt || (p !== 2 && p !== 3)) return false; e.p = p; delete e.sk; e.ed = Date.now(); touch(g); return true; }
+function spotKeep(g, e){ if(!g || !e || !canEdit(g) || e.t !== "FG") return false; e.sk = 1; e.ed = Date.now(); touch(g); return true; }
+function spotOff(e){ if(!e || typeof e.x !== "number" || typeof e.y !== "number" || e.sk) return false; const d = arcDist(e.x, e.y); return Math.abs(d) >= 1.5 && (d > 0) !== (e.p === 3); }
+// Kevin (0.26.0): at a break the Book check button says whether the book lines up (green) or has something to look at
+// (red), in a short line: score and team fouls against the gym board (home games with its feed), flagged plays, the
+// rebound balance, shot spots that don't match their 2 or 3, and how many shots got a spot. It never pops up by itself.
+function closeOf(g, R){
+  const out = [], b = Board.score(g), lq = lastQ(R);
+  if(b){ const ok = b.us === R.sc.us && b.them === R.sc.them; out.push({ok, s:ok ? "Score = board" : "Score ≠ board", t:ok ? "Score matches the board" : "Score doesn't match the board"});
+    if(b.q === lq && b.hf != null && b.vf != null){ const ok2 = b.hf === perFouls(g, R, "us", lq) && b.vf === perFouls(g, R, "them", lq);
+      out.push({ok:ok2, s:ok2 ? "Fouls = board" : "Fouls ≠ board", t:ok2 ? "Team fouls match the board" : "Team fouls don't match the board"}); } }
+  const fl = g.ev.filter(e => e.fl && !e.v).length;
+  out.push({ok:!fl, s:`${fl} flagged`, t:fl ? `${fl} flagged play${fl === 1 ? "" : "s"} to settle` : "No flagged plays"});
+  if(S.settings.extra || R.plays.some(p => !p.void && p.e.t === "REB")){ const B = balanceOf(g, R), n = R.orphans.length + gapsOf(g, R).length + ["us", "them"].filter(tm => B[tm].d).length;
+    out.push({ok:!n, s:"Rebounds off", t:n ? `Rebounds don't balance (${n} to look at)` : "Rebounds balance"}); }
+  const sh = R.shots.filter(x => !x.e.auto), ch = sh.filter(x => typeof x.e.x === "number"), off = ch.filter(x => spotOff(x.e));
+  if(off.length) out.push({ok:false, s:`${off.length} spot${off.length === 1 ? "" : "s"} ≠ 2/3`, t:`${off.length} shot spot${off.length === 1 ? " is" : "s are"} on the other side of the arc`});
+  const by = tm => ({n:ch.filter(x => x.e.tm === tm).length, of:sh.filter(x => x.e.tm === tm).length});
+  const chart = ch.length || S.settings.chart ? {n:ch.length, of:sh.length, us:by("us"), them:by("them")} : null, bad = out.filter(x => !x.ok);
+  return {bad:bad.length, items:out, chart, off:off.map(x => x.e), line:bad.length ? bad.map(x => x.s).join(" · ") : "All good" + (chart ? ` · ${chart.n}/${chart.of} charted` : "")};
+}
 let lastTap = {k:"", at:0};
 // A finger that bounces: the same button again within ms counts once. A real catch-up tap (two free throws) is slower.
 function bounced(key, ms){ const now = Date.now(); if(key === lastTap.k && now - lastTap.at < ms) return true; lastTap = {k:key, at:now}; return false; }
@@ -1758,17 +1824,19 @@ function stat(tm, pid, k){
     case "stl": {
       // Turnover already tapped on the other side? The steal goes with it instead of asking (and counting) it again.
       const last = lastPlay(g);
-      if(last && last.t === "TO" && last.tm === OTHER(tm) && last.pid && !linked(g, "STL", last.id)){ rec({tm, pid, t:"STL", ref:last.id}); break; }
+      if(last && last.t === "TO" && last.tm === OTHER(tm) && last.pid && !linked(g, "STL", last.id)){ if(rec({tm, pid, t:"STL", ref:last.id}) && S.settings.extra && !ttOf(last)){ ui.fu = [{k:"tot", ref:last.id, live:1}]; renderFu(); } break; }
       e = rec({tm, pid, t:"STL"}); if(e){ ui.fu = [{k:"to", tm:OTHER(tm), ref:e.id}]; renderFu(); } break; }
     case "blk": {
       // The miss is already in the book: the block goes with it rather than adding a second shot.
       const last = lastPlay(g);
       if(last && last.t === "FG" && !last.m && last.tm === OTHER(tm) && !linked(g, "BLK", last.id)){ e = rec({tm, pid, t:"BLK", ref:last.id}); if(e && S.settings.extra){ ui.rq = {k:"reb", miss:OTHER(tm), ref:last.id}; renderFu(); } break; }
       e = rec({tm, pid, t:"BLK"}); if(e){ ui.fu = [{k:"blk", tm:OTHER(tm), ref:e.id, p:2}]; renderFu(); } break; }
-    case "to": e = rec({tm, pid, t:"TO"}); if(e && pid && S.settings.extra){ ui.fu = [{k:"stl", tm:OTHER(tm), ref:e.id}]; renderFu(); } break;
+    // Kevin (0.26.0): the strip asks who stole it and how it was lost in one go; a dead-ball type (or any other tap) ends it.
+    case "to": e = rec({tm, pid, t:"TO"}); if(e && S.settings.extra){ ui.fu = [pid ? {k:"stl", tm:OTHER(tm), ref:e.id, tt:1} : {k:"tot", ref:e.id}]; renderFu(); } break;
     // Kevin (0.24.0): a player-control foul is a turnover too (Sec. 4 CD1), so the strip offers one; the next tap clears it.
     // Not right after the fouler's own team missed: that foul came after the shot, no turnover (Sec. 4 CD2).
-    case "pf": e = rec({tm, pid, t:"PF"}); if(e){ foulNote(g, tm, pid, "PF"); if(S.settings.extra && pid && R.lastMiss !== tm){ ui.fu = [{k:"of", tm, pid, ref:e.id}]; renderFu(); } } break;
+    // Kevin (0.26.0): and who got fouled (the other team's five), plus Charge (an offensive foul, a turnover and a charge taken).
+    case "pf": e = rec({tm, pid, t:"PF"}); if(e){ foulNote(g, tm, pid, "PF"); if(S.settings.extra && pid){ ui.fu = [{k:"pf", tm, pid, ref:e.id, of:R.lastMiss !== tm}]; renderFu(); } } break;
     case "tf": e = rec({tm, pid, t:"TF"}); if(e) foulNote(g, tm, pid, "TF"); break;
   }
   if(navigator.vibrate) try{ navigator.vibrate(12); }catch(_){}
@@ -2109,10 +2177,10 @@ function viewDesk(){
   const R = replay(g), ha = homeAway(g), sd = sides(g), Q = g.quarters || 4, edit = canEdit(g), hk = tm => tm === ha.home ? "home" : "away";
   let h = "";
   if(!canScore()) h += `<div class="flag">You're signed in as a viewer. <button class="btn sm" data-act="go" data-tab="box">Open the box score</button></div>`;
-  else if(!canEdit(g)) h += `<div class="flag bad"><span>Another device is scoring this game. Only one device scores at a time.${S.strand[g.id] ? ` <b>${S.strand[g.id].length} play(s) tapped here never reached the cloud</b> before it took over: taking over puts them back in.` : ""}</span><button class="btn sm" data-act="takeover">Take over scoring here</button></div>`;
+  else if(!canEdit(g) && !locked(g)) h += `<div class="flag bad"><span>Another device is scoring this game. Only one device scores at a time.${S.strand[g.id] ? ` <b>${S.strand[g.id].length} play(s) tapped here never reached the cloud</b> before it took over: taking over puts them back in.` : ""}</span><button class="btn sm" data-act="takeover">Take over scoring here</button></div>`;
   // The first game of a doubleheader is over: the next one tonight is one tap away (the book has about ten minutes).
   if(g.status === "final"){ const nx = g.practice ? null : Object.values(S.games).filter(x => x.id !== g.id && !x.deleted && !x.practice && !x.off && !x.forfeit && x.date === g.date && x.status !== "final").sort((a, b) => (a.time || "").localeCompare(b.time || ""))[0];
-    h += `<div class="flag ok"><b>FINAL${reviewOf(g) ? " · stats under review" : ""}.</b> ${reviewOf(g) && !g.practice ? `<button class="btn sm primary" data-act="recon" ${canEdit(g) ? "" : "disabled"}>Check against the paper book</button> ` : g.rv && g.rv.s === "done" ? `<button class="btn sm" data-act="recon">Signed off ✓</button> ` : ""}Corrections still work and fix the box score everywhere.${mine(g) ? ` <button class="btn sm" data-act="reopen">Reopen</button>` : ""}${canScore() ? ` <button class="btn sm" data-act="savebk">${bkSaved[g.id] >= (g.upd || 1) ? "Backup saved ✓" : "Save backup"}</button>${driveTag(g)}` : ""}${nx ? `<span style="margin-left:auto">Next: <b>${esc(usName(nx))} ${gameTitle(nx)}</b>${nx.time ? " · " + esc(timeWords(nx.time)) : ""}</span><button class="btn sm" data-act="open" data-gid="${nx.id}">Open</button>` : ""}</div>`; }
+    h += `<div class="flag ok"><b>FINAL${reviewOf(g) ? " · stats under review" : ""}.</b> ${reviewOf(g) && !g.practice ? `<button class="btn sm primary" data-act="recon" ${canEdit(g) ? "" : "disabled"}>Check against the paper book</button> ` : g.rv && g.rv.s === "done" ? `<button class="btn sm" data-act="recon">Signed off ✓</button> ` : ""}${locked(g) ? `Locked: final for over 24 hours.${canCoach() ? ` <button class="btn sm" data-act="unlock">Unlock to fix</button>` : " A coach can unlock it."}` : "Corrections still work and fix the box score everywhere."}${mine(g) && !locked(g) ? ` <button class="btn sm" data-act="reopen">Reopen</button>` : ""}${canScore() ? ` <button class="btn sm" data-act="savebk">${bkSaved[g.id] >= (g.upd || 1) ? "Backup saved ✓" : "Save backup"}</button>${driveTag(g)}` : ""}${nx ? `<span style="margin-left:auto">Next: <b>${esc(usName(nx))} ${gameTitle(nx)}</b>${nx.time ? " · " + esc(timeWords(nx.time)) : ""}</span><button class="btn sm" data-act="open" data-gid="${nx.id}">Open</button>` : ""}</div>`; }
   const flagged = h.length > 0, pers = []; for(let q = 1; q <= Math.max(Q, R.q); q++) pers.push(q);
   // Decided: the horn ended the fourth (or an overtime) with the score not tied and nothing played since. Only then is
   // "Make it final" the big button; through the fourth it's one confirm from sending FINAL to every fan.
@@ -2120,14 +2188,14 @@ function viewDesk(){
   h += `<div class="deskhead"><div class="game"><h2>${esc(usName(g))} ${gameTitle(g)}</h2><span class="small">${gameSub(g)}</span>
     ${g.practice ? `<span class="tag solid" title="Sample rosters. Nothing here syncs or counts.">Practice</span><button class="btn sm no-print" data-act="resetprac">Clear practice game</button>` : ""}</div>
     <div class="periods" role="group" aria-label="Period">${pers.map(q => `<button class="${q === R.q ? "on" : ""}" data-act="period" data-q="${q}" ${edit ? "" : "disabled"} aria-pressed="${q === R.q}">${perLabel(g, q)}</button>`).join("")}${R.q >= Q && !ended ? `<button data-act="period" data-q="${R.q + 1}" ${edit ? "" : "disabled"}>${R.sc.us !== R.sc.them ? "End " + perLabel(g, R.q) : "+OT"}</button>` : ""}</div>
-    <div class="row no-print"><button class="btn sm" data-act="toggle" data-k="extra" aria-pressed="${!!S.settings.extra}">Every stat</button><button class="btn sm" data-act="toggle" data-k="chart" aria-pressed="${!!S.settings.chart}">Shot spots</button>${flipBtn()}<button class="btn sm dark" data-act="undo" ${edit && g.ev.some(e => !e.v) ? "" : "disabled"} title="Undo the last play (${UNDO_KEY})">↶ Undo</button></div></div>`;
+    <div class="row no-print"><button class="btn sm" data-act="toggle" data-k="extra" aria-pressed="${!!S.settings.extra}">Every stat</button><button class="btn sm" data-act="toggle" data-k="chart" aria-pressed="${!!S.settings.chart}">Shot spots</button>${flipBtn()}<button class="btn sm" data-act="flaglast" ${edit && lastPlay(g) ? "" : "disabled"} title="Flag the last play to check against the official book at the break">⚑ Flag</button><button class="btn sm dark" data-act="undo" ${edit && g.ev.some(e => !e.v) ? "" : "disabled"} title="Undo the last play (${UNDO_KEY})">↶ Undo</button></div></div>`;
   h += `<div class="row only-narrow" style="margin-bottom:8px">${[sd.left, sd.right].map(tm => `<button class="btn sm" aria-pressed="${ui.narrow === hk(tm)}" data-act="narrow" data-v="${hk(tm)}">${esc(tmName(g, tm))}</button>`).join("")}</div>`;
   h += `<div class="desk">${teamCol(g, R, sd.left, sd.left === ha.home ? "Home" : "Away", ui.narrow !== hk(sd.left))}<div class="center">${board(g, R)}${Board.strip(g)}${teamBox(g, R, sd.left, edit)}${teamBox(g, R, sd.right, edit)}
     <div class="cact no-print">
       <div class="pair">${!g.ev.some(x => !x.v && !PREGAME(x)) && g.status !== "final" ? `<button class="btn primary" data-act="tipoff" ${edit ? "" : "disabled"}>Tip-off</button>` : ""}<button class="btn" data-act="poss" ${edit ? "" : "disabled"} title="Possession arrow: tap to switch it">${R.poss ? `<span class="ak">Arrow</span><span class="an" title="${esc(tmName(g, R.poss))}">${R.poss === sd.left ? "◀ " : "▶ "}${esc(R.poss === "us" ? "GHS" : oppInfo(g.opp, g).abbr || tmName(g, R.poss))}</span>` : "Arrow · set"}</button>${g.ev.some(x => !x.v && !PREGAME(x)) ? `<button class="btn" data-act="jump" ${edit && R.poss && g.status !== "final" ? "" : "disabled"} title="Held ball: the arrow's team gets it and the arrow switches">Jump ball</button>` : ""}</div>
       <button class="btn" data-act="note" ${edit ? "" : "disabled"}>+ Warning / note</button>
       ${ended && g.status !== "final" ? `<button class="btn primary" data-act="final" ${edit ? "" : "disabled"}>Make it final: ${R.sc.us}-${R.sc.them}</button>` : `<button class="btn" data-act="send">Send to Scorebook</button>`}
-      ${R.brk && !ended && g.status !== "final" ? `<button class="btn" data-act="bkchk">${nowLabel(g, R) === "HALFTIME" ? "Halftime check" : "Book check"}</button>` : `<button class="btn" data-act="go" data-tab="box">Review game</button>`}
+      ${R.brk && g.status !== "final" ? (c => `<button class="btn chk ${c.bad ? "bad" : "good"}" data-act="bkchk" title="${esc(c.line)}"><span>${nowLabel(g, R) === "HALFTIME" ? "Halftime check" : "Book check"}</span><small>${esc(c.line)}</small></button>`)(closeOf(g, R)) : `<button class="btn" data-act="go" data-tab="box">Review game</button>`}
     </div>
     <div class="mini">${playList(g, R, flagged ? 2 : 5, false, null, edit)}</div></div>${teamCol(g, R, sd.right, sd.right === ha.home ? "Home" : "Away", ui.narrow !== hk(sd.right))}</div>`;
   return h;
@@ -2287,8 +2355,8 @@ function playList(g, R, limit, edit, keep, fix){
   const wrap = (p, li) => !ins || p.der ? li : old ? gap(p.e, false) + li + (p === last ? gap(p.e, true) : "") : (p === last ? gap(p.e, true) : "") + li + gap(p.e, false);
   return `<ul class="plays${ins ? " inserting" : ""}">${show.map(p => wrap(p, (() => { const e = p.e;
     const tapFix = limit && fix && !p.void && !p.der && ["FG","FT","REB","AST","STL","BLK","TO","PF","TF"].includes(e.t);
-    return `<li class="${p.void ? "void" : ""} ${p.scored ? "score" : ""} ${e.t === "NOTE" ? "note" : ""}${tapFix ? " tapfix" : ""}" style="${e.tm === "them" ? tvars(g, "them") : ""}"${tapFix ? ` data-act="fix" data-id="${e.id}" role="button" title="Fix this play"` : ""}><span class="pq">${perLabel(g, p.q)}${playClock(g, e, p, edit && !limit && !p.der)}${!limit && e.at ? `<small>${esc(new Date(e.at).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}))}</small>` : ""}</span><span class="ps">${p.sc[sd.left]}-${p.sc[sd.right]}</span><span class="pt">${e.tm && e.t !== "PER" && e.t !== "NOTE" ? `<span class="ptm">${esc(e.tm === "us" ? "GHS" : oppInfo(g.opp, g).abbr)}</span> ` : ""}${e.tm === "us" && e.pid && e.t !== "NOTE" ? face(player(g, "us", e.pid) || e.pid, "", true) : ""}${playText(g, e)}${p.auto ? (e.t === "BLK" ? " (no block: the shooter was fouled)" : " (not counted: its basket was removed, changed or already has an assist)") : p.void ? " (removed)" : ""}${e.ins ? ' <span class="tag">added later</span>' : ""}${p.der ? ' <span class="tag" title="Not tapped: the book filled it in (NFHS: every miss gets a rebound, every steal is a turnover, every block is a missed shot)">auto</span>' : ""}</span>
-      ${edit ? `<span class="row no-print">${p.der ? (e.auto === "dead" ? "" : `<button class="btn sm" data-act="autofix" data-id="${esc(e.id)}">Name the player</button>`) : `${!p.void && ["FG","FT","REB","AST","STL","BLK","TO","PF","TF"].includes(e.t) ? `<button class="btn sm" data-act="fix" data-id="${e.id}">Fix</button>` : ""}<button class="btn sm" data-act="voidtog" data-id="${e.id}">${p.void && !p.auto ? "Restore" : "Remove"}</button>`}</span>` : ""}</li>`;
+    return `<li class="${p.void ? "void" : ""} ${p.scored ? "score" : ""} ${e.t === "NOTE" ? "note" : ""}${tapFix ? " tapfix" : ""}" style="${e.tm === "them" ? tvars(g, "them") : ""}"${tapFix ? ` data-act="fix" data-id="${e.id}" role="button" title="Fix this play"` : ""}><span class="pq">${perLabel(g, p.q)}${playClock(g, e, p, edit && !limit && !p.der)}${!limit && e.at ? `<small>${esc(new Date(e.at).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}))}</small>` : ""}</span><span class="ps">${p.sc[sd.left]}-${p.sc[sd.right]}</span><span class="pt">${e.tm && e.t !== "PER" && e.t !== "NOTE" ? `<span class="ptm">${esc(e.tm === "us" ? "GHS" : oppInfo(g.opp, g).abbr)}</span> ` : ""}${e.tm === "us" && e.pid && e.t !== "NOTE" ? face(player(g, "us", e.pid) || e.pid, "", true) : ""}${playText(g, e)}${p.auto ? (e.t === "BLK" ? " (no block: the shooter was fouled)" : " (not counted: its basket was removed, changed or already has an assist)") : p.void ? " (removed)" : ""}${e.ins ? ' <span class="tag">added later</span>' : ""}${e.fl && !p.void && !p.der ? ' <span class="tag flg" title="Flagged to check against the official book">⚑ flagged</span>' : ""}${p.der ? ' <span class="tag" title="Not tapped: the book filled it in (NFHS: every miss gets a rebound, every steal is a turnover, every block is a missed shot)">auto</span>' : ""}</span>
+      ${edit ? `<span class="row no-print">${p.der ? (e.auto === "dead" ? "" : `<button class="btn sm" data-act="autofix" data-id="${esc(e.id)}">Name the player</button>`) : `${!p.void && ["FG","FT","REB","AST","STL","BLK","TO","PF","TF"].includes(e.t) ? `<button class="btn sm" data-act="fix" data-id="${e.id}">Fix</button>` : ""}${!p.void && e.t !== "PER" ? `<button class="btn sm" data-act="flagtog" data-id="${e.id}" aria-pressed="${!!e.fl}" title="${e.fl ? "Take the flag off" : "Flag this play to check"}">⚑</button>` : ""}<button class="btn sm" data-act="voidtog" data-id="${e.id}">${p.void && !p.auto ? "Restore" : "Remove"}</button>`}</span>` : ""}</li>`;
   })())).join("")}</ul>`;
 }
 
@@ -2342,14 +2410,45 @@ function renderFu(){
   else if(f.k === "hb") h = `<span class="ask">Held ball, ${esc(tmName(g, f.tm))} ball. Stolen by?</span>${chips(f.tm, null)}<button class="chip skip" data-fu="skip">No steal</button>`;
   else if(f.k === "foul"){ const ft = g.ev.find(x => x.id === f.ref), sp = ft && ft.pid ? player(g, ft.tm, ft.pid) : null;
     h = `<span class="ask">Who fouled${sp ? " #" + esc(sp.num) : ""}?</span>${chips(f.tm, null, f.all ? sortRoster(roster(g, f.tm)) : null)}${f.all ? "" : `<button class="chip skip" data-fu="all">Someone else</button>`}<button class="chip" data-fu="btech">${esc(tmName(g, f.tm))} bench technical</button><button class="chip skip" data-fu="skip">Skip</button>`; }
-  else if(f.k === "stl") h = `<span class="ask">Stolen by?</span>${chips(f.tm, null)}<button class="chip skip" data-fu="skip">No steal</button>`;
-  else if(f.k === "to") h = `<span class="ask">Turnover by?</span>${chips(f.tm, null)}<button class="chip" data-fu="pick" data-tm="${f.tm}" data-pid="">Team</button><button class="chip skip" data-fu="skip">Skip</button>`;
+  else if(f.k === "stl") h = `<span class="ask">Stolen by?</span>${chips(f.tm, null)}<button class="chip skip" data-fu="skip">No steal</button>${f.tt ? `<span class="fu-gap"></span><span class="ask">How?</span>${ttChips(f.tv ? TT_LIVE : Object.keys(TT), f.tv)}` : ""}`;
+  else if(f.k === "to") h = `<span class="ask">Turnover by?</span>${chips(f.tm, null)}<button class="chip" data-fu="pick" data-tm="${f.tm}" data-pid="">Team</button>${f.hb ? "" : ttChips(TT_LIVE, f.tv)}<button class="chip skip" data-fu="skip">Skip</button>`;
+  else if(f.k === "tot"){ const e = g.ev.find(x => x.id === f.ref), p = e && e.pid ? player(g, e.tm, e.pid) : null;
+    h = `<span class="ask">${f.live ? "Bad pass or lost ball" : "How"}${p ? ` (#${esc(p.num)})` : e ? ` (${esc(tmName(g, e.tm))} team)` : ""}?</span>${ttChips(f.live ? TT_LIVE : Object.keys(TT).filter(k => e && e.pid || k !== "of"), ttOf(e))}<button class="chip skip" data-fu="skip">Skip</button>`; }
+  else if(f.k === "pf") h = `<span class="ask">Who got fouled?</span>${chips(OTHER(f.tm), null)}${f.of ? `<span class="fu-gap"></span><button class="chip" data-fu="ofy">Off. foul</button><button class="chip" data-fu="chg">Charge</button>` : f.ofd ? `<span class="fu-gap"></span><button class="chip" data-fu="chg">Charge</button>` : ""}<button class="chip skip" data-fu="skip">Skip</button>`;
+  else if(f.k === "spot"){ const e = g.ev.find(x => x.id === f.ref), n = e && e.p === 3 ? 2 : 3;
+    h = `<span class="ask">That spot's a ${n}, not a ${e ? e.p : ""}.</span><button class="chip" data-fu="spoty">Make it a ${n}</button><button class="chip skip" data-fu="spotn">Keep it a ${e ? e.p : ""}</button>`; }
+  else if(f.k === "chg") h = `<span class="ask">Charge taken by?</span>${chips(OTHER(f.tm), null)}<button class="chip skip" data-fu="skip">Skip</button>`;
   // A block needs a shot (Sec. 7): no Skip. Not sure whose puts the miss on the team; Undo takes the block back.
   else if(f.k === "blk") h = `<span class="ask">Whose shot got blocked?</span><button class="chip${f.p === 2 ? " at" : ""}" data-fu="bp" data-p="2">2PT</button><button class="chip${f.p === 3 ? " at" : ""}" data-fu="bp" data-p="3">3PT</button>${chips(f.tm, null)}<button class="chip" data-fu="pick" data-tm="${f.tm}" data-pid=""><span class="nm">${esc(tmName(g, f.tm))}: not sure who</span></button><button class="chip skip" data-act="undo">↶ Undo block</button>`;
   else if(f.k === "out"){ const p = player(g, f.tm, f.pin);
     h = `<span class="ask">#${esc(p.num)} ${esc(pShort(p))} in for</span>${chips(f.tm, null, sortRoster(roster(g, f.tm)).filter(x => R.court[f.tm].has(x.pid)).sort((a, b) => outNow(f.tm, b.pid) - outNow(f.tm, a.pid)))}<button class="chip skip" data-fu="skip">Cancel</button>`; }
   el.innerHTML = `<div class="fu no-print"><div class="wrap">${h}</div></div>`;
   document.body.classList.add("has-fu");
+}
+// The turnover-type chips (data-fu="tt"); the one picked is lit.
+function ttChips(ks, on){ return ks.map(k => `<button class="chip${on === k ? " at" : ""}" data-fu="tt" data-v="${k}">${TT_CHIP[k]}</button>`).join(""); }
+// A turnover type tapped on the strip. On the steal question a bad pass or lost ball keeps it up (the steal can still be
+// tapped); anything else ends it. Before the turnover is in the book (the steal came first) it waits for the player.
+// Off. foul puts the foul in too, unless the play just before is that player's foul already.
+function ttPick(g, v){
+  const f = ui.fu[0]; if(!g || !f || !Object.prototype.hasOwnProperty.call(TT, v) || !canEdit(g)) return;
+  if(f.k === "to"){ f.tv = f.tv === v ? "" : v; renderFu(); return; }
+  if(f.k !== "stl" && f.k !== "tot") return;
+  const e = g.ev.find(x => x.id === f.ref && !x.v && x.t === "TO"); if(!e){ ui.fu.shift(); renderFu(); return; }
+  if(v === "of" && !e.pid) return;
+  e.tt = v; e.ed = Date.now();
+  if(f.k === "stl" && TT_LIVE.includes(v)){ f.tv = v; touch(g); return; }
+  ui.fu.shift();
+  if(v === "of"){ e.of = 1; toFoul(g, e); return; }
+  delete e.of; touch(g);
+}
+// The foul that goes with an offensive-foul turnover tapped as a turnover first: in the book right after it (the strip then
+// asks who got fouled, with Charge). Not when the play just before is that player's foul already (it was tapped first).
+function toFoul(g, e){
+  for(let i = g.ev.indexOf(e) - 1; i >= 0; i--){ const x = g.ev[i]; if(x.v || ["IN", "OUT", "NOTE", "POSS", "TMO"].includes(x.t)) continue;
+    if(x.t === "PF" && x.tm === e.tm && x.pid === e.pid){ touch(g); return; } break; }
+  const pf = rec({tm:e.tm, pid:e.pid, t:"PF"}, {keepFu:true}); if(!pf) return;
+  foulNote(g, e.tm, e.pid, "PF"); if(S.settings.extra){ ui.fu.unshift({k:"pf", tm:e.tm, pid:e.pid, ref:pf.id, ofd:e.id}); renderFu(); }
 }
 function fuPick(tm, pid){
   const g = cur(), f = ui.fu[0] || ui.rq; if(!g || !f) return;
@@ -2358,9 +2457,10 @@ function fuPick(tm, pid){
   else if(f.k === "foul") foulBefore(g, f, pid, "PF");
   else if(f.k === "reb"){ const m = g.ev.find(x => x.id === f.ref && !x.v); if(m) recAfter(g, {tm, pid, t:"REB", o:tm === m.tm, ref:m.id}, m); else render(); }
   else if(f.k === "wm"){ insertMiss(g, f.ref, tm, pid, String(f.p || "2")); render(); }
-  else if(f.k === "hb"){ const s0 = rec({tm, pid, t:"STL", ref:f.ref}, {keepFu:true}); if(s0) ui.fu.unshift({k:"to", tm:OTHER(tm), ref:s0.id}); render(); }
-  else if(f.k === "to") rec({tm, pid, t:"TO", ref:f.ref}, {keepFu:true});
-  else if(f.k === "stl") rec({tm, pid, t:"STL", ref:f.ref}, {keepFu:true});
+  else if(f.k === "hb"){ const s0 = rec({tm, pid, t:"STL", ref:f.ref}, {keepFu:true}); if(s0) ui.fu.unshift({k:"to", tm:OTHER(tm), ref:s0.id, hb:1}); render(); }
+  else if(f.k === "to"){ const e = rec({tm, pid, t:"TO", ref:f.ref, ...(f.tv ? {tt:f.tv} : {})}, {keepFu:true}); if(e && !f.tv && !f.hb && S.settings.extra){ ui.fu.unshift({k:"tot", ref:e.id, live:1}); renderFu(); } }
+  else if(f.k === "stl"){ const e = rec({tm, pid, t:"STL", ref:f.ref}, {keepFu:true}); if(e && f.tt && !f.tv){ ui.fu.unshift({k:"tot", ref:f.ref, live:1}); renderFu(); } }
+  else if(f.k === "pf" || f.k === "chg"){ const e = g.ev.find(x => x.id === f.ref && !x.v && x.t === "PF"); if(e && pid && tm === OTHER(e.tm) && canEdit(g)){ e.on = pid; e.ed = Date.now(); touch(g); } else render(); }
   else if(f.k === "blk"){ const e = rec({tm, pid, t:"FG", p:f.p, m:false, ref:f.ref}, {keepFu:true}); if(e){ if(S.settings.extra) ui.rq = {k:"reb", miss:tm, ref:e.id}; if(S.settings.chart) ui.fu.unshift({k:"loc", id:e.id}); render(); } }
   else if(f.k === "out") subIn(g, tm, f.pin, pid);
   else render();
@@ -4227,7 +4327,7 @@ function viewBox(){
     <div class="card">${boxTable(g, R, sd.left)}${st(sd.left)}</div><div class="card">${boxTable(g, R, sd.right)}${st(sd.right)}</div>${bq ? "" : lineupCard(g, R0, clockStats(g, R0))}</div>`;
 }
 const PLAY_KINDS = {all:["All plays", () => true], score:["Scoring", e => (e.t === "FG" || e.t === "FT") && e.m], shots:["Shots", e => e.t === "FG" || e.t === "FT"],
-  fouls:["Fouls", e => e.t === "PF" || e.t === "TF"], to:["Turnovers & steals", e => e.t === "TO" || e.t === "STL"], subs:["Subs", e => e.t === "IN" || e.t === "OUT"], other:["Timeouts, horns & notes", e => ["TMO","PER","POSS","NOTE","TIP","JUMP"].includes(e.t)]};
+  fouls:["Fouls", e => e.t === "PF" || e.t === "TF"], to:["Turnovers & steals", e => e.t === "TO" || e.t === "STL"], flag:["Flagged", e => !!e.fl && !e.v], subs:["Subs", e => e.t === "IN" || e.t === "OUT"], other:["Timeouts, horns & notes", e => ["TMO","PER","POSS","NOTE","TIP","JUMP"].includes(e.t)]};
 function viewPlays(){
   const g = cur(); if(!g) return needGame();
   const R = replay(g), f = ui.pf || (ui.pf = {q:"all", tm:"all", k:"all"}), Q = Math.max(g.quarters || 4, R.q);
@@ -4239,9 +4339,10 @@ function viewPlays(){
   const sel = (k, opts) => `<select data-pf="${k}" style="width:auto">${opts.map(([v, l]) => `<option value="${v}" ${String(f[k]) === String(v) ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
   const qs = [["all", "Every period"]]; for(let q = 1; q <= Q; q++) qs.push([q, perLabel(g, q)]);
   return `<div class="card"><div class="row between"><div><div class="kicker">Play-by-play</div><h2>${esc(usName(g))} ${gameTitle(g)}</h2></div>
-      <div class="row no-print">${canEdit(g) && canCoach() ? `<button class="btn${ui.ins && ui.ins.gid === g.id ? " primary" : ""}" data-act="insmode" aria-pressed="${!!(ui.ins && ui.ins.gid === g.id)}">${ui.ins && ui.ins.gid === g.id ? "Done inserting" : "Insert"}</button>` : ""}${canEdit(g) ? `<button class="btn" data-act="missed">+ Add a missed play</button>` : ""}${R.plays.some(p => !p.void && !PREGAME(p.e)) ? `<button class="btn" data-act="rw-open">▶ Re-watch</button>` : ""}<button class="btn" data-act="playscsv">${f.pid ? "Plays CSV: " + esc((pls.find(x => x[0] === f.pid) || ["", ""])[1]) : "Plays CSV"}</button></div></div>
+      <div class="row no-print">${canEdit(g) && canCoach() ? `<button class="btn${ui.ins && ui.ins.gid === g.id ? " primary" : ""}" data-act="insmode" aria-pressed="${!!(ui.ins && ui.ins.gid === g.id)}">${ui.ins && ui.ins.gid === g.id ? "Done inserting" : "Insert"}</button>` : ""}${canEdit(g) ? `<button class="btn" data-act="missed">+ Add a missed play</button>` : ""}${R.plays.some(p => !p.void && !PREGAME(p.e)) ? `<button class="btn" data-act="rw-open">▶ Re-watch</button>` : ""}${canScore() ? `<button class="btn" data-act="chglog">Change log</button>` : ""}<button class="btn" data-act="playscsv">${f.pid ? "Plays CSV: " + esc((pls.find(x => x[0] === f.pid) || ["", ""])[1]) : "Plays CSV"}</button></div></div>
     <div class="row no-print" style="margin:8px 0">${sel("q", qs)}${sel("tm", [["all", "Both teams"], ["us", usName(g)], ["them", g.opp]])}${sel("k", Object.entries(PLAY_KINDS).map(([k, v]) => [k, v[0]]))}${sel("pid", [["", "Every player"], ...pls])}${sel("old", [["", "Newest first"], ["1", "Oldest first"]])}
       <span class="small">Removed plays stay listed, struck through: that's the correction history.</span></div>
+    ${lockLine(g)}
     ${ui.ins && ui.ins.gid === g.id && canEdit(g) && canCoach() ? `<div class="flag no-print" style="margin:0 0 8px"><b>Insert mode.</b> Tap a "+ Insert here" line to put a play there, or a quarter's end. Everything after it moves to match.</div>` : ""}
     ${playList(g, R, 0, canEdit(g), keep)}</div>`;
 }
@@ -4976,11 +5077,11 @@ function clutchOf(S0){ return memo(S0, "_cl", () => { const P = {}, T = {us:LINE
     if(any) g++; }
   return {P, T, g}; }); }
 // Turnovers: each player's (and how many were steals: live balls), the team's by period, and points the other team got off them.
-function toAnat(S0){ return memo(S0, "_to", () => { const P = {}, T = {us:{n:0, live:0, q:{}, pts:0}, them:{n:0, live:0, q:{}, pts:0}}, stl = {};
+function toAnat(S0){ return memo(S0, "_to", () => { const P = {}, T = {us:{n:0, live:0, q:{}, pts:0, tt:{}}, them:{n:0, live:0, q:{}, pts:0, tt:{}}}, stl = {};
   for(const d of S0.ds){
     for(const p of d.P){ const e = p.e; if(e.t === "STL" && e.tm === "us" && e.pid) stl[e.pid] = (stl[e.pid] || 0) + 1;
-      if(e.t !== "TO" || !e.tm) continue; const live = d.stl.has(e.id), t = T[e.tm], k = qBk(d, p.q); t.n++; if(live) t.live++; t.q[k] = (t.q[k] || 0) + 1;
-      if(e.tm === "us" && e.pid){ const a = P[e.pid] || (P[e.pid] = {n:0, live:0}); a.n++; if(live) a.live++; } }
+      if(e.t !== "TO" || !e.tm) continue; const live = d.stl.has(e.id), t = T[e.tm], k = qBk(d, p.q), ty = ttOf(e); t.n++; if(live) t.live++; t.q[k] = (t.q[k] || 0) + 1; if(ty) t.tt[ty] = (t.tt[ty] || 0) + 1;
+      if(e.tm === "us" && e.pid){ const a = P[e.pid] || (P[e.pid] = {n:0, live:0, tt:{}}); a.n++; if(live) a.live++; if(ty) a.tt[ty] = (a.tt[ty] || 0) + 1; } }
     for(const x of chainOf(d).pts) if(x.to) T[OTHER(x.tm)].pts += x.n; }
   return {P, T, stl}; }); }
 // Free throws by trip: first and second shots, in the bonus or not, technicals, and-ones (ours by player, and both teams).
@@ -5051,10 +5152,10 @@ function playersTable(S0, L){
       return [pBtn(S0, p), `${x.fgm}-${x.fga}`, pc(x.fgm, x.fga), `${x.tpm}-${x.tpa}`, pc(x.tpm, x.tpa), `${x.ftm}-${x.fta}`, pc(x.ftm, x.fta), pc(fgp, 2 * (x.fga + .44 * x.fta)), pc(x.fgm + .5 * x.tpm, x.fga), x.fga ? ((x.fgm * 2 + x.tpm) / x.fga).toFixed(2) : "–", pc(x.tpa, x.fga), x.fga ? (x.fta / x.fga).toFixed(2) : "–", pc((h.a2 || 0) + (h.a3 || 0), m)]; });
     note = "From games with every stat logged (misses kept). Ast'd counts made baskets with an assist tapped."; }
   else if(v === "score"){ const H = howOf(S0).P, F = ftOf(S0).P;
-    head = ["Player", "PTS", ["From 2", "Share of points"], ["From 3", "Share of points"], ["From FT", "Share of points"], ["Putbacks", "The shot right after their own offensive rebound"], ["2nd chance", "Shots after any offensive rebound"], ["Transition ⏱", "Within 7 seconds of a steal or defensive rebound"], ["And-ones", "Basket plus the foul shot"], ["Trips", "Trips to the line (fouls drawn that gave free throws)"]];
+    head = ["Player", "PTS", ["From 2", "Share of points"], ["From 3", "Share of points"], ["From FT", "Share of points"], ["Putbacks", "The shot right after their own offensive rebound"], ["2nd chance", "Shots after any offensive rebound"], ["Transition ⏱", "Within 7 seconds of a steal or defensive rebound"], ["And-ones", "Basket plus the foul shot"], ["Trips", "Trips to the line (fouls drawn that gave free throws)"], ["Fouls drawn", "The player tapped as fouled, or the free-throw shooter after a foul"], ["Charges", "Charges taken"]];
     rows = ps.map(p => { const a = L[p.pid], h = H[p.pid] || {put:[0, 0], sec:[0, 0], tr:[0, 0]}, f = F[p.pid] || {and1:[0, 0], trips:0}, sh = v => pc(v, a.pts);
-      return [pBtn(S0, p), a.pts, sh(a.pts - a.ftm - 3 * a.tpm), sh(3 * a.tpm), sh(a.ftm), `${h.put[0]}-${h.put[1]}`, `${h.sec[0]}-${h.sec[1]}`, h.trA ? `${h.tr[0]}-${h.tr[1]}` : "–", f.and1[1], f.trips]; });
-    note = `Transition counts clock games only (${S0.cds.length} of ${S0.ds.length}). Fouls drawn only shows fouls that sent them to the line.`; }
+      return [pBtn(S0, p), a.pts, sh(a.pts - a.ftm - 3 * a.tpm), sh(3 * a.tpm), sh(a.ftm), `${h.put[0]}-${h.put[1]}`, `${h.sec[0]}-${h.sec[1]}`, h.trA ? `${h.tr[0]}-${h.tr[1]}` : "–", f.and1[1], f.trips, a.fd || 0, a.chg || 0]; });
+    note = `Transition counts clock games only (${S0.cds.length} of ${S0.ds.length}). Fouls drawn: the player tapped as fouled after a foul, or with nobody tapped, the free-throw shooter.`; }
   else if(v === "per32"){ const M = minOf(S0);
     head = ["Player", ["G", "Games with their minutes measured"], "MIN", "MPG", "PTS", "REB", "AST", "STL", "BLK", "TO", "PF", ["FGA", "Field goals tried"]];
     rows = ps.filter(p => M[p.pid] && M[p.pid].g).map(p => { const m = M[p.pid], l = m.ln, r = k => ast32(typeof k === "function" ? k(l) : l[k], m.sec);
@@ -5088,7 +5189,10 @@ function playersTable(S0, L){
     if(!rows.length) return nav + noData("No clutch time in these games yet. " + clockNote(S0)); }
   else if(v === "to"){ const A = toAnat(S0);
     head = ["Player", "TO", "TOPG", ["Live ball", "Stolen"], ["Dead ball", "Out of bounds, travel, offensive foul..."], ["TO%", "Turnovers per their shots, free throw trips and turnovers"], ["A/TO", ""], ["STL", "Their steals"]];
-    rows = ps.map(p => { const a = L[p.pid], t = A.P[p.pid] || {n:0, live:0}; return [pBtn(S0, p), t.n, fx1(t.n / a.g), t.live, t.n - t.live, pc(t.n, a.x.fga + .44 * a.x.fta + t.n), t.n ? fx1(a.ast / t.n) : a.ast ? "∞" : "–", A.stl[p.pid] || 0]; }); }
+    // Kevin (0.26.0): by type, once any turnover has one (the strip asks after each turnover).
+    const tys = Object.keys(TT).filter(k => A.T.us.tt[k]);
+    if(tys.length){ head = head.concat(tys.map(k => [TT_CHIP[k], "Turnovers tapped as " + TT[k]])); note = "Turnover types come from the strip after each turnover; ones nobody typed aren't in those columns."; }
+    rows = ps.map(p => { const a = L[p.pid], t = A.P[p.pid] || {n:0, live:0, tt:{}}; return [pBtn(S0, p), t.n, fx1(t.n / a.g), t.live, t.n - t.live, pc(t.n, a.x.fga + .44 * a.x.fta + t.n), t.n ? fx1(a.ast / t.n) : a.ast ? "∞" : "–", A.stl[p.pid] || 0].concat(tys.map(k => (t.tt || {})[k] || 0)); }); }
   else if(v === "ft"){ const F = ftOf(S0).P;
     head = ["Player", "FT", "FT%", ["1st shot", "First free throw of a trip"], ["2nd shot", "Second (and third)"], ["Bonus", "Shooting in the bonus"], ["Not bonus", "Shooting fouls before the bonus"], ["And-one", "The free throw after a basket"], ["Tech", "Technical free throws"]];
     rows = ps.map(p => { const f = F[p.pid] || {one:[0, 0], two:[0, 0], bon:[0, 0], nob:[0, 0], and1:[0, 0], tech:[0, 0]}, a = L[p.pid], s = ([m, n]) => n ? `${m}-${n} <span class="small">${pc(m, n)}</span>` : "–";
@@ -6434,6 +6538,20 @@ function gbLogo(bg, gray){
 // art (color only, gbArt): each team's lane as a picture (its main color with our bobcat or their logo) and their logo
 // tile for the line score.
 // tight (0-4, gbFit): smaller type, then smaller shot charts and flow, then no flow, then no shot charts, to fit two pages.
+// Kevin (0.26.0): where a game was played. Typed in the game's Edit sheet, or our gym at home, theirs on the road, the
+// event's name at a neutral site.
+function siteOf(g){ const s = typeof g.site === "string" ? g.site.trim() : ""; if(s) return s;
+  if(g.ha === "Home") return "Greenbrier High School";
+  if(g.ha === "Away"){ const o = String(g.opp || "").trim(); return !o ? "" : /\b(school|academy|high|hs|christian|prep)$/i.test(o) ? o : o + " High School"; }
+  return String(g.event || "").trim(); }
+const attOf = g => Number.isInteger(g.att) && g.att >= 0 && g.att < 1e5 ? g.att : null;
+// The Game Book's facts line: site, attendance, officials (the PA's Prep) and technical fouls.
+function gbFacts(g, R, ab){
+  const site = siteOf(g), att = attOf(g), off = String(infoOf(g).officials || "").trim();
+  const tech = tm => { const r = roster(g, tm).filter(p => (R.box[tm][p.pid] || {}).tf).map(p => "#" + p.num + ((R.box[tm][p.pid] || {}).tf > 1 ? " (" + R.box[tm][p.pid].tf + ")" : "")); if(R.team[tm].tf) r.push("bench" + (R.team[tm].tf > 1 ? " (" + R.team[tm].tf + ")" : "")); return r.join(", ") || "none"; };
+  const tu = tech("us"), tt = tech("them");
+  return [site ? "Site: " + site : "", att != null ? "Attendance: " + att.toLocaleString("en-US") : "", off ? "Officials: " + off : "", tu === "none" && tt === "none" ? "Technicals: none" : `Technicals: ${ab("us")} ${tu}; ${ab("them")} ${tt}`].filter(Boolean).join("   ·   ");
+}
 function gbPdf(g, o, logo, art, tight = 0){
   const artId = {}, artImg = (kind, tm) => { const a = art && art[kind] && art[kind][tm]; return a ? artId[kind + tm] || (artId[kind + tm] = D.addImg(a.data, a.w, a.h)) : ""; };
   const R = replay(g), ha = homeAway(g), Q = g.quarters || 4, lq = Math.max(1, lastQ(R)), fin = g.status === "final", order = [ha.away, ha.home];
@@ -6512,6 +6630,8 @@ function gbPdf(g, o, logo, art, tight = 0){
       lt.forEach((tm, i) => { const b = lead(tm, k); if(!b){ D.text(lx + 50 + cwL * i, ly, "–", {sz:8.5}); return; }
         D.text(lx + 50 + cwL * i + cwL - 10, ly, String(b.v), {sz:9.5, b:true, al:"r"}); D.text(lx + 50 + cwL * i, ly, `#${b.p.num} ${pShort(b.p) || ""}`.trim(), {sz:8.5, fit:cwL - 30}); }); }
     y = Math.max(y, ly) + 4;
+    // Kevin (0.26.0): the game's facts, as a college book's header has them: where, how many came, who worked it, technicals.
+    const fx = gbFacts(g, R, ab); if(fx){ y += 13; D.text(L, y, fx, {sz:8.5, g:.25, fit:RT - L}); y += 3; }
   }
 
   /* ---- box scores ---- */
@@ -6879,20 +6999,44 @@ function driveTag(g){
 // score by period, team fouls, timeouts left, the arrow and each player's fouls. Anything off gets fixed under Review game;
 // Box score PDF prints or shares the box score so far.
 function bookCheck(g){
-  openSheet({wide:true, html:() => { const R = replay(g), sd = sides(g), cols = [sd.left, sd.right], per = Array.from({length:Math.max(1, lastQ(R))}, (_, i) => i + 1);
+  openSheet({wide:true, bk:g.id, html:() => { const R = replay(g), sd = sides(g), cols = [sd.left, sd.right], per = Array.from({length:Math.max(1, lastQ(R))}, (_, i) => i + 1);
+    // Kevin (0.26.0): the period close. What's off comes first; flagged plays and spots that don't match get fixed right here.
+    const c = closeOf(g, R), b = Board.score(g), lq = lastQ(R), ed = canEdit(g), qOf = new Map(R.plays.map(p => [p.e, p.q])), fls = g.ev.filter(e => e.fl && !e.v);
+    const FIXT = ["FG","FT","REB","AST","STL","BLK","TO","PF","TF"], vs = (v, k) => v === k ? String(v) : `<b>${v} (book ${k})</b>`;
     const td = f => cols.map(tm => `<td>${f(tm)}</td>`).join(""), left = tm => { const l = toLeft(g, R, tm); return `${l[60]} full, ${l[30]} thirty`; };
     const fouls = tm => sortRoster(roster(g, tm)).map(p => [p, (R.box[tm][p.pid] || LINE()).pf]).filter(([, n]) => n).map(([p, n]) => `<span style="white-space:nowrap">${n >= 4 ? "<b>" : ""}#${esc(p.num)}: ${n}${n >= 4 ? "</b>" : ""}</span>`).join(" · ") || "none";
     return `<h3>${R.brk && nowLabel(g, R) === "HALFTIME" ? "Halftime check" : "Check against the book"}</h3><p class="small" style="margin:0 0 8px">Line these up with the official book at the table. If anything's off, fix the play under Review game.</p>
+      <ul class="closel">${c.items.map(x => `<li class="${x.ok ? "" : "no"}">${x.ok ? "✓" : "✗"} ${esc(x.t)}</li>`).join("")}</ul>
+      ${fls.length ? `<p style="margin:8px 0 2px"><b>Flagged plays</b></p><ul class="closel">${fls.map(e => `<li><span>${esc(perLabel(g, qOf.get(e) || 1))} · ${playText(g, e)}</span>${ed ? `${FIXT.includes(e.t) ? `<button class="btn sm" data-act="fix" data-id="${esc(e.id)}">Fix</button>` : ""}<button class="btn sm" data-act="flagtog" data-id="${esc(e.id)}">Clear flag</button>` : ""}</li>`).join("")}</ul>` : ""}
+      ${c.off.length ? `<p style="margin:8px 0 2px"><b>Shot spots that don't match</b></p><ul class="closel">${c.off.map(e => `<li><span>${esc(perLabel(g, qOf.get(e) || 1))} · ${playText(g, e)}: the spot's a ${e.p === 3 ? 2 : 3}</span>${ed ? `<button class="btn sm" data-act="spotset" data-id="${esc(e.id)}" data-p="${e.p === 3 ? 2 : 3}">Make it a ${e.p === 3 ? 2 : 3}</button><button class="btn sm" data-act="spotkeep" data-id="${esc(e.id)}">Keep it a ${e.p}</button>` : ""}</li>`).join("")}</ul>` : ""}
       <table class="glance bkchk"><tr><th class="l"></th>${cols.map(tm => `<th class="tn" style="${tvars(g, tm)}"><span style="color:var(--tl,var(--green))">${esc(tmName(g, tm))}</span></th>`).join("")}</tr>
       <tr><td class="l"><b>Score</b></td>${td(tm => `<b>${R.sc[tm]}</b>`)}</tr>
+      ${b ? `<tr><td class="l">Gym board score</td>${td(tm => vs(b[tm], R.sc[tm]))}</tr>${b.q === lq && b.hf != null && b.vf != null ? `<tr><td class="l">Gym board team fouls</td>${td(tm => vs(tm === "us" ? b.hf : b.vf, perFouls(g, R, tm, lq)))}</tr>` : ""}` : ""}
       <tr><td class="l">By period (${per.map(q => esc(perLabel(g, q))).join(" · ")})</td>${td(tm => per.map(q => (R.qs[tm] || [])[q - 1] || 0).join(" · "))}</tr>
       <tr><td class="l">Team fouls by period</td>${td(tm => per.map(q => R.tf[tm][q] || 0).join(" · "))}</tr>
       <tr><td class="l">Timeouts left</td>${td(left)}</tr>
       <tr><td class="l">Player fouls</td>${td(fouls)}</tr>
       ${(() => { const gp = gapsOf(g, R).length; if(!gp && !R.plays.some(p => !p.void && ((p.e.t === "FG" || p.e.t === "FT") && !p.e.m || p.e.t === "REB"))) return ""; const B = balanceOf(g, R), n = R.orphans.length + gp;
-        return `<tr><td class="l">Rebounds off their misses (NFHS)${n ? `<br><span class="small">${n} to look at under Review game</span>` : ""}</td>${td(tm => { const b = B[tm]; return `${b.reb} of ${b.miss - b.wait}${b.d ? ` <b>(${b.d > 0 ? b.d + " too many" : -b.d + " short"})</b>` : ""}`; })}</tr>`; })()}</table>
+        return `<tr><td class="l">Rebounds off their misses (NFHS)${n ? `<br><span class="small">${n} to look at under Review game</span>` : ""}</td>${td(tm => { const b = B[tm]; return `${b.reb} of ${b.miss - b.wait}${b.d ? ` <b>(${b.d > 0 ? b.d + " too many" : -b.d + " short"})</b>` : ""}`; })}</tr>`; })()}
+      ${c.chart ? `<tr><td class="l">Shots with a spot charted</td>${td(tm => `${c.chart[tm].n} of ${c.chart[tm].of}`)}</tr>` : ""}</table>
       <p style="margin:8px 0">Arrow: <b>${R.poss ? esc(tmName(g, R.poss)) : "not set"}</b></p>
       <div class="row"><button class="btn primary" data-act="boxpdf">Box score PDF</button><button class="btn" data-act="logbox" data-gid="${esc(g.id)}">Fix something</button><button class="btn" data-close>It matches</button></div>`; }});
+}
+// Kevin (0.26.0): the change log. Who changed what and when: plays fixed, removed or put in after the fact (a change a
+// minute or more after the play, or any after the final), the final itself, and every unlock with its reason. Each play
+// shows its latest change.
+function chgLog(g){
+  openSheet({wide:true, html:() => { const R = replay(g), qOf = new Map(R.plays.map(p => [p.e, p.q])), fin = g.status === "final" ? finAt(g) : 0, rows = [];
+    for(const e of g.ev){ if(!e || typeof e.ebt !== "number") continue; const after = fin && e.ebt > fin;
+      if(!(after || e.ins || e.ebt - (+e.at || 0) > 60000)) continue;
+      rows.push({at:e.ebt, by:e.eb, after, what:`${e.v ? "Removed" : e.ins && e.ebt === e.la ? "Put in" : "Changed"}: ${esc(perLabel(g, qOf.get(e) || 1))} · ${playText(g, e)}${e.fl && !e.v ? " ⚑" : ""}`}); }
+    if(fin) rows.push({at:fin, by:"", what:`<b>Marked final</b>`});
+    for(const u of unlOf(g)) rows.push({at:u.at, by:u.by, what:u.lock ? "<b>Locked again</b>" : `<b>Unlocked</b>: ${esc(String(u.why || ""))}`});
+    rows.sort((a, b) => b.at - a.at);
+    const when = t => esc(new Date(t).toLocaleString([], {month:"short", day:"numeric", hour:"numeric", minute:"2-digit"}));
+    return `<h3>Change log: ${esc(usName(g))} ${gameTitle(g)}</h3><p class="small" style="margin:0 0 8px">Changes a minute or more after the play, plays put in later, and everything after the final. A final locks 24 hours after it's marked final; a coach unlocks it with a reason.</p>
+      ${rows.length ? `<table class="glance"><tr><th class="l">When</th><th class="l">Who</th><th class="l">What</th></tr>${rows.slice(0, 300).map(x => `<tr><td class="l" style="white-space:nowrap">${when(x.at)}${x.after ? ' <span class="tag">after final</span>' : ""}</td><td class="l">${esc(x.by || (x.what.startsWith("<b>Marked") ? "" : "unknown"))}</td><td class="l">${x.what}</td></tr>`).join("")}</table>` : `<p>No changes yet.</p>`}
+      <div class="row" style="margin-top:8px">${lockOpen(g) && canCoach() ? `<button class="btn" data-act="relock">Lock it now</button>` : ""}${locked(g) && canCoach() ? `<button class="btn" data-act="unlock">Unlock to fix</button>` : ""}<button class="btn" data-close>Close</button></div>`; }});
 }
 function csvOf(g){
   const R = replay(g), M = clockStats(g, R), cols = ["game_id","date","opponent","home_away","team","num","name","pos","pts","fgm","fga","tpm","tpa","ftm","fta","oreb","dreb","reb","ast","stl","blk","to","pf","tech","plus_minus","min"];
@@ -6937,7 +7081,16 @@ document.addEventListener("click", async ev => {
     if(k === "skip"){ if(ui.fu.length) ui.fu.shift(); else ui.rq = null; renderFu(); }
     else if(k === "wp" && ui.fu[0]){ ui.fu[0].p = fu.dataset.p; renderFu(); }
     else if((k === "sfy" || k === "sfn") && ui.fu[0]){ const g = cur(), f = ui.fu.shift(), m = g && g.ev.find(x => x.id === f.ref && !x.v); if(m && canEdit(g)){ m.sf = k === "sfy"; m.ed = Date.now(); touch(g); } render(); }
-    else if(k === "ofy" && ui.fu[0]){ const f = ui.fu.shift(); rec({tm:f.tm, pid:f.pid, t:"TO", ref:f.ref, of:1}, {keepFu:true}); render(); }
+    else if(k === "ofy" && ui.fu[0]){ const f = ui.fu.shift(); rec({tm:f.tm, pid:f.pid, t:"TO", ref:f.ref, of:1, tt:"of"}, {keepFu:true}); render(); }
+    else if(k === "tt") ttPick(cur(), fu.dataset.v);
+    else if((k === "spoty" || k === "spotn") && ui.fu[0] && ui.fu[0].k === "spot"){ const g = cur(), f = ui.fu.shift(), e = g && g.ev.find(x => x.id === f.ref && !x.v);
+      if(!e || !(k === "spoty" ? spotSet(g, e, e.p === 3 ? 2 : 3) : spotKeep(g, e))) renderFu(); }
+    // Charge: the foul is an offensive one, the turnover goes with it (or is in already), and the strip asks who took it.
+    else if(k === "chg" && ui.fu[0] && ui.fu[0].k === "pf"){ const g = cur(), f = ui.fu.shift(), pf = g && g.ev.find(x => x.id === f.ref && !x.v && x.t === "PF");
+      if(!pf || !canEdit(g)){ render(); return; }
+      const to = f.ofd ? g.ev.find(x => x.id === f.ofd && !x.v && x.t === "TO") : null, ed = Date.now(); pf.ch = 1; pf.ed = ed;
+      if(to){ to.ch = 1; to.of = 1; to.tt = "of"; to.ed = ed; touch(g); } else if(!rec({tm:f.tm, pid:f.pid, t:"TO", ref:f.ref, of:1, tt:"of", ch:1}, {keepFu:true})){ render(); return; }
+      ui.fu.unshift({k:"chg", tm:f.tm, ref:f.ref}); renderFu(); }
     else if(k === "pick") fuPick(fu.dataset.tm, fu.dataset.pid || null);
     else if(k === "bp"){ ui.fu[0].p = +fu.dataset.p; renderFu(); }
     else if(k === "all" && ui.fu[0]){ ui.fu[0].all = true; renderFu(); }
@@ -6952,7 +7105,10 @@ document.addEventListener("click", async ev => {
     const u = zUnits(), r = court.getBoundingClientRect(), x = Math.min(1, Math.max(0, (ev.clientX - r.left * u) / (r.width * u))), y = Math.min(1, Math.max(0, (ev.clientY - r.top * u) / (r.height * u)));
     const e = g.ev.find(e => e.id === f.id); ui.fu.shift();
     if(e){ e.x = Math.round(x * 1000) / 1000; e.y = Math.round(y * 1000) / 1000;
-      if(isThree(e.x, e.y) !== (e.p === 3)) toast("That spot looks like a " + (isThree(e.x, e.y) ? "3" : "2") + ". Kept it as a " + e.p + "; tap Fix in Plays if it's wrong.", 3500);
+      // Kevin (0.26.0): a spot clearly on the other side of the arc asks on the strip (make it what the spot says, or
+      // keep it); one right on the line only says so.
+      if(spotOff(e)) ui.fu.unshift({k:"spot", ref:e.id});
+      else if(isThree(e.x, e.y) !== (e.p === 3)) toast("That spot's right on the line. Kept it as a " + e.p + ".", 2500);
       touch(g); }
     return; }
   const a = t.closest("[data-act]"); if(!a || a.disabled) return;
@@ -7202,7 +7358,7 @@ document.addEventListener("click", async ev => {
     case "final": { if(!g || !canEdit(g)) break; const R = replay(g);
       if(!confirm(`Make it final: ${usName(g)} ${R.sc.us}, ${g.opp} ${R.sc.them}?`)) break;
       g.status = "final"; edField(g, ["status"]); openReview(g); touch(g); if(!g.practice) reconSheet(g); else toast("Final. Send it to Bobcats Scorebook when you're ready."); break; }
-    case "reopen": if(!g || !canScore() || !mine(g)) break; g.status = "live"; edField(g, ["status"]); touch(g); break;
+    case "reopen": if(!g || !canScore() || !mine(g) || locked(g)) break; g.status = "live"; edField(g, ["status"]); touch(g); break;
     case "takeover": if(!g || !confirm("Take over scoring " + usName(g) + " " + gameTitle(g).replace(/<[^>]+>/g, "") + " on this device? The device scoring it now stops: its taps won't count until it takes the game back.")) break;       { const strand = S.strand[g.id] || [], cut = g.writerAt || 0, R0 = replay(g);
         // Both devices scored after the other one took over: the same baskets would count twice. One side's plays for
         // that stretch, not both.
@@ -7238,6 +7394,16 @@ document.addEventListener("click", async ev => {
     case "gbgo": { const s0 = ui.sheet; if(!s0 || s0.k !== "gb" || bounced("gbgo", 1500)) break; const gg = S.games[s0.gid]; if(!gg || !canCoach()) break;
       const o = a.dataset.k === "all" ? gbAll() : a.dataset.k === "bw" ? gbBasic() : JSON.parse(JSON.stringify(s0.o)); closeSheet(); gbMake(gg, o); break; }
     case "bkchk": if(g) bookCheck(g); break;
+    case "flaglast": { if(!g || !canEdit(g)) break; const e = lastPlay(g); if(e && flagTog(g, e)) toast(e.fl ? `Flagged: ${playText(g, e).replace(/<[^>]+>/g, "")}. It's on the Book check at the break.` : "Flag off: " + playText(g, e).replace(/<[^>]+>/g, ""), 3500); break; }
+    case "spotset": case "spotkeep": { if(!g || !canEdit(g)) break; const e = g.ev.find(x => x.id === a.dataset.id && !x.v);
+      if(e && (act === "spotset" ? spotSet(g, e, +a.dataset.p) : spotKeep(g, e)) && ui.sheet && ui.sheet.bk) renderSheet(); break; }
+    case "unlock": { if(!g || !canCoach() || !locked(g)) break; const gid = g.id;
+      sheetText("Unlock this final", "Why? One line, for the change log", "", txt => { const gg = S.games[gid], why = String(txt || "").trim().slice(0, 140);
+        if(!gg || !canCoach() || !locked(gg)) return; if(!why){ toast("Say why in a few words, so it's on record."); return; }
+        gg.unl = unlOf(gg).concat([{at:Date.now(), by:Sync.who(), u:Sync.uid() || "", why}]).slice(-30); edField(gg, ["unl"]); touch(gg); toast("Unlocked for 24 hours. It's in the change log."); }, 2, "Paper book had #24 with 3 fouls, not 4"); break; }
+    case "relock": { if(!g || !canCoach() || !lockOpen(g)) break; g.unl = unlOf(g).concat([{at:Date.now(), by:Sync.who(), u:Sync.uid() || "", lock:1}]).slice(-30); edField(g, ["unl"]); touch(g); toast("Locked again."); break; }
+    case "chglog": if(g) chgLog(g); break;
+    case "flagtog": { if(!g || !canEdit(g)) break; const e = g.ev.find(x => x.id === a.dataset.id); if(e && flagTog(g, e) && ui.sheet && ui.sheet.bk) renderSheet(); break; }
     case "boardinfo": Board.sheet(); break;
     case "recon": if(g && canEdit(g)) reconSheet(g); break;
     case "rvagain": { const x = ui.sheet && ui.sheet.rv && S.games[ui.sheet.rv.gid]; if(x && canEdit(x)){ openReview(x); touch(x); reconSheet(x); } break; }
@@ -7560,6 +7726,8 @@ document.addEventListener("submit", ev => {
     if(moved && (wasPpd || d.get("off") === "ppd") && !g.ppdFrom) g.ppdFrom = was;
     Object.assign(g, {date:d.get("date") || g.date, time:d.get("time") || "", opp:String(d.get("opp")).trim() || g.opp, ha:d.get("ha"), event:String(d.get("event") || "").trim(), district:!!d.get("district"), off:moved && d.get("off") === "ppd" ? "" : d.get("off") || "", forfeit:d.get("forfeit") || ""});
     if(g.ppdFrom === g.date) delete g.ppdFrom;
+    // The Game Book's site (blank: our gym or theirs) and attendance (0.26.0).
+    { const site = String(d.get("site") || "").trim().slice(0, 80), att = String(d.get("att") ?? "").trim(); if(site) g.site = site; else delete g.site; if(/^\d{1,5}$/.test(att)) g.att = +att; else delete g.att; }
     // offWas (a called-off game an accidental tap started) goes only when the sheet offered Postponed and Cancelled.
     if(!g.off || g.forfeit) delete g.off; if(!g.forfeit) delete g.forfeit; if(!g.ev.some(e => !e.v && !PREGAME(e))) delete g.offWas;
     if(g.forfeit && g.status === "live") g.status = "final";
@@ -7826,11 +7994,12 @@ function flipNoPub(pid, v, skip){ let n = 0;
 function editGameSheet(g){
   const played = g.ev.some(e => !e.v && !PREGAME(e)), canDel = !played && canDelete(), ed = canEdit(g) && canCoach(), rz = rzOk(g), n = g.ev.length;
   // Coach can reset a game another device is scoring: then the sheet holds only Reset.
-  openSheet({gid:g.id, html:() => `<h3>Edit: ${esc(usName(g))} ${gameTitle(g)}</h3>${ed ? "" : `<p style="margin:0 0 4px">Another device is scoring this game, so its details are changed there.</p>`}<form id="egform" class="stack"${ed ? "" : " hidden"}>
+  openSheet({gid:g.id, html:() => `<h3>Edit: ${esc(usName(g))} ${gameTitle(g)}</h3>${ed ? "" : `<p style="margin:0 0 4px">${locked(g) ? "This final is locked. Unlock it under Plays to change its details." : "Another device is scoring this game, so its details are changed there."}</p>`}<form id="egform" class="stack"${ed ? "" : " hidden"}>
     <div class="row"><label class="fld" style="flex:1"><span>Date</span><input type="date" name="date" value="${esc(g.date)}" required></label><label class="fld" style="flex:1"><span>Tip-off</span><input type="time" name="time" value="${esc(g.time || "")}"></label></div>
     <div class="row"><label class="fld" style="flex:1"><span>Opponent</span><input type="text" name="opp" value="${esc(g.opp)}" required></label>
     <label class="fld" style="width:140px"><span>Where</span><select name="ha"><option ${g.ha === "Home" ? "selected" : ""}>Home</option><option ${g.ha === "Away" ? "selected" : ""}>Away</option><option ${g.ha === "Neutral" ? "selected" : ""}>Neutral</option></select></label></div>
     <label class="fld"><span>Event (optional)</span><input type="text" name="event" value="${esc(g.event || "")}" placeholder="Christmas Classic"></label>
+    <div class="row"><label class="fld" style="flex:2 1 200px"><span>Site (Game Book)</span><input type="text" name="site" maxlength="80" value="${esc(typeof g.site === "string" ? g.site : "")}" placeholder="${esc(siteOf({...g, site:""}) || "Gym name")}"></label><label class="fld" style="flex:1 1 110px"><span>Attendance</span><input type="number" name="att" min="0" max="99999" inputmode="numeric" value="${attOf(g) ?? ""}"></label></div>
     ${g.status === "final" ? "" : `<label class="fld"><span>Our uniform</span><select name="uni"><option value="">Not set (everyone's usual number)</option>${UNIS.map(u => `<option ${g.uni === u ? "selected" : ""}>${u}</option>`).join("")}</select></label>`}
     <label class="row" style="font-weight:600"><input type="checkbox" name="district" ${g.district ? "checked" : ""} style="width:22px;height:22px"> District game</label>
     ${canAdmin() ? `<label class="row" style="font-weight:600"><input type="checkbox" name="scrim" ${g.scrim ? "checked" : ""} style="width:22px;height:22px"> Scrimmage: not in the record or season stats, never on the fan page or the stream</label>` : ""}
@@ -8033,7 +8202,7 @@ const idBad = v => v != null && (/[<>"]/.test(String(v)) || ["__proto__", "const
 // the game's team and date. (One play with text where its points go would put that text in every score on every screen;
 // one with no team stops replay() cold.) A game that fails stays out of this book, like one with a bad id.
 const plainIds = (id, g) => !idBad(id) && g.id === id && (g.deleted === true || ((g.team === "boys" || g.team === "girls") && typeof g.date === "string" && /^(\d{4}-\d\d-\d\d)?$/.test(g.date) && typeof g.opp === "string" && (!g.time || typeof g.time === "string")))
-  && (g.ev == null || Array.isArray(g.ev)) && !(g.ev || []).some(e => !e || typeof e !== "object" || idBad(e.id) || idBad(e.pid) || idBad(e.ref) || (e.tm !== "us" && e.tm !== "them") || (e.p != null && typeof e.p !== "number"))
+  && (g.ev == null || Array.isArray(g.ev)) && !(g.ev || []).some(e => !e || typeof e !== "object" || idBad(e.id) || idBad(e.pid) || idBad(e.ref) || idBad(e.on) || (e.tm !== "us" && e.tm !== "them") || (e.p != null && typeof e.p !== "number"))
   && !["us", "them"].some(tm => g[tm] != null && (!Array.isArray(g[tm]) || g[tm].some(p => !p || typeof p !== "object" || idBad(p.pid))));
 // The rosters doc (Coaches and Admins write it) and a backup's rosters: a player id that would break a tag keeps it out.
 const teamsBad = t => !t || typeof t !== "object" || Object.values(t).some(x => x && ["roster", "jv"].some(k => x[k] != null && (!Array.isArray(x[k]) || x[k].some(p => !p || typeof p !== "object" || idBad(p.pid)))));
@@ -9251,7 +9420,7 @@ const Sync = (() => {
     st.busy = false; render();
   }
   return {start, live, ready, settled, dirty, reset, owePids, dirtyBooth, dirtyTeams, dirtySay, dirtyBc, dirtyLib, dirtyScript, dirtyScriptSaves, seedSeason, panel, click, submit,
-    phase:() => st.phase, role:() => st.role, uid:() => st.uid,
+    phase:() => st.phase, role:() => st.role, uid:() => st.uid, who:() => String(st.name || "").trim().slice(0, 40),
     // For the player photos (Faces): the cloud's handles while live, and whether the cloud's rosters have been heard.
     cloud:() => live() ? {fb:st.fb, db:st.db} : null, teamsHeard:() => st.teamsSeen,
     // One doc to follow (the gym scoreboard's, Board): its unsubscribe, or null with sync off.
@@ -9496,7 +9665,10 @@ const Board = (() => {
   }
   // The scorer checked: the book is right. Quiet until the board or the book changes.
   function dismiss(){ const g = st.gid && S.games[st.gid]; if(g && st.flag) st.ok[g.id + "/" + st.flag.key] = true; st.flag = null; paint(); closeSheet(); }
-  return {check, stamp, strip, sheet, dismiss, clock, live:ok, pub, notYet, autoReady, arrowGo};
+  // Kevin (0.26.0): the board's score and team fouls for the Book check at a break (Greenbrier is HOME on the board).
+  function score(g){ if(!g || g.id !== st.gid || !ok()) return null; const d = st.d; if(typeof d.home !== "number" || typeof d.vis !== "number") return null;
+    return {us:d.home, them:d.vis, hf:typeof d.hf === "number" ? d.hf : null, vf:typeof d.vf === "number" ? d.vf : null, q:Number.isInteger(d.q) ? d.q : null}; }
+  return {check, stamp, strip, sheet, dismiss, clock, live:ok, pub, notYet, autoReady, arrowGo, score};
 })();
 
 /* ---------- boot ---------- */
