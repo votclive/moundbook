@@ -5,7 +5,7 @@
 <!-- The page's lock: the only script that may run is the one in this file (named by the SHA-256 of its text) and files
      from this folder (fb.js). Text that turns up in the page from a roster, a game or the cloud can never run as code.
      After ANY edit to the script, run "python3 hoops/stamp.py hoops": with a stale hash the browser runs nothing. -->
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-J2nN09SOilMujpy22SzVg5K9M153nvdTJIrdU8pa798='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-MddwaDXNH1oL48tWXfmxTTCnoQ1A+nzhg0ydgOWgWHs='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#094A28">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -42,6 +42,12 @@
 }
 *{box-sizing:border-box}
 [hidden]{display:none!important}
+#perask{position:fixed;inset:0;z-index:60;display:grid;place-items:center;background:rgba(0,0,0,.5);padding:16px max(16px,env(safe-area-inset-right)) 16px max(16px,env(safe-area-inset-left))}
+#perask .pa-card{background:var(--white);color:var(--ink,#111);border-top:6px solid var(--green);border-radius:14px;padding:20px;max-width:440px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.35)}
+#perask h2{margin:0 0 6px;font-size:26px;line-height:1.15}
+#perask p{margin:0 0 14px}
+#perask .row{display:flex;gap:10px;flex-wrap:wrap}
+#perask .btn{flex:1 1 160px;min-height:52px;font-size:18px}
 html,body{margin:0;background:var(--white);color:var(--black)}
 body{font-family:var(--f-body);font-size:15px;line-height:1.35;font-variant-numeric:tabular-nums;-webkit-tap-highlight-color:transparent;padding-bottom:env(safe-area-inset-bottom)}
 button,input,select,textarea{font:inherit;color:inherit}
@@ -823,6 +829,7 @@ td .face{width:24px;height:24px;margin:-5px 7px -4px 0}
 </div></header>
 <main><div class="wrap" id="view"></div></main>
 <div id="fu"></div>
+<div id="perask" hidden></div>
 <div id="sheet"></div>
 <div class="toast" id="toast" role="status" hidden></div>
 <!-- Shows only if the script below never runs (after 5 seconds): the page's lock refuses a script whose stamp is stale, and
@@ -836,7 +843,7 @@ td .face{width:24px;height:24px;margin:-5px 7px -4px 0}
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
 { const n = document.getElementById("nostart"); if(n) n.remove(); }   // the script is running: see #nostart
-const BS_VERSION = "0.23.0";
+const BS_VERSION = "0.23.1";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -1609,8 +1616,8 @@ function stat(tm, pid, k){
   const R = replay(g), po = S.settings.extra ? {} : {po:1};    // points-only mode: makes are marked, so no fake shooting %
   let e;
   switch(k){
-    case "ft": e = rec({tm, pid, t:"FT", m:true, ...po}); dblTap(g, e); break;
-    case "ftx": e = rec({tm, pid, t:"FT", m:false}); if(e && S.settings.extra){ ui.fu = [{k:"reb", miss:tm}]; renderFu(); } break;
+    case "ft": e = rec({tm, pid, t:"FT", m:true, ...po}); dblTap(g, e); if(e && ftNeedsFoul(g, e)){ ui.fu = [{k:"foul", tm:OTHER(tm), ref:e.id}]; renderFu(); } break;
+    case "ftx": e = rec({tm, pid, t:"FT", m:false}); if(e){ ui.fu = (ftNeedsFoul(g, e) ? [{k:"foul", tm:OTHER(tm), ref:e.id}] : []).concat(S.settings.extra ? [{k:"reb", miss:tm}] : []); renderFu(); } break;
     case "2": case "3": case "2x": case "3x": {
       const p = parseInt(k, 10), m = !k.endsWith("x");
       e = rec({tm, pid, t:"FG", p, m, ...(m ? po : {})}); if(!e) return; dblTap(g, e);
@@ -1631,16 +1638,21 @@ function stat(tm, pid, k){
       if(last && last.t === "FG" && !last.m && last.tm === OTHER(tm) && !linked(g, "BLK", last.id)){ e = rec({tm, pid, t:"BLK", ref:last.id}); if(e && S.settings.extra){ ui.fu = [{k:"reb", miss:OTHER(tm)}]; renderFu(); } break; }
       e = rec({tm, pid, t:"BLK"}); if(e){ ui.fu = [{k:"blk", tm:OTHER(tm), ref:e.id, p:2}]; renderFu(); } break; }
     case "to": e = rec({tm, pid, t:"TO"}); if(e && pid && S.settings.extra){ ui.fu = [{k:"stl", tm:OTHER(tm), ref:e.id}]; renderFu(); } break;
-    case "pf": {
-      e = rec({tm, pid, t:"PF"}); if(!e) return;
-      const R2 = replay(g), ln = R2.box[tm][pid];
+    case "pf": e = rec({tm, pid, t:"PF"}); if(e) foulNote(g, tm, pid, "PF"); break;
+    case "tf": e = rec({tm, pid, t:"TF"}); if(e) foulNote(g, tm, pid, "TF"); break;
+  }
+  if(navigator.vibrate) try{ navigator.vibrate(12); }catch(_){}
+}
+// What a foul just put in the book says: the bonus, foul trouble, fouled out, a second technical (an ejection).
+function foulNote(g, tm, pid, t){
+  const R2 = replay(g), ln = pid && R2.box[tm][pid];
+  switch(t){
+    case "PF": {
       if(teamFouls(g, R2, tm) === S.settings.bonus) toast(tmName(g, OTHER(tm)) + " in the bonus.", 3000);
       if(ln && ln.pf === 4) toast(pLabel(g, tm, pid) + " has 4 fouls.");
       if(ln && ln.pf >= 5) toast(pLabel(g, tm, pid) + " FOULED OUT. Get a sub to the table.", 4000);
       break; }
-    case "tf": {
-      e = rec({tm, pid, t:"TF"}); if(!e) return;
-      const R2 = replay(g), ln = pid && R2.box[tm][pid];
+    case "TF": {
       if(teamFouls(g, R2, tm) === S.settings.bonus) toast(tmName(g, OTHER(tm)) + " in the bonus.", 3000);
       // Bench and coach technicals add up over the night: from the second one, say so (the book tells the official book).
       if(!pid && R2.team[tm].tf >= 2){ const n = R2.team[tm].tf; toast(`${tmName(g, tm)} bench: ${ORD(n)} technical tonight. Tell the official book.${teamFouls(g, R2, tm) === S.settings.bonus ? " " + tmName(g, OTHER(tm)) + " in the bonus." : ""}`, 4500); }
@@ -1648,13 +1660,31 @@ function stat(tm, pid, k){
       else if(ln && ln.pf >= 5) toast(pLabel(g, tm, pid) + " FOULED OUT. Get a sub to the table.", 4000);
       break; }
   }
-  if(navigator.vibrate) try{ navigator.vibrate(12); }catch(_){}
+}
+// Kevin (0.23.1): a free throw needs a foul before it. Looking back past this trip's other free throws (and subs, timeouts,
+// notes), the play before has to be the other team's foul or technical; if not (the and-one's foul never got tapped), the
+// strip asks who fouled.
+function ftNeedsFoul(g, e){
+  for(let j = g.ev.indexOf(e) - 1; j >= 0; j--){ const x = g.ev[j];
+    if(x.v || ["IN", "OUT", "NOTE", "POSS", "TIP", "JUMP", "TMO", "AST"].includes(x.t) || (x.t === "FT" && x.tm === e.tm)) continue;
+    return !((x.t === "PF" || x.t === "TF") && x.tm !== e.tm); }
+  return true;
+}
+// The foul the strip asked for goes in the book just before the free throw it led to (one millisecond earlier, so every
+// device puts it there), and Undo takes the foul back first (fb: the free throw it was filed before).
+function foulBefore(g, f, pid, t){
+  const ft = g.ev.find(x => x.id === f.ref && !x.v); if(!ft){ render(); return; }
+  const e = rec({tm:f.tm, pid, t, fb:ft.id, ...(ft.gc ? {gc:{...ft.gc}} : {})}, {keepFu:true}); if(!e) return;
+  g.ev.splice(g.ev.indexOf(e), 1); g.ev.splice(g.ev.indexOf(ft), 0, e); e.at = (ft.at || Date.now()) - 1; touch(g);
+  foulNote(g, f.tm, pid, t); render();
 }
 function undo(){
   const g = cur(); if(!g || !canEdit(g)) return;
   if(g.status === "final"){ toast("This game is final. Tap Reopen first, or fix plays under Plays."); return; }
   let auto = false;
-  for(let i = g.ev.length - 1; i >= 0; i--){ const e = g.ev[i]; if(e.v) continue;
+  for(let i = g.ev.length - 1; i >= 0; i--){ let e = g.ev[i]; if(e.v) continue;
+    // A foul the "who fouled?" strip put in just before this free throw was the last thing done: it goes first.
+    if(e.t === "FT"){ const fb = g.ev.find(x => !x.v && x.fb === e.id); if(fb) e = fb; }
     // The arrow switch the gym clock put in (play started in a new period) goes with the step before it: undoing only it
     // would see the clock running and put it straight back.
     if(e.t === "POSS" && e.auto){ e.v = true; e.ed = Date.now(); auto = true; continue; }
@@ -1673,6 +1703,34 @@ function undo(){
   if(auto){ touch(g); return; }
   toast("Nothing to undo.");
 }
+/* ---------- "Did the period end?" (Kevin, 0.23.1) ----------
+   A scorer missed the horn from Q3 to Q4 one night. With a game going and nothing put in for 90 seconds (150 after a
+   timeout), the Scorer page asks whether the period ended: Yes ends it, No asks again after another quiet 90 seconds.
+   Never between periods, before the first play, after Final, or while the gym scoreboard's feed shows the clock running. */
+const PER_ASK = 90000, PER_ASK_TMO = 150000;
+function perWords(g, q){ const Q = g.quarters || 4; if(q > Q) return q === Q + 1 ? "overtime" : "overtime " + (q - Q);
+  return (["1st", "2nd", "3rd", "4th"][q - 1] || q + "th") + (Q === 2 ? " half" : " quarter"); }
+function perAskDue(g, now = Date.now()){
+  if(PUB || ui.tab !== "desk" || !g || g.status !== "live" || !canEdit(g)) return 0;
+  const live = g.ev.filter(e => !e.v && !PREGAME(e)); if(!live.length) return 0;
+  const R = replay(g); if(R.brk) return 0;
+  const last = Math.max(0, ...g.ev.map(e => Math.max(e.at || 0, e.ed || 0))), no = ui.perNo && ui.perNo.gid === g.id && ui.perNo.q === R.q ? ui.perNo.at : 0;
+  if(now - Math.max(last, no) < (live[live.length - 1].t === "TMO" ? PER_ASK_TMO : PER_ASK)) return 0;
+  const c = Board.live() && Board.clock(); if(c && c.r) return 0;
+  return R.q;
+}
+function renderPerAsk(){
+  const el = $("#perask"); if(!el) return; const g = cur(), q = g ? perAskDue(g) : 0;
+  if(!q){ if(!el.hidden){ el.hidden = true; el.innerHTML = ""; delete el.dataset.k; } return; }
+  if(!el.hidden && el.dataset.k === g.id + "." + q) return;
+  const w = esc(perWords(g, q));
+  el.dataset.k = g.id + "." + q;
+  el.innerHTML = `<div class="pa-card" role="alertdialog" aria-modal="true" aria-labelledby="pa-q"><h2 id="pa-q">Did the ${w} end?</h2>
+    <p>Nothing's been put in for a while. If the horn went, tap Yes${q < (g.quarters || 4) ? ` and the next play starts the ${esc(perWords(g, q + 1))}` : (R => R.sc.us === R.sc.them ? ", and the next play starts overtime" : ", then make the game final")(replay(g))}.</p>
+    <div class="row"><button class="btn primary" data-act="perask-yes">Yes, end the ${w}</button><button class="btn" data-act="perask-no">No, still playing</button></div></div>`;
+  el.hidden = false; try{ navigator.vibrate && navigator.vibrate([120, 80, 120]); }catch(e){}
+}
+setInterval(() => { if(!document.hidden) renderPerAsk(); }, 5000);
 function endPeriod(){
   const g = cur(); if(!g) return; const R = replay(g);
   if(!rec({tm:"us", pid:null, t:"PER", q:R.q})) return;
@@ -1819,7 +1877,7 @@ function keepOpen(fn){
   $$("details[data-keep]").forEach(d => { const k = d.dataset.keep; if(k in ui.open) d.open = ui.open[k]; });
   if(Math.abs(window.scrollY - y) > 1) window.scrollTo(0, y);
 }
-function render(){ keepOpen(draw); retitle(); }
+function render(){ keepOpen(draw); retitle(); renderPerAsk(); }
 function retitle(){
   let g = null, R = null;
   if(PUB){ const sn = PS.gid && PS.snap[PS.gid]; if(sn){ const p = pubGame(sn); g = p.g; R = p.R; } }
@@ -2083,6 +2141,8 @@ function renderFu(){
   // learns where each chip lives. The side that's defending is marked, not moved.
   else if(f.k === "reb"){ const sd = sides(g), team = tm => `<button class="chip" data-fu="pick" data-tm="${tm}" data-pid=""><span class="nm">${esc(tmName(g, tm))} team</span></button>`, tag = tm => `<span class="kicker fu-side${tm === f.miss ? "" : " def"}">${tm === f.miss ? "Off" : "Def"}</span>`;
     h = `<span class="ask">Rebound?</span>${tag(sd.left)}${team(sd.left)}${chips(sd.left, null)}<span class="fu-gap"></span>${chips(sd.right, null)}${team(sd.right)}${tag(sd.right)}<button class="chip skip" data-fu="skip">Skip</button>`; }
+  else if(f.k === "foul"){ const ft = g.ev.find(x => x.id === f.ref), sp = ft && ft.pid ? player(g, ft.tm, ft.pid) : null;
+    h = `<span class="ask">Who fouled${sp ? " #" + esc(sp.num) : ""}?</span>${chips(f.tm, null, f.all ? sortRoster(roster(g, f.tm)) : null)}${f.all ? "" : `<button class="chip skip" data-fu="all">Someone else</button>`}<button class="chip" data-fu="btech">${esc(tmName(g, f.tm))} bench technical</button><button class="chip skip" data-fu="skip">Skip</button>`; }
   else if(f.k === "stl") h = `<span class="ask">Stolen by?</span>${chips(f.tm, null)}<button class="chip skip" data-fu="skip">No steal</button>`;
   else if(f.k === "to") h = `<span class="ask">Turnover by?</span>${chips(f.tm, null)}<button class="chip" data-fu="pick" data-tm="${f.tm}" data-pid="">Team</button><button class="chip skip" data-fu="skip">Skip</button>`;
   else if(f.k === "blk") h = `<span class="ask">Whose shot got blocked?</span><button class="chip${f.p === 2 ? " at" : ""}" data-fu="bp" data-p="2">2PT</button><button class="chip${f.p === 3 ? " at" : ""}" data-fu="bp" data-p="3">3PT</button>${chips(f.tm, null)}<button class="chip skip" data-fu="skip">Skip</button>`;
@@ -2095,6 +2155,7 @@ function fuPick(tm, pid){
   const g = cur(), f = ui.fu[0]; if(!g || !f) return;
   ui.fu.shift();
   if(f.k === "ast") rec({tm, pid, t:"AST", ref:f.ref}, {keepFu:true});
+  else if(f.k === "foul") foulBefore(g, f, pid, "PF");
   else if(f.k === "reb") rec({tm, pid, t:"REB", o: tm === f.miss}, {keepFu:true});
   else if(f.k === "to") rec({tm, pid, t:"TO", ref:f.ref}, {keepFu:true});
   else if(f.k === "stl") rec({tm, pid, t:"STL", ref:f.ref}, {keepFu:true});
@@ -5774,7 +5835,7 @@ function pubSnap(g0){
   const fanFloor = {has:(tm, pid) => (R.court[tm].size < 5 && R.full[tm] ? R.full[tm] : R.court[tm]).has(pid)};
   const line = (tm, p) => { const l = R.box[tm][p.pid] || LINE(); return [p.num, p.name || "", "", "", ""].concat(PUBK.map(k => l[k]), [l.gp ? 1 : 0, fanFloor.has(tm, p.pid) ? 1 : 0, l.po ? 1 : 0, l.tf || 0]); };
   const all = R.plays.filter(p => !p.void && !["IN","OUT","POSS","NOTE"].includes(p.e.t)), fin = g.status === "final" || gameOver(g0);
-  const plays = (fin ? all : all.slice(-40)).map(p => [p.q, p.sc.us, p.sc.them, playText(g, p.e, {far:true}).replace(/<[^>]+>/g, ""), p.scored ? 1 : 0, p.e.t === "PER" ? "" : p.e.tm, p.e.at || 0, gcText(p.e, g, p.q), bix(p.e)]);
+  const plays = (fin ? all : all.slice(-40)).map(p => [p.q, p.sc.us, p.sc.them, playText(g, p.e, {far:true}).replace(/<[^>]+>/g, ""), p.scored ? 1 : 0, p.e.t === "PER" ? "" : p.e.tm, p.e.at || 0, gcText(p.e, g, p.q), bix(p.e), String(p.e.t || "")]);
   // The shot chart: [team, box row, x and y in thousandths of the half court, made, period, points, game clock ("5:49", or
   // "" without one)].
   const sh = R.shots.filter(x => x.e.x != null).map(x => [x.e.tm, bix(x.e), Math.round(x.e.x * 1000), Math.round(x.e.y * 1000), x.e.m ? 1 : 0, x.q, x.e.p === 3 ? 3 : 2, gcText(x.e, g, x.q)]);
@@ -6444,6 +6505,8 @@ document.addEventListener("click", async ev => {
     if(k === "skip"){ ui.fu.shift(); renderFu(); }
     else if(k === "pick") fuPick(fu.dataset.tm, fu.dataset.pid || null);
     else if(k === "bp"){ ui.fu[0].p = +fu.dataset.p; renderFu(); }
+    else if(k === "all" && ui.fu[0]){ ui.fu[0].all = true; renderFu(); }
+    else if(k === "btech" && ui.fu[0] && ui.fu[0].k === "foul"){ const g = cur(), f = ui.fu.shift(); if(g) foulBefore(g, f, null, "TF"); }
     return; }
   const pk = t.closest("svg[data-pick]");
   if(pk){ shotPick(pk, ev); return; }
@@ -6461,6 +6524,8 @@ document.addEventListener("click", async ev => {
   const act = a.dataset.act, g = cur(), s = ui.sheet;
   switch(act){
     case "go": ui.tab = a.dataset.tab; saveUi(); render(); window.scrollTo(0, 0); break;
+    case "perask-yes": { const q = g ? perAskDue(g) : 0; $("#perask").hidden = true; if(q && replay(g).q === q) endPeriod(); else renderPerAsk(); break; }
+    case "perask-no": { if(g) ui.perNo = {gid:g.id, q:replay(g).q, at:Date.now()}; renderPerAsk(); break; }
     // The script opens at the line that's up next (at the top while that's the first line: Prep, then the welcome).
     case "scriptcaps": ui.caps = ui.caps === false; saveUi(); render(); if(ui.sheet && ui.sheet.segs){ grabSegs(); renderSheet(); } break;
     case "segfmt": segFmt(a); break;
