@@ -5,7 +5,7 @@
 <!-- The page's lock: the only script that may run is the one in this file (named by the SHA-256 of its text) and files
      from this folder (fb.js). Text that turns up in the page from a roster, a game or the cloud can never run as code.
      After ANY edit to the script, run "python3 hoops/stamp.py hoops": with a stale hash the browser runs nothing. -->
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-MddwaDXNH1oL48tWXfmxTTCnoQ1A+nzhg0ydgOWgWHs='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-9HMvjOvHS5OcRGdZjBjGh1aAaodsFUWFbAZd9vUfoc8='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#094A28">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -843,7 +843,7 @@ td .face{width:24px;height:24px;margin:-5px 7px -4px 0}
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
 { const n = document.getElementById("nostart"); if(n) n.remove(); }   // the script is running: see #nostart
-const BS_VERSION = "0.23.1";
+const BS_VERSION = "0.24.0";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -1018,10 +1018,47 @@ function gcIn(g, e, q){ const c = e && e.gc; if(!c || typeof c.s !== "number") r
 // The clock to show on a play: in its period when that's known (g and q), else as stamped.
 const gcText = (e, g, q) => !e || !e.gc ? "" : clockText(g && q ? gcIn(g, e, q) : e.gc.s);
 function perLabel(g, q){ const Q = g.quarters || 4; return q <= Q ? "Q" + q : (q === Q + 1 ? "OT" : "OT" + (q - Q)); }
+/* NFHS statisticians' manual (0.24.0). Links the replay needs before it starts, from the plays as they stand:
+   - sf: missed shots that weren't shots. Fouled in the act and missed is no FGA (Sec. 1 P1-2), and no block either
+     (Sec. 7 note). It shows when the other team's foul comes right after a player's miss and that same player then shoots
+     free throws. Out of the bonus any free throws prove it, and three always do. In the bonus two could be a foul after
+     the shot (Sec. 1 P2), so the scorer is asked (ask: the miss's id to the trip's first free throw) and the answer is the
+     miss's sf (true: fouled shooting, false: the foul came after). Fix sets sf by hand too.
+   - stlTo: steals that have their turnover (the "Turnover by?" answer, or a steal tapped after the turnover).
+   - blk: each block's shot (the miss it was tapped after, or the one its "Whose shot got blocked?" answer put in). */
+const SF_E = new WeakSet();   // misses replay last found fouled shooting, for the words on a play
+function nfhsLinks(g){
+  const live = g.ev.filter(e => !e.v), byId = new Map(live.map(e => [e.id, e])), Q = g.quarters || 4, tf = {us:{}, them:{}};
+  const sf = new Set(), ask = new Map(), stlTo = new Set(), blk = new Map();
+  const fouls = (tm, q) => { if(q <= Q) return (tf[tm] || {})[q] || 0; let n = 0; for(let k = Q; k <= q; k++) n += (tf[tm] || {})[k] || 0; return n; };
+  const NEUT = new Set(["IN", "OUT", "NOTE", "TMO", "POSS", "AST", "BLK"]);
+  let q = 1;
+  for(let i = 0; i < live.length; i++){ const e = live[i], x = e.ref ? byId.get(e.ref) : null;
+    if(e.t === "PER") q++;
+    if((e.t === "PF" || e.t === "TF") && tf[e.tm]) tf[e.tm][q] = (tf[e.tm][q] || 0) + 1;
+    if(x && e.t === "TO" && x.t === "STL") stlTo.add(x.id);
+    if(x && e.t === "STL" && x.t === "TO") stlTo.add(e.id);
+    if(x && e.t === "FG" && x.t === "BLK") blk.set(x.id, e.id);
+    if(x && e.t === "BLK" && x.t === "FG") blk.set(e.id, x.id);
+    if(e.t !== "FG" || e.m || e.dt || !e.pid || e.sf === false) continue;
+    if(e.sf === true){ sf.add(e.id); continue; }
+    let foul = null, n = 0, first = null;
+    for(let j = i + 1; j < live.length; j++){ const y = live[j];
+      if(NEUT.has(y.t)) continue;
+      if(y.t === "PF" && y.tm !== e.tm){ if(!foul) foul = y; if(!n) continue; }
+      if(foul && y.t === "FT" && y.tm === e.tm && y.pid === e.pid){ if(!first) first = y; n++; continue; }
+      break; }
+    if(!foul || !n) continue;
+    if(fouls(foul.tm, q) + 1 < S.settings.bonus || n >= 3) sf.add(e.id); else ask.set(e.id, first.id);
+  }
+  return {sf, ask, stlTo, blk};
+}
 function replay(g){
   const R = {q:1, sc:{us:0,them:0}, qs:{us:[0],them:[0]}, tf:{us:{},them:{}}, tmo:{us:{60:0,30:0},them:{60:0,30:0}},
-    box:{us:{},them:{}}, team:{us:LINE(),them:LINE()}, byQ:{}, court:{us:new Set(),them:new Set()}, plays:[], shots:[], lastMiss:null, poss:null, brk:false, full:{us:null, them:null}, flip:false};
+    box:{us:{},them:{}}, team:{us:LINE(),them:LINE()}, byQ:{}, court:{us:new Set(),them:new Set()}, plays:[], shots:[], lastMiss:null, poss:null, brk:false, full:{us:null, them:null}, flip:false,
+    open:null, lastAuto:null, rebOf:new Map(), orphans:[], auto:0};
   const byId = new Map(); for(const e of g.ev) if(e.id) byId.set(e.id, e);
+  const K = nfhsLinks(g), astOn = new Set(); R.sf = K.sf; R.sfAsk = K.ask;
   const L = (tm, pid) => pid ? (R.box[tm][pid] || (R.box[tm][pid] = LINE())) : R.team[tm];
   // The same line, for this period only (box score by quarter).
   const LQ = (tm, pid) => { const b = R.byQ[R.q] || (R.byQ[R.q] = {us:{}, them:{}, team:{us:LINE(), them:LINE()}}); return pid ? (b[tm][pid] || (b[tm][pid] = LINE())) : b.team[tm]; };
@@ -1029,47 +1066,78 @@ function replay(g){
     R.sc[tm] += pts; R.qs[tm][R.q-1] = (R.qs[tm][R.q-1] || 0) + pts;
     for(const t of ["us","them"]) R.court[t].forEach(pid => { L(t, pid).pm += t === tm ? pts : -pts; });
   };
+  // A play the book works out rather than one anybody tapped (der): a team rebound, a team turnover, a team miss. It
+  // counts on the team line and shows under Plays marked automatic.
+  const derive = (e, k) => { L(e.tm, null)[k]++; LQ(e.tm, null)[k]++; R.plays.push({e, q:R.q, sc:{us:R.sc.us, them:R.sc.them}, der:true}); };
+  // NFHS: every missed shot gets a rebound (Definitions; Sec. 3). A rebound tapped next closes the miss (open). Anything
+  // else that comes next says who got the ball, and that team gets a team rebound: a dead-ball one (why "dead") after
+  // free throws, a foul or the horn (Sec. 3c), a live one otherwise. Sec. 9 then balances.
+  const reb = (tm, why) => { const m = R.open; R.open = null; if(!m) return;
+    const e = {id:"auto:" + m.e.id, t:"REB", tm, pid:null, o:tm === m.tm, ref:m.e.id, auto:why, at:m.e.at, ...(m.e.gc ? {gc:m.e.gc} : {})};
+    R.rebOf.set(m.e.id, {e, auto:why}); R.auto++; R.lastAuto = m.e.auto ? null : {miss:m.e.id, tm}; derive(e, e.o ? "oreb" : "dreb"); };
   let flip = false;
   for(const e of g.ev){
-    const q = R.q, before = {us:R.sc.us, them:R.sc.them};
-    if(e.v){ R.plays.push({e, q, sc:before, void:true}); continue; }
+    if(e.v){ R.plays.push({e, q:R.q, sc:{us:R.sc.us, them:R.sc.them}, void:true}); continue; }
     // An assist belongs to its basket: when that basket is removed, turned into a miss or moved to the passer, the
-    // assist stops counting too (and comes back if the basket does).
+    // assist stops counting too (and comes back if the basket does). One assist a basket (Sec. 5), none on the defense's
+    // tip-in.
     if(e.t === "AST" && e.ref){ const f = byId.get(e.ref);
-      if(f && (f.v || !f.m || f.tm !== e.tm || f.pid === e.pid)){ R.plays.push({e, q, sc:before, void:true, auto:true}); continue; } }
+      if(f && (f.v || !f.m || f.dt || f.tm !== e.tm || f.pid === e.pid || astOn.has(f.id))){ R.plays.push({e, q:R.q, sc:{us:R.sc.us, them:R.sc.them}, void:true, auto:true}); continue; }
+      astOn.add(e.ref); }
+    // No block on a shot the shooter was fouled on (Sec. 7 note).
+    if(e.t === "BLK" && K.blk.has(e.id) && K.sf.has(K.blk.get(e.id))){ R.plays.push({e, q:R.q, sc:{us:R.sc.us, them:R.sc.them}, void:true, auto:true}); continue; }
+    // Who got the open miss's rebound, by what this play says (see reb).
+    if(R.open) switch(e.t){
+      case "FG": case "TO": case "JUMP": reb(e.tm, "live"); break;
+      case "FT": reb(e.tm, "dead"); break;
+      case "STL": reb(OTHER(e.tm), "live"); break;
+      case "BLK": if(!K.blk.has(e.id)) reb(OTHER(e.tm), "live"); break;
+      case "PF": reb(OTHER(e.tm), "dead"); break;
+      case "PER": reb(R.open.tm, "dead"); break;
+    }
+    const q = R.q, before = {us:R.sc.us, them:R.sc.them}, after = [];
     const tm = e.tm, ln = L(tm, e.pid), lq = LQ(tm, e.pid);
     const inc = (k, n = 1) => { ln[k] += n; lq[k] += n; };
     if(e.pid){ ln.gp = 1; lq.gp = 1; }
     // NFHS: each period after the first opens with the arrow team's throw-in, and the arrow switches after it.
     if(flip && R.poss && !["PER","IN","OUT","POSS","TMO","NOTE"].includes(e.t)){ R.poss = OTHER(R.poss); flip = false; }
+    let sfp = false;
     switch(e.t){
-      case "FG": inc("fga"); if(e.p === 3) inc("tpa"); if(e.po){ ln.po = 1; lq.po = 1; }
-        if(e.m){ inc("fgm"); if(e.p === 3) inc("tpm"); inc("pts", e.p); add(tm, e.p); R.lastMiss = null; } else R.lastMiss = tm;
+      case "FG":
+        // A defender tipping it into the other basket: the points are the team's, with no attempt or make (Definitions).
+        if(e.dt && e.m){ const tl = L(tm, null), tq = LQ(tm, null); tl.pts += e.p; tq.pts += e.p; add(tm, e.p); break; }
+        if(K.sf.has(e.id)){ SF_E.add(e); sfp = true; break; } SF_E.delete(e);
+        inc("fga"); if(e.p === 3) inc("tpa"); if(e.po){ ln.po = 1; lq.po = 1; }
+        if(e.m){ inc("fgm"); if(e.p === 3) inc("tpm"); inc("pts", e.p); add(tm, e.p); } else { R.open = {tm, e}; R.lastAuto = null; }
         R.shots.push({e, q}); break;
-      case "FT": inc("fta"); if(e.po){ ln.po = 1; lq.po = 1; } if(e.m){ inc("ftm"); inc("pts"); add(tm, 1); R.lastMiss = null; } else R.lastMiss = tm; break;
-      case "REB": inc(e.o ? "oreb" : "dreb"); R.lastMiss = null; break;
+      case "FT": inc("fta"); if(e.po){ ln.po = 1; lq.po = 1; } if(e.m){ inc("ftm"); inc("pts"); add(tm, 1); } else { R.open = {tm, e}; R.lastAuto = null; } break;
+      case "REB": inc(e.o ? "oreb" : "dreb"); R.lastAuto = null; if(R.open){ R.rebOf.set(R.open.e.id, {e}); R.open = null; } else R.orphans.push(e); break;
       case "AST": inc("ast"); break;
-      case "STL": inc("stl"); R.lastMiss = null; break;
-      case "BLK": inc("blk"); break;
-      case "TO": inc("to"); R.lastMiss = null; break;
+      // Every steal is the other team's turnover (Sec. 6): one nobody named is the team's.
+      case "STL": inc("stl"); if(!K.stlTo.has(e.id)) after.push([{id:"auto:" + e.id, t:"TO", tm:OTHER(tm), pid:null, ref:e.id, auto:"stl", at:e.at, ...(e.gc ? {gc:e.gc} : {})}, "to"]); break;
+      // A block needs a missed shot (Sec. 7): one with no shot named is a team miss.
+      case "BLK": inc("blk"); if(!K.blk.has(e.id)) after.push([{id:"auto:" + e.id, t:"FG", tm:OTHER(tm), pid:null, p:2, m:false, ref:e.id, auto:"blk", at:e.at, ...(e.gc ? {gc:e.gc} : {})}, "fga"]); break;
+      case "TO": inc("to"); break;
       case "PF": inc("pf"); R.tf[tm][q] = (R.tf[tm][q] || 0) + 1; break;
       case "TF": inc("tf"); if(e.pid) inc("pf"); R.tf[tm][q] = (R.tf[tm][q] || 0) + 1; break;
       case "TMO": R.tmo[tm][e.len === 30 ? 30 : 60]++; break;
       // full: the last five a team had on the floor. While a sub leaves it short, the fan page keeps showing those five.
       case "IN": R.court[tm].add(e.pid); if(R.court[tm].size === 5) R.full[tm] = new Set(R.court[tm]); break;
       case "OUT": R.court[tm].delete(e.pid); break;
-      case "PER": R.q++; R.qs.us[R.q-1] = 0; R.qs.them[R.q-1] = 0; R.lastMiss = null; flip = true; break;
+      case "PER": R.q++; R.qs.us[R.q-1] = 0; R.qs.them[R.q-1] = 0; flip = true; break;
       case "POSS": R.poss = e.to; flip = false; break;
       // Kevin (0.18.0): the opening tip points the arrow at the team that lost it; a held ball goes to the arrow's team
       // (tm) and the arrow switches.
       case "TIP": R.poss = OTHER(tm); flip = false; break;
       case "JUMP": R.poss = OTHER(tm); break;
     }
-    R.plays.push({e, q, sc:{us:R.sc.us, them:R.sc.them}, scored:R.sc.us !== before.us || R.sc.them !== before.them});
+    R.plays.push({e, q, sc:{us:R.sc.us, them:R.sc.them}, scored:R.sc.us !== before.us || R.sc.them !== before.them, ...(sfp ? {sf:true} : {})});
+    for(const [x, k] of after){ if(x.t === "FG" && R.open) reb(x.tm, "live"); derive(x, k); if(x.t === "FG"){ R.open = {tm:x.tm, e:x}; R.lastAuto = null; } }
   }
+  R.lastMiss = R.open ? R.open.tm : null;
   // Between periods: the last thing that happened is the horn. Screens say "End of Q1" or "Halftime", not "Q2 0-0". Subs,
   // lineup taps and the arrow during the break don't end it (the PA's Read now stays up): the next real play does.
-  for(let i = R.plays.length - 1; i >= 0; i--){ const p = R.plays[i]; if(p.void || ["NOTE", "IN", "OUT", "POSS"].includes(p.e.t)) continue; R.brk = p.e.t === "PER"; break; }
+  for(let i = R.plays.length - 1; i >= 0; i--){ const p = R.plays[i]; if(p.void || p.der || ["NOTE", "IN", "OUT", "POSS"].includes(p.e.t)) continue; R.brk = p.e.t === "PER"; break; }
   R.flip = flip && !!R.poss;   // a new period's throw-in hasn't happened yet: the arrow switches with play's first action
   return R;
 }
@@ -1096,7 +1164,7 @@ function toLeft(g, R, tm){ const ot = Math.max(0, R.q - (g.quarters || 4) - (R.b
    last clock stamped in it. Lineups are each group of five on the floor together: time, points for and against. */
 function clockStats(g, R){
   const len = q => periodLen(g, q), clk = (e, q) => gcIn(g, e, q);
-  const M = {show:false, sec:{}, byQ:{}, short:new Set(), shortQ:{}, miss:[], units:new Map()};
+  const M = {show:false, sec:{}, byQ:{}, short:new Set(), shortQ:{}, miss:[], units:new Map(), inn:new Set()};
   const add = (pid, s, q) => { if(!(s > 0)) return; M.sec[pid] = (M.sec[pid] || 0) + s; const b = M.byQ[q] || (M.byQ[q] = {}); b[pid] = (b[pid] || 0) + s; };
   const short = (pid, q) => { M.short.add(pid); (M.shortQ[q] || (M.shortQ[q] = new Set())).add(pid); };
   const U = key => { let u = M.units.get(key); if(!u) M.units.set(key, u = {pids:key ? key.split(",") : [], sec:0, pf:0, pa:0, short:false}); return u; };
@@ -1115,7 +1183,7 @@ function clockStats(g, R){
       const c = pre ? len(1) : clk(e, q);
       if(!pre){ if(subAt !== undefined && c !== subAt) settle(q); subAt = c;
         if(c == null){ const k = e.grp || e.id; let m = M.miss.find(x => x.k === k); if(!m) M.miss.push(m = {k, q, at:e.at, ins:[], outs:[], id:e.id}); (e.t === "IN" ? m.ins : m.outs).push(e.pid); } }
-      if(e.t === "IN"){ if(!on.has(e.pid)) on.set(e.pid, c); }
+      if(e.t === "IN"){ if(!on.has(e.pid)) on.set(e.pid, c); if(!pre) M.inn.add(e.pid); }
       else if(on.has(e.pid)){ const s = on.get(e.pid); on.delete(e.pid); if(!pre){ if(s != null && c != null) add(e.pid, s - c, q); else short(e.pid, q); } }
       prev = p.sc; continue; }
     if(!started) continue;
@@ -1138,8 +1206,11 @@ function clockStats(g, R){
   return M;
 }
 // A player's minutes in the box score: whole minutes, * when some of their time couldn't be measured. q: one period only.
+// NFHS (Sec. 8): 30 seconds and up rounds up, and under 30 seconds is "0+" (a game played), as is a kid who checked in
+// and out on the same clock.
 function minCell(M, pid, q){ const sec = q ? (M.byQ[q] || {})[pid] : M.sec[pid], sh = q ? !!(M.shortQ[q] && M.shortQ[q].has(pid)) : M.short.has(pid);
-  return sec || sh ? Math.round((sec || 0) / 60) + (sh ? "*" : "") : ""; }
+  if(!sec && !sh) return !q && M.inn && M.inn.has(pid) ? "0+" : "";
+  const m = Math.round((sec || 0) / 60); return (m || sh ? m : "0+") + (sh ? "*" : ""); }
 const minSum = (M, q) => { const v = Object.values(q ? M.byQ[q] || {} : M.sec).reduce((a, b) => a + b, 0); return v ? Math.round(v / 60) + ((q ? M.shortQ[q] && M.shortQ[q].size : M.short.size) ? "*" : "") : ""; };
 // Our lineups with time on the floor, most used first.
 function lineupsOf(g, M){
@@ -1366,13 +1437,17 @@ function playText(g, e, o = {}){
   // A tap parked on a number (its kid left the book before the tip: paFold) reads as that number.
   const who = esc(!e.pid && e.lw ? "#" + e.lw.slice(e.lw.lastIndexOf("#") + 1) : pLabel(g, e.tm, e.pid)), team = esc(tmName(g, e.tm));
   switch(e.t){
-    case "FG": { const far = o.far ? shotFar(e) : ""; return e.m ? "<b>" + who + " makes " + e.p + far + "</b>" : who + " misses " + e.p + far; }
-    case "FT": return e.m ? "<b>" + who + " makes free throw</b>" : who + " misses free throw";
-    case "REB": return (e.pid ? who : team + " team") + (e.o ? " offensive" : " defensive") + " rebound";
+    case "FG": { const far = o.far ? shotFar(e) : "", w = e.pid ? who : team + " team";
+      // NFHS (0.24.0): a defender's tip-in is the team's points; a shooter fouled on a miss has no attempt.
+      if(e.dt && e.m) return "<b>" + team + " " + e.p + " points, tipped in by the defense</b>";
+      if(SF_E.has(e)) return w + " fouled shooting a " + e.p + far + " (no attempt)";
+      return e.m ? "<b>" + w + " makes " + e.p + far + "</b>" : w + " misses " + e.p + far + (e.auto === "blk" ? ", blocked" : ""); }
+    case "FT": return e.m ? "<b>" + (e.pid ? who : team + " team") + " makes free throw</b>" : (e.pid ? who : team + " team") + " misses free throw";
+    case "REB": return (e.pid ? who : team + " team") + (e.o ? " offensive" : " defensive") + (e.auto === "dead" ? " dead-ball" : "") + " rebound";
     case "AST": return who + " assist";
     case "STL": return who + " steal";
     case "BLK": return who + " block";
-    case "TO": return (e.pid ? who : team + " team") + " turnover";
+    case "TO": return (e.pid ? who : team + " team") + " turnover" + (e.of ? " (offensive foul)" : "");
     case "PF": return who + " foul";
     case "TF": return (e.pid ? who : team + " bench/coach") + " technical foul";
     case "TMO": return "Timeout " + team + ", " + (e.len === 30 ? "30 seconds" : "60 seconds");
@@ -1616,17 +1691,17 @@ function stat(tm, pid, k){
   const R = replay(g), po = S.settings.extra ? {} : {po:1};    // points-only mode: makes are marked, so no fake shooting %
   let e;
   switch(k){
-    case "ft": e = rec({tm, pid, t:"FT", m:true, ...po}); dblTap(g, e); if(e && ftNeedsFoul(g, e)){ ui.fu = [{k:"foul", tm:OTHER(tm), ref:e.id}]; renderFu(); } break;
-    case "ftx": e = rec({tm, pid, t:"FT", m:false}); if(e){ ui.fu = (ftNeedsFoul(g, e) ? [{k:"foul", tm:OTHER(tm), ref:e.id}] : []).concat(S.settings.extra ? [{k:"reb", miss:tm}] : []); renderFu(); } break;
+    case "ft": e = rec({tm, pid, t:"FT", m:true, ...po}); dblTap(g, e); if(e){ ui.fu = ftNeedsFoul(g, e) ? [{k:"foul", tm:OTHER(tm), ref:e.id}] : []; sfAsk(g, e); renderFu(); } break;
+    case "ftx": e = rec({tm, pid, t:"FT", m:false}); if(e){ ui.fu = ftNeedsFoul(g, e) ? [{k:"foul", tm:OTHER(tm), ref:e.id}] : []; sfAsk(g, e); if(S.settings.extra) ui.rq = {k:"reb", miss:tm, ref:e.id}; renderFu(); } break;
     case "2": case "3": case "2x": case "3x": {
       const p = parseInt(k, 10), m = !k.endsWith("x");
       e = rec({tm, pid, t:"FG", p, m, ...(m ? po : {})}); if(!e) return; dblTap(g, e);
       if(S.settings.chart) ui.fu.push({k:"loc", id:e.id});
       if(m && S.settings.extra) ui.fu.push({k:"ast", tm, shooter:pid, ref:e.id});
-      if(!m && S.settings.extra) ui.fu.push({k:"reb", miss:tm});
+      if(!m && S.settings.extra) ui.rq = {k:"reb", miss:tm, ref:e.id};
       renderFu(); break; }
-    case "reb": rec({tm, pid, t:"REB", o: R.lastMiss === tm}); break;
-    case "ast": rec({tm, pid, t:"AST"}); break;
+    case "reb": rebTap(g, R, tm, pid); break;
+    case "ast": astTap(g, R, tm, pid); break;
     case "stl": {
       // Turnover already tapped on the other side? The steal goes with it instead of asking (and counting) it again.
       const last = lastPlay(g);
@@ -1635,10 +1710,12 @@ function stat(tm, pid, k){
     case "blk": {
       // The miss is already in the book: the block goes with it rather than adding a second shot.
       const last = lastPlay(g);
-      if(last && last.t === "FG" && !last.m && last.tm === OTHER(tm) && !linked(g, "BLK", last.id)){ e = rec({tm, pid, t:"BLK", ref:last.id}); if(e && S.settings.extra){ ui.fu = [{k:"reb", miss:OTHER(tm)}]; renderFu(); } break; }
+      if(last && last.t === "FG" && !last.m && last.tm === OTHER(tm) && !linked(g, "BLK", last.id)){ e = rec({tm, pid, t:"BLK", ref:last.id}); if(e && S.settings.extra){ ui.rq = {k:"reb", miss:OTHER(tm), ref:last.id}; renderFu(); } break; }
       e = rec({tm, pid, t:"BLK"}); if(e){ ui.fu = [{k:"blk", tm:OTHER(tm), ref:e.id, p:2}]; renderFu(); } break; }
     case "to": e = rec({tm, pid, t:"TO"}); if(e && pid && S.settings.extra){ ui.fu = [{k:"stl", tm:OTHER(tm), ref:e.id}]; renderFu(); } break;
-    case "pf": e = rec({tm, pid, t:"PF"}); if(e) foulNote(g, tm, pid, "PF"); break;
+    // Kevin (0.24.0): a player-control foul is a turnover too (Sec. 4 CD1), so the strip offers one; the next tap clears it.
+    // Not right after the fouler's own team missed: that foul came after the shot, no turnover (Sec. 4 CD2).
+    case "pf": e = rec({tm, pid, t:"PF"}); if(e){ foulNote(g, tm, pid, "PF"); if(S.settings.extra && pid && R.lastMiss !== tm){ ui.fu = [{k:"of", tm, pid, ref:e.id}]; renderFu(); } } break;
     case "tf": e = rec({tm, pid, t:"TF"}); if(e) foulNote(g, tm, pid, "TF"); break;
   }
   if(navigator.vibrate) try{ navigator.vibrate(12); }catch(_){}
@@ -1676,7 +1753,45 @@ function foulBefore(g, f, pid, t){
   const ft = g.ev.find(x => x.id === f.ref && !x.v); if(!ft){ render(); return; }
   const e = rec({tm:f.tm, pid, t, fb:ft.id, ...(ft.gc ? {gc:{...ft.gc}} : {})}, {keepFu:true}); if(!e) return;
   g.ev.splice(g.ev.indexOf(e), 1); g.ev.splice(g.ev.indexOf(ft), 0, e); e.at = (ft.at || Date.now()) - 1; touch(g);
-  foulNote(g, f.tm, pid, t); render();
+  foulNote(g, f.tm, pid, t); if(t === "PF") sfAsk(g, ft); render();
+}
+// Kevin (0.24.0): fouled on a missed shot in the bonus, two free throws don't say whether the foul came with the shot
+// (Sec. 1 P2), so the trip's first free throw asks. Out of the bonus, and on a third free throw, replay knows by itself.
+function sfAsk(g, ft){ const R = replay(g); for(const [mid, fid] of R.sfAsk) if(fid === ft.id){ ui.fu.push({k:"sf", ref:mid}); return; } }
+// A play that belongs just after an earlier one (a rebound answered after the game moved on) goes in there. Undo still
+// takes it back first: la is when it was tapped.
+function recAfter(g, e, after){
+  const x = rec(e, {keepFu:true, quiet:true}); if(!x) return null;
+  let i = g.ev.indexOf(after) + 1; while(i < g.ev.length && g.ev[i] !== x && g.ev[i].t === "BLK" && g.ev[i].ref === after.id) i++;
+  if(g.ev[i] !== x){ g.ev.splice(g.ev.indexOf(x), 1); g.ev.splice(i, 0, x); const a = g.ev[i - 1].at || 0, b = g.ev[i + 1] && g.ev[i + 1].at != null ? g.ev[i + 1].at : a + 2; x.la = x.at; x.at = (a + b) / 2; }
+  touch(g); return x;
+}
+// A rebound tapped on a card (Kevin, 0.24.0; NFHS: every rebound comes off a miss). With a miss open it's that miss's,
+// offensive when the same team missed. With none: a miss the book already gave this team an automatic rebound takes
+// this one instead (a rebound tapped late, after the foul or the shot that followed); otherwise the miss never went in,
+// and the strip asks whose it was.
+function rebTap(g, R, tm, pid){
+  if(R.lastMiss){ const m = R.open.e; rec({tm, pid, t:"REB", o:R.lastMiss === tm, ...(m.auto ? {} : {ref:m.id})}); return; }
+  const a = R.lastAuto, m = a && a.tm === tm ? g.ev.find(x => x.id === a.miss && !x.v) : null;
+  if(m){ recAfter(g, {tm, pid, t:"REB", o:m.tm === tm, ref:m.id}, m); return; }
+  const e = rec({tm, pid, t:"REB", o:false}); if(e && S.settings.extra){ ui.fu = [{k:"wm", ref:e.id, tm, p:"2"}]; renderFu(); }
+}
+// A rebound with no missed shot in front of it (Kevin, 0.24.0): the miss goes in just before the rebound, tapped now (so
+// Undo takes it back first), and the rebound turns offensive or defensive by whose miss it was. kind: "2", "3" or "ft".
+function insertMiss(g, rebId, tm, pid, kind, ins){
+  const r = g.ev.find(x => x.id === rebId && !x.v); if(!r || !canEdit(g)) return false;
+  const e = {id:rid(), tm, pid:pid || null, ...(kind === "ft" ? {t:"FT"} : {t:"FG", p:kind === "3" ? 3 : 2}), m:false, wm:1, la:Date.now(), ...(ins ? {ins:1} : {}), ...(r.gc ? {gc:{...r.gc}} : {})};
+  e.at = (r.at || Date.now()) - 1; g.ev.splice(g.ev.indexOf(r), 0, e);
+  const o = tm === r.tm; if(r.o !== o){ r.o = o; r.ed = Date.now(); }
+  claim(g); touch(g); return true;
+}
+// An assist tapped on a card goes with the last basket (Kevin, 0.24.0; Sec. 5: one a basket, never the shooter's own).
+function astTap(g, R, tm, pid){
+  let fg = null; for(let i = R.plays.length - 1; i >= 0 && !fg; i--){ const p = R.plays[i]; if(!p.void && !p.der && p.e.t === "FG" && p.e.m && !p.e.dt) fg = p.e; }
+  if(!fg || fg.tm !== tm){ toast("No " + tmName(g, tm) + " basket to put that assist on. Tap the basket first."); return; }
+  if(fg.pid === pid){ toast("That's " + pLabel(g, tm, pid) + "'s own basket: no assist."); return; }
+  if(R.plays.some(p => !p.void && p.e.t === "AST" && p.e.ref === fg.id)){ toast(pLabel(g, tm, fg.pid) + "'s basket already has its assist. Fix it under Plays."); return; }
+  rec({tm, pid, t:"AST", ref:fg.id});
 }
 function undo(){
   const g = cur(); if(!g || !canEdit(g)) return;
@@ -1685,6 +1800,9 @@ function undo(){
   for(let i = g.ev.length - 1; i >= 0; i--){ let e = g.ev[i]; if(e.v) continue;
     // A foul the "who fouled?" strip put in just before this free throw was the last thing done: it goes first.
     if(e.t === "FT"){ const fb = g.ev.find(x => !x.v && x.fb === e.id); if(fb) e = fb; }
+    // A play put in earlier in the book after the fact (a rebound answered late, a miss in front of a rebound) was the
+    // last thing tapped: it goes first.
+    { const late = g.ev.filter(x => !x.v && x.la && x.la > (e.la || e.at || 0)).sort((a, b) => b.la - a.la)[0]; if(late) e = late; }
     // The arrow switch the gym clock put in (play started in a new period) goes with the step before it: undoing only it
     // would see the clock running and put it straight back.
     if(e.t === "POSS" && e.auto){ e.v = true; e.ed = Date.now(); auto = true; continue; }
@@ -2108,23 +2226,32 @@ function playList(g, R, limit, edit, keep, fix){
   if(!show.length) return `<p style="text-align:center;padding:14px 0;margin:0" class="small">The next play starts here. Every tap makes a record you can fix later.</p>`;
   const sd = sides(g);
   return `<ul class="plays">${show.map(p => { const e = p.e;
-    const tapFix = limit && fix && !p.void && ["FG","FT","REB","AST","STL","BLK","TO","PF","TF"].includes(e.t);
-    return `<li class="${p.void ? "void" : ""} ${p.scored ? "score" : ""} ${e.t === "NOTE" ? "note" : ""}${tapFix ? " tapfix" : ""}" style="${e.tm === "them" ? tvars(g, "them") : ""}"${tapFix ? ` data-act="fix" data-id="${e.id}" role="button" title="Fix this play"` : ""}><span class="pq">${perLabel(g, p.q)}${playClock(g, e, p, edit && !limit)}${!limit && e.at ? `<small>${esc(new Date(e.at).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}))}</small>` : ""}</span><span class="ps">${p.sc[sd.left]}-${p.sc[sd.right]}</span><span class="pt">${e.tm && e.t !== "PER" && e.t !== "NOTE" ? `<span class="ptm">${esc(e.tm === "us" ? "GHS" : oppInfo(g.opp, g).abbr)}</span> ` : ""}${e.tm === "us" && e.pid && e.t !== "NOTE" ? face(player(g, "us", e.pid) || e.pid, "", true) : ""}${playText(g, e)}${p.auto ? " (its shot was removed or changed)" : p.void ? " (removed)" : ""}${e.ins ? ' <span class="tag">added later</span>' : ""}</span>
-      ${edit ? `<span class="row no-print">${!p.void && ["FG","FT","REB","AST","STL","BLK","TO","PF","TF"].includes(e.t) ? `<button class="btn sm" data-act="fix" data-id="${e.id}">Fix</button>` : ""}<button class="btn sm" data-act="voidtog" data-id="${e.id}">${p.void && !p.auto ? "Restore" : "Remove"}</button></span>` : ""}</li>`;
+    const tapFix = limit && fix && !p.void && !p.der && ["FG","FT","REB","AST","STL","BLK","TO","PF","TF"].includes(e.t);
+    return `<li class="${p.void ? "void" : ""} ${p.scored ? "score" : ""} ${e.t === "NOTE" ? "note" : ""}${tapFix ? " tapfix" : ""}" style="${e.tm === "them" ? tvars(g, "them") : ""}"${tapFix ? ` data-act="fix" data-id="${e.id}" role="button" title="Fix this play"` : ""}><span class="pq">${perLabel(g, p.q)}${playClock(g, e, p, edit && !limit && !p.der)}${!limit && e.at ? `<small>${esc(new Date(e.at).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}))}</small>` : ""}</span><span class="ps">${p.sc[sd.left]}-${p.sc[sd.right]}</span><span class="pt">${e.tm && e.t !== "PER" && e.t !== "NOTE" ? `<span class="ptm">${esc(e.tm === "us" ? "GHS" : oppInfo(g.opp, g).abbr)}</span> ` : ""}${e.tm === "us" && e.pid && e.t !== "NOTE" ? face(player(g, "us", e.pid) || e.pid, "", true) : ""}${playText(g, e)}${p.auto ? (e.t === "BLK" ? " (no block: the shooter was fouled)" : " (not counted: its basket was removed, changed or already has an assist)") : p.void ? " (removed)" : ""}${e.ins ? ' <span class="tag">added later</span>' : ""}${p.der ? ' <span class="tag" title="Not tapped: the book filled it in (NFHS: every miss gets a rebound, every steal is a turnover, every block is a missed shot)">auto</span>' : ""}</span>
+      ${edit ? `<span class="row no-print">${p.der ? (e.auto === "dead" ? "" : `<button class="btn sm" data-act="autofix" data-id="${esc(e.id)}">Name the player</button>`) : `${!p.void && ["FG","FT","REB","AST","STL","BLK","TO","PF","TF"].includes(e.t) ? `<button class="btn sm" data-act="fix" data-id="${e.id}">Fix</button>` : ""}<button class="btn sm" data-act="voidtog" data-id="${e.id}">${p.void && !p.auto ? "Restore" : "Remove"}</button>`}</span>` : ""}</li>`;
   }).join("")}</ul>`;
 }
 
 /* follow-up strip */
+// The sticky rebound question (Kevin, 0.24.0) stays while it can still matter: its miss is still a miss with no tapped
+// rebound, the book hasn't settled it as a dead ball (free throws, a foul, the horn), and the game is at most four plays on.
+const RQ_T = new Set(["FG", "FT", "REB", "STL", "BLK", "TO", "PF", "TF"]);
+function rqLive(g, R, rq){
+  const m = g.ev.find(x => x.id === rq.ref && !x.v); if(!m || m.m || R.sf.has(m.id)) return false;
+  const rb = R.rebOf.get(m.id); if(rb && (!rb.auto || rb.auto === "dead")) return false;
+  const i = R.plays.findIndex(p => p.e === m); return i >= 0 && R.plays.slice(i + 1).filter(p => !p.void && !p.der && RQ_T.has(p.e.t)).length <= 4;
+}
 function renderFu(){
   const el = $("#fu"), g = cur();
   // A follow-up waits through a look at another tab (Box score, Plays), but not past a switch to another game, or for a
   // play that's been removed or changed since.
-  if(ui.fu.length && (!g || (ui.fuG && ui.fuG !== g.id))) ui.fu = [];
+  if((ui.fu.length || ui.rq) && (!g || (ui.fuG && ui.fuG !== g.id))){ ui.fu = []; ui.rq = null; }
   if(ui.fu.length){ const live = id => g.ev.find(e => e.id === id && !e.v), on = replay(g).court;
     ui.fu = ui.fu.filter(f => f.k === "loc" ? !!live(f.id) : f.k === "ast" ? (x => !!x && x.m && x.tm === f.tm && x.pid === f.shooter)(live(f.ref)) : f.ref ? !!live(f.ref) : f.k !== "out" || !on[f.tm].has(f.pin)); }
+  if(ui.rq && (!g || !rqLive(g, replay(g), ui.rq))) ui.rq = null;
   if(g && ui.tab === "desk") ui.fuG = g.id;   // the game the strip's questions are about
-  if(ui.tab !== "desk" || !g || !ui.fu.length || !canEdit(g)){ el.innerHTML = ""; document.body.classList.remove("has-fu"); return; }
-  const f = ui.fu[0], R = replay(g), outNow = (tm, pid) => { const l = R.box[tm][pid]; return !!l && (l.pf >= 5 || l.tf >= 2); };
+  if(ui.tab !== "desk" || !g || !(ui.fu.length || ui.rq) || !canEdit(g)){ el.innerHTML = ""; document.body.classList.remove("has-fu"); return; }
+  const f = ui.fu[0] || ui.rq, R = replay(g), outNow = (tm, pid) => { const l = R.box[tm][pid]; return !!l && (l.pf >= 5 || l.tf >= 2); };
   const chips = (tm, excl, pool) => {
     const c = R.court[tm], list = sortRoster(roster(g, tm)).filter(p => p.pid !== excl);
     const use = pool || (c.size ? list.filter(p => c.has(p.pid)) : list);
@@ -2140,26 +2267,41 @@ function renderFu(){
   // Rebounds keep one order whoever missed: the left column's team on the left, the right's on the right, so the book
   // learns where each chip lives. The side that's defending is marked, not moved.
   else if(f.k === "reb"){ const sd = sides(g), team = tm => `<button class="chip" data-fu="pick" data-tm="${tm}" data-pid=""><span class="nm">${esc(tmName(g, tm))} team</span></button>`, tag = tm => `<span class="kicker fu-side${tm === f.miss ? "" : " def"}">${tm === f.miss ? "Off" : "Def"}</span>`;
-    h = `<span class="ask">Rebound?</span>${tag(sd.left)}${team(sd.left)}${chips(sd.left, null)}<span class="fu-gap"></span>${chips(sd.right, null)}${team(sd.right)}${tag(sd.right)}<button class="chip skip" data-fu="skip">Skip</button>`; }
+    // Kevin (0.24.0): the question stays up through the next taps. Once the game has moved on, the book has given the
+    // team that got the ball a team rebound (Skip keeps that); a tap here puts a player's rebound in its place.
+    const m = g.ev.find(x => x.id === f.ref), rb = m && R.rebOf.get(m.id), mp = m && m.pid ? player(g, m.tm, m.pid) : null;
+    const late = rb ? `<span class="ask">Rebound on ${mp ? "#" + esc(mp.num) : esc(tmName(g, m.tm))}'s missed ${m.t === "FT" ? "free throw" : m.p}?</span>` : "";
+    h = `${late || '<span class="ask">Rebound?</span>'}${tag(sd.left)}${team(sd.left)}${chips(sd.left, null)}<span class="fu-gap"></span>${chips(sd.right, null)}${team(sd.right)}${tag(sd.right)}<button class="chip skip" data-fu="skip">${rb ? `Skip: ${esc(tmName(g, rb.e.tm))} team` : "Skip"}</button>`; }
+  else if(f.k === "wm"){ const rb = g.ev.find(x => x.id === f.ref), rp = rb && rb.pid ? player(g, rb.tm, rb.pid) : null, ot = OTHER(f.tm);
+    const team = tm => `<button class="chip" data-fu="pick" data-tm="${tm}" data-pid=""><span class="nm">${esc(tmName(g, tm))}: not sure who</span></button>`;
+    h = `<span class="ask">No miss before ${rp ? "#" + esc(rp.num) + "'s" : "that"} rebound. Whose shot?</span>${["2", "3", "ft"].map(v => `<button class="chip${String(f.p) === v ? " at" : ""}" data-fu="wp" data-p="${v}">${v === "ft" ? "FT" : v + "PT"}</button>`).join("")}${chips(ot, null)}${team(ot)}<span class="fu-gap"></span>${chips(f.tm, null)}${team(f.tm)}<button class="chip skip" data-fu="skip">Skip</button>`; }
+  else if(f.k === "sf"){ const m = g.ev.find(x => x.id === f.ref), mp = m && m.pid ? player(g, m.tm, m.pid) : null;
+    h = `<span class="ask">Was ${mp ? "#" + esc(mp.num) : "the shooter"} fouled shooting that missed ${m ? m.p : "shot"}?</span><button class="chip" data-fu="sfy">Yes: not a shot</button><button class="chip skip" data-fu="sfn">No: fouled after the shot</button>`; }
+  else if(f.k === "of"){ const p = player(g, f.tm, f.pid);
+    h = `<span class="ask">Offensive foul on ${p ? "#" + esc(p.num) : "the shooter"}?</span><button class="chip" data-fu="ofy">Yes: a turnover too</button><button class="chip skip" data-fu="skip">No</button>`; }
+  else if(f.k === "hb") h = `<span class="ask">Held ball, ${esc(tmName(g, f.tm))} ball. Stolen by?</span>${chips(f.tm, null)}<button class="chip skip" data-fu="skip">No steal</button>`;
   else if(f.k === "foul"){ const ft = g.ev.find(x => x.id === f.ref), sp = ft && ft.pid ? player(g, ft.tm, ft.pid) : null;
     h = `<span class="ask">Who fouled${sp ? " #" + esc(sp.num) : ""}?</span>${chips(f.tm, null, f.all ? sortRoster(roster(g, f.tm)) : null)}${f.all ? "" : `<button class="chip skip" data-fu="all">Someone else</button>`}<button class="chip" data-fu="btech">${esc(tmName(g, f.tm))} bench technical</button><button class="chip skip" data-fu="skip">Skip</button>`; }
   else if(f.k === "stl") h = `<span class="ask">Stolen by?</span>${chips(f.tm, null)}<button class="chip skip" data-fu="skip">No steal</button>`;
   else if(f.k === "to") h = `<span class="ask">Turnover by?</span>${chips(f.tm, null)}<button class="chip" data-fu="pick" data-tm="${f.tm}" data-pid="">Team</button><button class="chip skip" data-fu="skip">Skip</button>`;
-  else if(f.k === "blk") h = `<span class="ask">Whose shot got blocked?</span><button class="chip${f.p === 2 ? " at" : ""}" data-fu="bp" data-p="2">2PT</button><button class="chip${f.p === 3 ? " at" : ""}" data-fu="bp" data-p="3">3PT</button>${chips(f.tm, null)}<button class="chip skip" data-fu="skip">Skip</button>`;
+  // A block needs a shot (Sec. 7): no Skip. Not sure whose puts the miss on the team; Undo takes the block back.
+  else if(f.k === "blk") h = `<span class="ask">Whose shot got blocked?</span><button class="chip${f.p === 2 ? " at" : ""}" data-fu="bp" data-p="2">2PT</button><button class="chip${f.p === 3 ? " at" : ""}" data-fu="bp" data-p="3">3PT</button>${chips(f.tm, null)}<button class="chip" data-fu="pick" data-tm="${f.tm}" data-pid=""><span class="nm">${esc(tmName(g, f.tm))}: not sure who</span></button><button class="chip skip" data-act="undo">↶ Undo block</button>`;
   else if(f.k === "out"){ const p = player(g, f.tm, f.pin);
     h = `<span class="ask">#${esc(p.num)} ${esc(pShort(p))} in for</span>${chips(f.tm, null, sortRoster(roster(g, f.tm)).filter(x => R.court[f.tm].has(x.pid)).sort((a, b) => outNow(f.tm, b.pid) - outNow(f.tm, a.pid)))}<button class="chip skip" data-fu="skip">Cancel</button>`; }
   el.innerHTML = `<div class="fu no-print"><div class="wrap">${h}</div></div>`;
   document.body.classList.add("has-fu");
 }
 function fuPick(tm, pid){
-  const g = cur(), f = ui.fu[0]; if(!g || !f) return;
-  ui.fu.shift();
+  const g = cur(), f = ui.fu[0] || ui.rq; if(!g || !f) return;
+  if(ui.fu.length) ui.fu.shift(); else ui.rq = null;
   if(f.k === "ast") rec({tm, pid, t:"AST", ref:f.ref}, {keepFu:true});
   else if(f.k === "foul") foulBefore(g, f, pid, "PF");
-  else if(f.k === "reb") rec({tm, pid, t:"REB", o: tm === f.miss}, {keepFu:true});
+  else if(f.k === "reb"){ const m = g.ev.find(x => x.id === f.ref && !x.v); if(m) recAfter(g, {tm, pid, t:"REB", o:tm === m.tm, ref:m.id}, m); else render(); }
+  else if(f.k === "wm"){ insertMiss(g, f.ref, tm, pid, String(f.p || "2")); render(); }
+  else if(f.k === "hb"){ const s0 = rec({tm, pid, t:"STL", ref:f.ref}, {keepFu:true}); if(s0) ui.fu.unshift({k:"to", tm:OTHER(tm), ref:s0.id}); render(); }
   else if(f.k === "to") rec({tm, pid, t:"TO", ref:f.ref}, {keepFu:true});
   else if(f.k === "stl") rec({tm, pid, t:"STL", ref:f.ref}, {keepFu:true});
-  else if(f.k === "blk"){ const e = rec({tm, pid, t:"FG", p:f.p, m:false, ref:f.ref}, {keepFu:true}); if(e){ ui.fu.unshift({k:"reb", miss:tm}); if(S.settings.chart) ui.fu.unshift({k:"loc", id:e.id}); render(); } }
+  else if(f.k === "blk"){ const e = rec({tm, pid, t:"FG", p:f.p, m:false, ref:f.ref}, {keepFu:true}); if(e){ if(S.settings.extra) ui.rq = {k:"reb", miss:tm, ref:e.id}; if(S.settings.chart) ui.fu.unshift({k:"loc", id:e.id}); render(); } }
   else if(f.k === "out") subIn(g, tm, f.pin, pid);
   else render();
 }
@@ -2723,7 +2865,7 @@ function bcBox(g, R, tm){
   const t = R.team[tm], pc = k => tot.po ? "–" : k === "fg" ? pct(tot.fgm, tot.fga) : k === "tp" ? pct(tot.tpm, tot.tpa) : k === "ft" ? pct(tot.ftm, tot.fta) : "";
   return `<section class="card bcbox" style="${tvars(g, tm)}"><div class="tc-head">${badge(g, tm)}<h3 class="fit" data-min="14">${esc(tmName(g, tm))}</h3><span class="disp" style="font-size:28px;font-weight:900">${R.sc[tm]}</span></div>
     ${ps.length ? `<div class="scroll-x"><table><tr><th class="l">Player</th>${cols.map(c => `<th${c[1] === "tf" ? ' title="Technical fouls. A player\'s also count in PF; the bench\'s are on the Team row."' : ""}>${c[0]}</th>`).join("")}</tr>${ps.map(row).join("")}
-    ${t.oreb + t.dreb + t.to + t.tf ? `<tr><td class="l">Team</td>${cols.map(c => `<td>${["oreb","dreb","reb","to","tf"].includes(c[1]) ? cellOf(t, c[1]) : ""}</td>`).join("")}</tr>` : ""}
+    ${teamAny(t) ? `<tr><td class="l">Team</td>${cols.map(c => `<td>${teamKeys(t).concat(["tf"]).includes(c[1]) ? cellOf(t, c[1]) : ""}</td>`).join("")}</tr>` : ""}
     <tr class="tot"><td class="l">Totals</td>${cols.map(c => `<td>${c[1] === "pm" ? "" : c[1] === "min" ? minSum(M) : cellOf(tot, c[1])}</td>`).join("")}</tr>
     <tr><td class="l">Shooting</td>${cols.map(c => `<td>${pc(c[1])}</td>`).join("")}</tr></table></div>` : `<p class="small" style="margin:6px 0 0">No stats yet. The box fills in from the tip.</p>`}</section>`;
 }
@@ -3862,6 +4004,10 @@ const boxCell = (ln, k) => cellOf(ln, k);
 function cellOf(ln, k){
   switch(k){ case "fg": return ln.po ? ln.fgm + "-—" : ln.fgm + "-" + ln.fga; case "tp": return ln.po ? ln.tpm + "-—" : ln.tpm + "-" + ln.tpa; case "ft": return ln.po ? ln.ftm + "-—" : ln.ftm + "-" + ln.fta; case "reb": return ln.oreb + ln.dreb; case "pm": return ln.pm > 0 ? "+" + ln.pm : ln.pm; default: return ln[k]; }
 }
+// The team line's cells: team rebounds and turnovers, and from 0.24.0 its shots and points (a miss nobody could name, a
+// block's shot with no shooter, a defender's tip-in) when it has any.
+const teamAny = t => t.oreb + t.dreb + t.to + t.tf + t.fga + t.fta + t.pts > 0;
+const teamKeys = t => ["oreb", "dreb", "reb", "to"].concat(t.fga + t.fta + t.pts ? ["pts", "fg", "tp", "ft"] : []);
 // A team's totals: every player's line plus the team line (team rebounds, bench technicals).
 const totalsOf = (R, tm) => sumLines(Object.values(R.box[tm]).concat([R.team[tm]]));
 function sumLines(lines){ const t = LINE(); for(const ln of lines) for(const k of Object.keys(t)) t[k] += ln[k] || 0; return t; }
@@ -3878,7 +4024,7 @@ function boxTable(g, R, tm, fan, pa){
   const tot = sumLines(ps.map(p => R.box[tm][p.pid]).concat([R.team[tm]]));
   return `<div style="${tvars(g, tm)}"><div class="tc-head">${badge(g, tm)}<h3 class="fit" data-min="14">${esc(tmName(g, tm))}</h3><span class="disp" style="font-size:28px;font-weight:900">${R.sc[tm]}</span></div></div><div class="scroll-x"><table><tr><th class="l">Player</th>${cols.map(c => `<th${ck(c)}>${c[0]}</th>`).join("")}</tr>
     ${ps.map(p => { const ln = R.box[tm][p.pid]; return `<tr><td class="l">${fan && g.status === "live" && R.court[tm].has(p.pid) ? '<i class="onfl" title="On the floor"></i>' : ""}<span class="pn">${face(p, "", tm === "us")}${PUB && fan ? `<button class="pnb" data-act="pubpl" data-tm="${tm}" data-i="${esc(p.pid.slice(tm.length))}">${esc(p.num)} ${esc(p.name)}</button>` : esc(p.num) + " " + esc(p.name)}${ln.tf >= 2 ? ' <span class="tag solid">EJ</span>' : ln.pf >= 5 ? ' <span class="tag solid">FO</span>' : ""}</span></td>${cols.map(c => `<td${ck(c)}>${cellOf(ln, c[1], p.pid)}</td>`).join("")}</tr>`; }).join("")}
-    ${!pa && R.team[tm].oreb + R.team[tm].dreb + R.team[tm].to + R.team[tm].tf ? `<tr><td class="l">Team</td>${cols.map(c => `<td${ck(c)}>${["oreb","dreb","reb","to"].includes(c[1]) ? cellOf(R.team[tm], c[1]) : ""}</td>`).join("")}</tr>` : ""}
+    ${!pa && teamAny(R.team[tm]) ? `<tr><td class="l">Team</td>${cols.map(c => `<td${ck(c)}>${teamKeys(R.team[tm]).includes(c[1]) ? cellOf(R.team[tm], c[1]) : ""}</td>`).join("")}</tr>` : ""}
     <tr class="tot"><td class="l">Totals</td>${cols.map(c => `<td${ck(c)}>${c[1] === "pm" ? "" : c[1] === "min" ? minSum(M, mq) : cellOf(tot, c[1])}</td>`).join("")}</tr>
     ${pa ? "" : `<tr><td class="l">Shooting</td>${cols.map(c => `<td${ck(c)}>${tot.po && ["fg","tp","ft"].includes(c[1]) ? "—" : c[1] === "fg" ? pct(tot.fgm, tot.fga) : c[1] === "tp" ? pct(tot.tpm, tot.tpa) : c[1] === "ft" ? pct(tot.ftm, tot.fta) : ""}</td>`).join("")}</tr>`}</table></div>
     ${tot.po && !pa ? `<p class="small" style="margin:4px 0 0">— Scored points-only for part of the game: makes are counted, misses weren't, so there's no shooting percentage.</p>` : ""}`;
@@ -3891,10 +4037,6 @@ function review(g, R){
     if(R.court[tm].size && R.court[tm].size !== 5 && g.status !== "final") out.push(["warn", tmName(g, tm) + " has " + R.court[tm].size + " on the floor."]);
     const left = toLeft(g, R, tm); if(left[60] < 0 || left[30] < 0) out.push(["bad", tmName(g, tm) + " used more timeouts than they have."]);
   }
-  const run = R.plays.filter(p => !p.void && !["IN","OUT","NOTE","TMO","POSS","TIP","JUMP"].includes(p.e.t));
-  const misses = run.filter((p, i) => (p.e.t === "FG" || p.e.t === "FT") && !p.e.m && !(p.e.t === "FT" && run[i + 1] && run[i + 1].e.t === "FT" && run[i + 1].e.tm === p.e.tm)).length;
-  const rebs = R.plays.filter(p => !p.void && p.e.t === "REB").length;
-  if(S.settings.extra && misses - rebs > 6) out.push(["warn", misses + " missed shots but only " + rebs + " rebounds logged. Fine if you skipped some."]);
   const Q = g.quarters || 4;
   if(g.status === "final" && lastQ(R) < Q) out.push(["warn", "Marked final in " + perLabel(g, lastQ(R)) + "."]);
   if(R.q >= Q && R.sc.us === R.sc.them && g.status !== "final" && g.ev.length) out.push(["warn", "Tied at the end of regulation: tap +OT."]);
@@ -3904,6 +4046,80 @@ function review(g, R){
   if(g.status === "live" && gameOver(g)) out.push(["warn", "It ended " + R.sc.us + "-" + R.sc.them + " after " + perLabel(g, lastQ(R)) + ", but nobody tapped Final." + (canEdit(g) ? " Make it final below." : " The device that scored it can make it final (anyone can, once it's been quiet 20 minutes).")]);
   if(!out.length) out.push(["ok", "Nothing looks off. Quarter scores always add up to the total: they come from the same plays."]);
   return out;
+}
+/* ---------- NFHS book balance (Kevin, 0.24.0) ----------
+   Sec. 9: a box score balances when each team's misses equal its own offensive rebounds plus the other team's defensive
+   ones, team and dead-ball rebounds included. The book fills in a team rebound for every miss nobody named, so what's
+   left to look at is a rebound with no miss in front of it (too many), a miss still waiting on its rebound, and a team
+   that scored and then had the ball again with nothing from the other team between (a miss or turnover never tapped). */
+function balanceOf(g, R){
+  const t = {us:totalsOf(R, "us"), them:totalsOf(R, "them")}, out = {};
+  for(const tm of ["us", "them"]){ const a = t[tm], o = t[OTHER(tm)], wait = R.open && R.open.tm === tm ? 1 : 0, miss = a.fga - a.fgm + a.fta - a.ftm;
+    out[tm] = {miss, off:a.oreb, def:o.dreb, reb:a.oreb + o.dreb, wait, d:a.oreb + o.dreb - (miss - wait)}; }
+  return out;
+}
+function gapsOf(g, R){
+  const out = []; let made = null;
+  for(const p of R.plays){ if(p.void) continue; const e = p.e;
+    switch(e.t){
+      case "FG": if(e.dt){ made = null; break; } if(made && made.e.tm === e.tm && !e.po && !made.e.po && !p.der) out.push({tm:OTHER(e.tm), after:made, before:p}); made = e.m && !p.sf ? p : null; break;
+      case "TO": if(made && made.e.tm === e.tm && !p.der) out.push({tm:OTHER(e.tm), after:made, before:p}); made = null; break;
+      case "FT": if(made && made.e.tm !== e.tm) made = null; break;
+      case "REB": case "STL": case "JUMP": case "PER": case "TIP": made = null; break;
+    }
+  }
+  return out;
+}
+const playWhen = (g, p) => perLabel(g, p.q) + (gcText(p.e, g, p.q) ? " " + gcText(p.e, g, p.q) : "");
+function balanceCard(g, R){
+  const gaps = gapsOf(g, R); if(!gaps.length && !R.plays.some(p => !p.void && ((p.e.t === "FG" || p.e.t === "FT") && !p.e.m || p.e.t === "REB"))) return "";   // nothing to look at (or points only)
+  const B = balanceOf(g, R), sd = sides(g), ed = canEdit(g), orph = R.orphans, cut = 12;
+  const line = tm => { const b = B[tm], ok = b.d === 0;
+    return `<div class="flag ${ok ? "ok" : b.d > 0 ? "bad" : ""}" style="margin-bottom:6px"><b>${esc(tmName(g, tm))}</b> missed ${b.miss}: ${b.off} offensive + ${b.def} ${esc(tmName(g, OTHER(tm)))} defensive = ${b.reb} rebounds. ${ok ? (b.wait ? "Balances (the last miss is waiting on its rebound)." : "Balances.") : b.d > 0 ? `${b.d} too many.` : `${-b.d} short.`}</div>`; };
+  const orow = e => { const p = R.plays.find(x => x.e === e);
+    return `<li><span>${esc(playWhen(g, p))} · ${playText(g, e)}: no missed shot before it.</span>${ed ? `<span class="row no-print"><button class="btn sm" data-act="wmopen" data-id="${e.id}">Add the miss</button><button class="btn sm" data-act="voidtog" data-id="${e.id}">Remove</button></span>` : ""}</li>`; };
+  const grow = x => `<li><span>${esc(playWhen(g, x.before))} · ${esc(tmName(g, x.before.e.tm))} scored (${playText(g, x.after.e)}), then had the ball again: a ${esc(tmName(g, x.tm))} miss or turnover never got tapped.</span>${ed ? `<span class="row no-print"><button class="btn sm" data-act="gapfix" data-k="miss" data-tm="${x.tm}" data-id="${x.before.e.id}">+ ${esc(tmName(g, x.tm))} miss</button><button class="btn sm" data-act="gapfix" data-k="to" data-tm="${x.tm}" data-id="${x.before.e.id}">+ ${esc(tmName(g, x.tm))} turnover</button></span>` : ""}</li>`;
+  const more = n => n > cut ? `<p class="small" style="margin:4px 0 0">And ${n - cut} more.</p>` : "";
+  return `<div class="card no-print"><h3 style="font-size:22px;margin-bottom:4px">Rebounds balance (NFHS)</h3><p class="small" style="margin:0 0 8px">Every missed shot gets one rebound, team and dead-ball ones included. Rebounds nobody named are filled in as team rebounds${R.auto ? ` (${R.auto} tonight, marked auto under Plays: tap one there to name the player)` : ""}.</p>
+    ${[sd.left, sd.right].map(line).join("")}
+    ${orph.length ? `<div class="kicker" style="margin:10px 0 4px">Rebounds with no miss in front (${orph.length})</div><ul class="plays bal">${orph.slice(0, cut).map(orow).join("")}</ul>${more(orph.length)}` : ""}
+    ${gaps.length ? `<div class="kicker" style="margin:10px 0 4px">Missing plays (${gaps.length})</div><ul class="plays bal">${gaps.slice(0, cut).map(grow).join("")}</ul>${more(gaps.length)}` : ""}</div>`;
+}
+// A play put in from the book's fixes: just before or just after the one it goes with, marked added later. Works on a
+// final game too (like Add a missed play).
+function putAt(g, e, ref, after){
+  if(!canEdit(g)) return null; const i = g.ev.indexOf(ref); if(i < 0) return null;
+  e.id = rid(); e.ins = 1; e.la = Date.now(); if(ref.gc && !e.gc) e.gc = {...ref.gc};
+  const j = after ? i + 1 : i, a = j > 0 ? g.ev[j - 1].at || 0 : (ref.at || 0) - 2, b = g.ev[j] && g.ev[j].at != null ? g.ev[j].at : a + 2;
+  e.at = (a + b) / 2; g.ev.splice(j, 0, e); claim(g); touch(g); return e;
+}
+// Whose miss was it? For a rebound with no miss in front (the Review list), the same question the strip asks.
+function wmSheet(g, rebId){
+  const r = g.ev.find(x => x.id === rebId && !x.v); if(!r) return;
+  const chip = (tm, p) => `<button class="chip${tm === "them" ? " skip" : ""}" data-act="wmpick" data-tm="${tm}" data-pid="${p ? p.pid : ""}">${p ? `<b>${esc(p.num)}</b>${esc(pShort(p))}` : `<span class="nm">${esc(tmName(g, tm))}: not sure who</span>`}</button>`;
+  const row = tm => `<div class="row" style="margin-top:8px">${sortRoster(roster(g, tm)).map(p => chip(tm, p)).join(" ")} ${chip(tm, null)}</div>`;
+  openSheet({wm:{gid:g.id, id:rebId, k:"2"}, html:() => `<h3>Whose shot missed?</h3><p style="margin:0 0 10px">${playText(g, r)} has no missed shot before it. The miss goes in just before it.</p>
+    <div class="row">${["2", "3", "ft"].map(v => `<button class="chip${ui.sheet && ui.sheet.wm && ui.sheet.wm.k === v ? " at" : ""}" data-act="wmkind" data-k="${v}">${v === "ft" ? "Free throw" : v + "PT"}</button>`).join("")}</div>
+    ${row(OTHER(r.tm))}${row(r.tm)}<div class="row" style="margin-top:12px"><button class="btn" data-close>Cancel</button></div>`});
+}
+// Naming the player on a play the book filled in: a team rebound, a steal's turnover, a block's missed shot.
+function autoFixSheet(g, id){
+  const R = replay(g), p = R.plays.find(x => x.der && x.e.id === id); if(!p) return;
+  const e = p.e, src = g.ev.find(x => x.id === e.ref && !x.v); if(!src) return;
+  const tms = e.t === "REB" ? [sides(g).left, sides(g).right] : [e.tm];
+  const chip = (tm, x) => `<button class="chip${tm === "them" ? " skip" : ""}" data-act="afpick" data-tm="${tm}" data-pid="${x ? x.pid : ""}">${x ? `<b>${esc(x.num)}</b>${esc(pShort(x))}` : `<span class="nm">${esc(tmName(g, tm))} team</span>`}</button>`;
+  const ask = e.t === "REB" ? `Who got the rebound after ${playText(g, src)}?` : e.t === "TO" ? `Who turned it over on ${playText(g, src)}?` : `Whose shot did ${playText(g, src)} block?`;
+  openSheet({af:{gid:g.id, id, p:2}, html:() => `<h3>Name the player</h3><p style="margin:0 0 10px">${ask}</p>
+    ${e.t === "FG" ? `<div class="row">${[2, 3].map(v => `<button class="chip${ui.sheet && ui.sheet.af && ui.sheet.af.p === v ? " at" : ""}" data-act="afp" data-p="${v}">${v}PT</button>`).join("")}</div>` : ""}
+    ${tms.map(tm => `<div class="row" style="margin-top:8px">${sortRoster(roster(g, tm)).map(x => chip(tm, x)).join(" ")}${e.t === "REB" ? " " + chip(tm, null) : ""}</div>`).join("")}
+    <div class="row" style="margin-top:12px"><button class="btn" data-close>Cancel</button></div>`});
+}
+function autoFixPick(g, id, tm, pid, pts){
+  const R = replay(g), p = R.plays.find(x => x.der && x.e.id === id); if(!p) return;
+  const e = p.e, src = g.ev.find(x => x.id === e.ref && !x.v); if(!src) return;
+  if(e.t === "REB") putAt(g, {tm, pid, t:"REB", o:tm === src.tm, ref:src.id}, src, true);
+  else if(e.t === "TO") putAt(g, {tm:e.tm, pid, t:"TO", ref:src.id}, src, true);
+  else if(e.t === "FG") putAt(g, {tm:e.tm, pid, t:"FG", p:pts === 3 ? 3 : 2, m:false, ref:src.id}, src, true);
 }
 // The team numbers a coach quotes that the two tables don't show (the fan page has most of them too). Second-chance points
 // need rebounds tapped, points off turnovers need turnovers or steals, bench points need the starting five on the desk and
@@ -3946,6 +4162,7 @@ function viewBox(){
     ${flowHere(g, R0)}
     <div class="card no-print"><h3 style="font-size:22px;margin-bottom:8px">Review</h3>${review(g, R0).map(([k, t]) => `<div class="flag ${k === "bad" ? "bad" : k === "ok" ? "ok" : ""}" style="margin-bottom:6px">${esc(t)}</div>`).join("")}
       ${g.status !== "final" && R0.sc.us !== R0.sc.them && g.ev.length && canEdit(g) ? `<button class="btn primary" data-act="final">Make it final: ${esc(usName(g))} ${R0.sc.us}, ${esc(g.opp)} ${R0.sc.them}</button>` : ""}</div>
+    ${balanceCard(g, R0)}
     <div class="row no-print"><span class="kicker">Box score</span>${qsel}</div>
     <div class="card">${boxTable(g, R, sd.left)}${st(sd.left)}</div><div class="card">${boxTable(g, R, sd.right)}${st(sd.right)}</div>${bq ? "" : lineupCard(g, R0, clockStats(g, R0))}</div>`;
 }
@@ -5813,6 +6030,8 @@ const Logos = (() => {
    Small on purpose: every fan's phone downloads it on every update. One JSON string, because Firestore can't hold lists
    inside lists. Box lines: [num, name, pos, year, height, pts, fgm, fga, tpm, tpa, ftm, fta, oreb, dreb, ast, stl, blk, to, pf, played, on floor]. */
 const PUBK = ["pts","fgm","fga","tpm","tpa","ftm","fta","oreb","dreb","ast","stl","blk","to","pf"];
+// The team line in a public copy (tt): rebounds and turnovers, then (0.24.0) its shots and points.
+const TTK = ["oreb","dreb","to","fgm","fga","tpm","tpa","ftm","fta","pts"];
 // A family's choice (number only) belongs to the player, not the game: Rosters decides for every game, so a final scored on
 // a device that's gone follows it too. A player taken off Rosters keeps his choice in the team's hidden list (it syncs with
 // the rosters). An opponent's or a practice player's flag is their own.
@@ -5844,7 +6063,7 @@ function pubSnap(g0){
     tf:{us:teamFouls(g, R, "us"), them:teamFouls(g, R, "them")}, bonus:{us:inBonus(g, R, "us"), them:inBonus(g, R, "them")},
     tol:{us:toLeft(g, R, "us"), them:toLeft(g, R, "them")}, poss:R.poss,
     box:{us:lists.us.map(p => line("us", p)), them:lists.them.map(p => line("them", p))}, pk:lists.us.map(p => p.pid), sh, fw:flowPts(g0, R), ql:[periodLen(g0, 1), periodLen(g0, (g0.quarters || 4) + 1)],
-    tt:{us:[R.team.us.oreb, R.team.us.dreb, R.team.us.to], them:[R.team.them.oreb, R.team.them.dreb, R.team.them.to]},
+    tt:{us:TTK.map(k => R.team.us[k]), them:TTK.map(k => R.team.them[k])},
     plays, more:all.length > plays.length, fl:flowOf(R), x:extrasOf(g, R), sponsor:((b.info || {}).sponsor || "").trim(), every:S.settings.pubSec || 30,
     brd:Board.pub(g0), bon:S.settings.bonus, rv:fin ? reviewOf(g0) : "", upd:Date.now()};
 }
@@ -5894,7 +6113,7 @@ function pubGame(sn){
   const R = {q:sn.q, brk:!!sn.brk, sc:sn.sc, qs:sn.qs, poss:sn.poss, box:{us:{}, them:{}}, team:{us:LINE(), them:LINE()}, court:{us:new Set(), them:new Set()}, plays:[], shots:[]};
   for(const tm of ["us","them"]){
     sn.box[tm].forEach((a, i) => { const l = LINE(); PUBK.forEach((k, j) => { l[k] = a[5 + j] || 0; }); l.gp = a[19] || 0; l.po = a[21] || 0; l.tf = a[22] || 0; if(l.gp) R.box[tm][tm + i] = l; if(a[20]) R.court[tm].add(tm + i); });
-    [R.team[tm].oreb, R.team[tm].dreb, R.team[tm].to] = sn.tt[tm];
+    const tt = Array.isArray(sn.tt && sn.tt[tm]) ? sn.tt[tm] : []; TTK.forEach((k, i) => { R.team[tm][k] = Number.isFinite(tt[i]) ? tt[i] : 0; });
   }
   R.shots = (sn.sh || []).map(a => ({e:{t:"FG", tm:a[0], pid:a[1] >= 0 ? a[0] + a[1] : "", x:a[2] / 1000, y:a[3] / 1000, m:!!a[4], p:a[6], ct:a[7] || ""}, q:a[5], k:a[0] + a[2] + "." + a[3] + "." + a[5]}));
   return {g, R};
@@ -6094,7 +6313,7 @@ function gbPdf(g, o, logo, art, tight = 0){
       const tot = sumLines(ps.map(p => R.box[tm][p.pid]).concat([tl])), cv = (ln, k, pid) => k === "min" ? String(pid ? minCell(M, pid) : minSum(M)).replace("*", "†") : cellOf(ln, k);
       const nw = 160, cw = (RT - L - 22 - nw) / keys.length, cols = [{h:"#", w:22, al:"r", b:true}, {h:"PLAYER", w:nw, al:"l"}].concat(keys.map(k => ({h:k[0], w:cw, b:k[1] === "pts"})));
       const rows = ps.map(p => { const ln = R.box[tm][p.pid]; return [String(p.num), (p.name || "") + (five.has(p.pid) ? " *" : "") + (ln.tf >= 2 ? " (ejected)" : ln.pf >= 5 ? " (fouled out)" : ""), ...keys.map(k => cv(ln, k[1], p.pid))]; });
-      if(tl.oreb + tl.dreb + tl.to) rows.push(["", "Team", ...keys.map(k => ["oreb", "dreb", "reb", "to"].includes(k[1]) ? cellOf(tl, k[1]) : "")]);
+      if(tl.oreb + tl.dreb + tl.to + tl.fga + tl.fta + tl.pts) rows.push(["", "Team", ...keys.map(k => teamKeys(tl).includes(k[1]) ? cellOf(tl, k[1]) : "")]);
       rows.push(["", "Totals", ...keys.map(k => k[1] === "pm" ? "" : cv(tot, k[1]))]);
       rows.push(["", "Shooting", ...keys.map(k => { const s = {fg:["fgm", "fga"], tp:["tpm", "tpa"], ft:["ftm", "fta"]}[k[1]]; return s ? (tot.po ? "—" : pct(tot[s[0]], tot[s[1]])) : ""; })]);
       need(40 + (tight ? 10.2 : 11.7) * rows.length); thead(tm, `${full(tm)} · ${R.sc[tm]}`);
@@ -6458,7 +6677,9 @@ function bookCheck(g){
       <tr><td class="l">By period (${per.map(q => esc(perLabel(g, q))).join(" · ")})</td>${td(tm => per.map(q => (R.qs[tm] || [])[q - 1] || 0).join(" · "))}</tr>
       <tr><td class="l">Team fouls by period</td>${td(tm => per.map(q => R.tf[tm][q] || 0).join(" · "))}</tr>
       <tr><td class="l">Timeouts left</td>${td(left)}</tr>
-      <tr><td class="l">Player fouls</td>${td(fouls)}</tr></table>
+      <tr><td class="l">Player fouls</td>${td(fouls)}</tr>
+      ${(() => { const gp = gapsOf(g, R).length; if(!gp && !R.plays.some(p => !p.void && ((p.e.t === "FG" || p.e.t === "FT") && !p.e.m || p.e.t === "REB"))) return ""; const B = balanceOf(g, R), n = R.orphans.length + gp;
+        return `<tr><td class="l">Rebounds off their misses (NFHS)${n ? `<br><span class="small">${n} to look at under Review game</span>` : ""}</td>${td(tm => { const b = B[tm]; return `${b.reb} of ${b.miss - b.wait}${b.d ? ` <b>(${b.d > 0 ? b.d + " too many" : -b.d + " short"})</b>` : ""}`; })}</tr>`; })()}</table>
       <p style="margin:8px 0">Arrow: <b>${R.poss ? esc(tmName(g, R.poss)) : "not set"}</b></p>
       <div class="row"><button class="btn primary" data-act="boxpdf">Box score PDF</button><button class="btn" data-act="logbox" data-gid="${esc(g.id)}">Fix something</button><button class="btn" data-close>It matches</button></div>`; }});
 }
@@ -6469,7 +6690,7 @@ function csvOf(g){
   for(const tm of ["us","them"]){
     for(const p of sortRoster(roster(g, tm))){ const ln = R.box[tm][p.pid]; if(!ln) continue;
       lines.push(pre.concat([tmName(g, tm), p.num, p.name, p.pos || "", ln.pts, ln.fgm, ln.po ? "" : ln.fga, ln.tpm, ln.po ? "" : ln.tpa, ln.ftm, ln.po ? "" : ln.fta, ln.oreb, ln.dreb, ln.oreb + ln.dreb, ln.ast, ln.stl, ln.blk, ln.to, ln.pf, ln.tf, ln.pm, tm === "us" && M.show ? minCell(M, p.pid) : ""]).map(q).join(",")); }
-    const t = R.team[tm]; if(t.oreb + t.dreb + t.to + t.tf) lines.push(pre.concat([tmName(g, tm), "", "Team", "", "", "", "", "", "", "", "", t.oreb, t.dreb, t.oreb + t.dreb, "", "", "", t.to, "", t.tf, "", ""]).map(q).join(","));
+    const t = R.team[tm], sh = t.fga + t.fta + t.pts; if(teamAny(t)) lines.push(pre.concat([tmName(g, tm), "", "Team", "", sh ? t.pts : "", sh ? t.fgm : "", sh ? t.fga : "", sh ? t.tpm : "", sh ? t.tpa : "", sh ? t.ftm : "", sh ? t.fta : "", t.oreb, t.dreb, t.oreb + t.dreb, "", "", "", t.to, "", t.tf, "", ""]).map(q).join(","));
   }
   return lines.join("\n") + "\n";
 }
@@ -6502,7 +6723,10 @@ document.addEventListener("click", async ev => {
   if(st && !st.disabled){ stat(st.dataset.tm, st.dataset.pid || null, st.dataset.st); return; }
   const fu = t.closest("[data-fu]");
   if(fu){ const k = fu.dataset.fu;
-    if(k === "skip"){ ui.fu.shift(); renderFu(); }
+    if(k === "skip"){ if(ui.fu.length) ui.fu.shift(); else ui.rq = null; renderFu(); }
+    else if(k === "wp" && ui.fu[0]){ ui.fu[0].p = fu.dataset.p; renderFu(); }
+    else if((k === "sfy" || k === "sfn") && ui.fu[0]){ const g = cur(), f = ui.fu.shift(), m = g && g.ev.find(x => x.id === f.ref && !x.v); if(m && canEdit(g)){ m.sf = k === "sfy"; m.ed = Date.now(); touch(g); } render(); }
+    else if(k === "ofy" && ui.fu[0]){ const f = ui.fu.shift(); rec({tm:f.tm, pid:f.pid, t:"TO", ref:f.ref, of:1}, {keepFu:true}); render(); }
     else if(k === "pick") fuPick(fu.dataset.tm, fu.dataset.pid || null);
     else if(k === "bp"){ ui.fu[0].p = +fu.dataset.p; renderFu(); }
     else if(k === "all" && ui.fu[0]){ ui.fu[0].all = true; renderFu(); }
@@ -6668,7 +6892,9 @@ document.addEventListener("click", async ev => {
       closeSheet(); if(rec({tm, pid:null, t:"TIP"})) toast(tmName(g, tm) + " controls the tip. Arrow → " + tmName(g, OTHER(tm)) + ".", 3500); break; }
     case "jump": { if(!g || bounced("jump", 800)) break; const R = replay(g), to = arrowNow(R);
       if(!to){ toast("No arrow yet. Tap Arrow to set it."); break; }
-      if(rec({tm:to, pid:null, t:"JUMP"})) toast("Held ball: " + tmName(g, to) + " ball. Arrow → " + tmName(g, OTHER(to)) + ".", 3500); break; }
+      const j = rec({tm:to, pid:null, t:"JUMP"}); if(j){ toast("Held ball: " + tmName(g, to) + " ball. Arrow → " + tmName(g, OTHER(to)) + ".", 3500);
+        // Kevin (0.24.0): a defender who ties up the ball and gets the arrow has a steal (Sec. 6b). Not on a rebound.
+        if(S.settings.extra && !R.lastMiss){ ui.fu = [{k:"hb", tm:to, ref:j.id}]; renderFu(); } } break; }
     case "tableclear": if(g){ const tm = a.dataset.tm, l = tableIds(g, tm); setBooth(g, b => { b.table = {us:[], them:[], ...b.table, [tm]:[]}; b.said = b.said.filter(x => !l.includes(x)); }, ["table", "said"]); render(); } break;
     case "annsaid": { const gg = S.games[a.dataset.gid] || g; if(gg){ const pid = a.dataset.pid, on = !(booth(gg.id).said || []).includes(pid), p = paPlayer(gg, a.dataset.tm, pid); markStep(gg, `${on ? "Called" : "Not called"}: #${p ? p.num : "?"}`, "said", [pid], on); render(); } break; }
     case "say": sayEdit(a.dataset.pid, a.dataset.gid, a.dataset.tm); break;
@@ -6834,6 +7060,14 @@ document.addEventListener("click", async ev => {
     case "csv": if(g) download(`${g.id}-box.csv`, csvOf(g), "text/csv"); break;
     case "voidtog": { if(!g || !canEdit(g)) break; const e = g.ev.find(x => x.id === a.dataset.id); if(e){ const v = !e.v, ed = Date.now(); (e.grp ? g.ev.filter(x => x.grp === e.grp) : [e]).forEach(x => { x.v = v; x.ed = ed; }); touch(g); } break; }
     case "fix": { if(!g || !canEdit(g)) break; const e = g.ev.find(x => x.id === a.dataset.id); if(e) fixSheet(g, e); break; }
+    case "autofix": if(g && canEdit(g)) autoFixSheet(g, a.dataset.id); break;
+    case "afp": { if(!s || !s.af) break; s.af.p = +a.dataset.p === 3 ? 3 : 2; renderSheet(); break; }
+    case "afpick": { if(!s || !s.af || !g || s.af.gid !== g.id || !canEdit(g)) break; const af = s.af; closeSheet(); autoFixPick(g, af.id, a.dataset.tm === "them" ? "them" : "us", a.dataset.pid || null, af.p); render(); break; }
+    case "wmopen": if(g && canEdit(g)) wmSheet(g, a.dataset.id); break;
+    case "wmkind": { if(!s || !s.wm) break; s.wm.k = ["2", "3", "ft"].includes(a.dataset.k) ? a.dataset.k : "2"; renderSheet(); break; }
+    case "wmpick": { if(!s || !s.wm || !g || s.wm.gid !== g.id || !canEdit(g)) break; const w = s.wm; closeSheet(); insertMiss(g, w.id, a.dataset.tm === "them" ? "them" : "us", a.dataset.pid || null, w.k, true); render(); break; }
+    case "gapfix": { if(!g || !canEdit(g) || bounced("gapfix", 600)) break; const b = g.ev.find(x => x.id === a.dataset.id && !x.v); if(!b) break; const tm = a.dataset.tm === "them" ? "them" : "us";
+      putAt(g, a.dataset.k === "to" ? {tm, pid:null, t:"TO"} : {tm, pid:null, t:"FG", p:2, m:false}, b, false); render(); break; }
     case "fixpick": { if(!s || !g || !canEdit(g)) break; const e = g.ev.find(x => x.id === s.eid); if(!e) break;
       e.from = e.from || {tm:e.tm, pid:e.pid}; e.tm = a.dataset.tm; e.pid = a.dataset.pid || null; e.ed = Date.now();
       // The basket went to the player who had its assist: one player can't have both, so ask who passed rather than lose it.
@@ -6855,7 +7089,7 @@ document.addEventListener("click", async ev => {
       g.ev.splice(j, 0, h); h.at = (to.at || 0) + (a.dataset.where === "after" ? 1 : -1); h.ed = Date.now(); closeSheet(); touch(g);
       toast(`Moved the end of ${perLabel(g, h.q || 1)}. Quarter scores and team fouls are redone.`, 3500); break; }
     case "fixkind": { if(!s || !g || !canEdit(g)) break; const e = g.ev.find(x => x.id === s.eid); if(!e) break;
-      if(e.t === "FG"){ if(a.dataset.k === "made") e.m = !e.m; if(a.dataset.k === "pts") e.p = e.p === 3 ? 2 : 3; }
+      if(e.t === "FG"){ if(a.dataset.k === "made") e.m = !e.m; if(a.dataset.k === "pts") e.p = e.p === 3 ? 2 : 3; if(a.dataset.k === "sf") e.sf = !SF_E.has(e); if(a.dataset.k === "dt"){ if(e.dt) delete e.dt; else e.dt = 1; } }
       if(e.t === "FT") e.m = !e.m;
       if(e.t === "REB") e.o = !e.o;
       e.ed = Date.now(); closeSheet(); touch(g); break; }
@@ -7145,7 +7379,7 @@ function fixSheet(g, e){
     <div class="row"${ask ? ' style="margin-bottom:10px"' : ""}>${list.map(p => `<button class="chip${as && !ask && as.pid === p.pid ? " at" : ""}" data-act="fixast" data-pid="${p.pid}"><b>${esc(p.num)}</b>${esc(pShort(p))}</button>`).join(" ")}<button class="chip skip" data-act="fixast" data-pid="">No assist</button></div>`; }
   openSheet({eid:e.id, html:() => `<h3>Fix this play</h3><p style="margin:0 0 10px">${playText(g, e)}${e.t === "FG" && as && !ask ? ", " + esc(pLabel(g, as.tm, as.pid)) + " assist" : ""}</p>
     ${swap ? `<div class="row" style="margin-bottom:10px"><button class="btn sm primary" data-act="fixswap">Swap shooter and passer: ${esc(pLabel(g, as.tm, as.pid))} scored, ${esc(pLabel(g, fg.tm, fg.pid))} passed</button></div>` : ""}${ask ? ast : ""}
-    ${e.t === "FG" ? `<div class="row" style="margin-bottom:10px"><button class="btn sm" data-act="fixkind" data-k="made">Make it a ${e.m ? "miss" : "make"}</button><button class="btn sm" data-act="fixkind" data-k="pts">Make it a ${e.p === 3 ? "2" : "3"}</button></div>` : ""}
+    ${e.t === "FG" ? `<div class="row" style="margin-bottom:10px"><button class="btn sm" data-act="fixkind" data-k="made">Make it a ${e.m ? "miss" : "make"}</button><button class="btn sm" data-act="fixkind" data-k="pts">Make it a ${e.p === 3 ? "2" : "3"}</button>${!e.m && e.pid ? `<button class="btn sm" data-act="fixkind" data-k="sf" title="NFHS: a shooter fouled in the act who misses has no field goal attempt (and no block)">${SF_E.has(e) ? "It was a shot (foul after it)" : "Fouled shooting: not a shot"}</button>` : ""}${e.m ? `<button class="btn sm" data-act="fixkind" data-k="dt" title="NFHS: a defender who tips it into the other basket gives that team the points, with no field goal for anybody">${e.dt ? "A player's basket after all" : "Tipped in by the defense"}</button>` : ""}</div>` : ""}
     ${e.t === "FT" ? `<div class="row" style="margin-bottom:10px"><button class="btn sm" data-act="fixkind">Make it a ${e.m ? "miss" : "make"}</button></div>` : ""}
     ${e.t === "REB" ? `<div class="row" style="margin-bottom:10px"><button class="btn sm" data-act="fixkind">Make it ${e.o ? "defensive" : "offensive"}</button></div>` : ""}
     <div class="kicker" style="margin:6px 0">${e.t === "FG" ? "Wrong shooter?" : "Wrong player?"} Pick the right one</div>
@@ -7195,7 +7429,7 @@ function reconSheet(g){
   openSheet({rv:{gid:g.id}, html:() => {
     const R = replay(g), b = g.bfin, rv = g.rv || {}, done = rv.s === "done", off = done && rv.us != null ? {us:rv.us, them:rv.them} : b ? {us:b.us, them:b.them} : {us:R.sc.us, them:R.sc.them};
     const gap = tm => R.sc[tm] - off[tm], tms = ["us", "them"];
-    const pts = tm => sortRoster(roster(g, tm)).filter(p => (R.box[tm][p.pid] || {}).pts).map(p => `<span class="rvp">#${esc(p.num)} ${esc(p.name ? pShort(p) : "")} <b>${R.box[tm][p.pid].pts}</b></span>`).join("") || `<span class="small">No points</span>`;
+    const pts = tm => sortRoster(roster(g, tm)).filter(p => (R.box[tm][p.pid] || {}).pts).map(p => `<span class="rvp">#${esc(p.num)} ${esc(p.name ? pShort(p) : "")} <b>${R.box[tm][p.pid].pts}</b></span>`).join("") + (R.team[tm].pts ? `<span class="rvp">Team (tipped in by the defense) <b>${R.team[tm].pts}</b></span>` : "") || `<span class="small">No points</span>`;
     return `<h3>Check against the paper book</h3>
       <p style="margin:0 0 8px">The paper book is official. ${b ? `The gym scoreboard ended at <b>${esc(usName(g))} ${esc(b.us)}, ${esc(g.opp)} ${esc(b.them)}</b>.` : "There's no scoreboard final for this game (away, or no feed)."} Type the official final if the paper book says something else.</p>
       <form id="rvform" class="stack"><table class="glance rvt"><tr><th class="l"></th><th>Book (players' points)</th><th>Official final</th><th>Off by</th></tr>

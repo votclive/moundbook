@@ -19,7 +19,7 @@ Each write costs one read for every listener, so listen to one game doc at a tim
 - `status` (live/final), `q` (period), `brk` (true at a break), `sc {us, them}` (the public score: the board's final while under review, the official one after), `qs {us:[per period], them:[...]}`
 - `tf`, `bonus`, `tol {us:{60, 30}, them}`, `poss`
 - `box {us, them}`: one row per player who played: `[num, name, "", "", "", pts, fgm, fga, tpm, tpa, ftm, fta, oreb, dreb, ast, stl, blk, to, pf, played, onFloor, pointsOnly, techs]`. A player kept off the public page has an empty name.
-- `tt {us:[oreb, dreb, to], them}`: team rebounds and turnovers
+- `tt {us:[oreb, dreb, to, fgm, fga, tpm, tpa, ftm, fta, pts], them}`: the team line (plays nobody named). Rebounds and turnovers include the ones the book fills in (NFHS: every miss gets a rebound, every steal is a turnover); `pts` is a defender's tip-in into their own basket, credited to the team. Before 0.24.0 only the first three were sent, so read the rest as 0 when missing
 - `plays`: the last 40 (all of them at the final): `[period, us, them, text, scored, team, timeOfDay ms, gameClock, boxRow]` (`boxRow` -1 for a team play)
 - `sh`: charted shots `[team, boxRow, x, y, made, period, points, clock]`, x and y in thousandths of the half court (x across, 0 to 1000; y from the baseline, 0 to 1000 = half court); clock is the game clock when it was taken as the board shows it ("5:49", "0:45.3"), or "" without one (added in 0.13.0, so older copies have 7 entries)
 - `fw`: the flow, one per scoring play: `[period, clockLeft (-1 if none), us, them]`
