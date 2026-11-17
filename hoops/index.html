@@ -5,7 +5,7 @@
 <!-- The page's lock: the only script that may run is the one in this file (named by the SHA-256 of its text) and files
      from this folder (fb.js). Text that turns up in the page from a roster, a game or the cloud can never run as code.
      After ANY edit to the script, run "python3 hoops/stamp.py hoops": with a stale hash the browser runs nothing. -->
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-1w3SIBiE6u3iXUj60hQg2+zoikxGTQZc3+CJu8qJ2nE='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-Rjmi93GfHORmXjQctJjJPvFRk94QYvBiRYBCnD0gV4w='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#094A28">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -103,6 +103,8 @@ tr.tot td{font-weight:700;border-top:2px solid var(--black)}
 .tag{display:inline-block;font-family:var(--f-display);font-weight:700;font-size:12px;letter-spacing:.06em;text-transform:uppercase;border-radius:4px;padding:1px 6px;border:1px solid var(--black)}
 .tag.solid{background:var(--black);color:var(--white)}
 .tag.green{background:var(--green);color:var(--white);border-color:var(--green)}
+.wpbar{height:10px;border-radius:5px;background:#D0D0D0;overflow:hidden;margin:6px 0 4px}.wpbar span{display:block;height:100%;background:var(--green)}
+.edgerun{font-family:var(--f-display);font-weight:700;font-size:20px;text-transform:uppercase;letter-spacing:.02em}
 
 /* ---------- Desk: sized so an iPad in landscape (or a laptop) shows the whole game without scrolling ---------- */
 .deskhead{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding-bottom:6px;border-bottom:2px solid var(--black);margin-bottom:6px}
@@ -2724,9 +2726,9 @@ function micDefault(){ if(ui.micSet) return; const r = Sync.role() || (S.sync &&
    the bar, or tap ▲ ▼. Reset puts that page back. Per device: Kevin's iPad and Jim's MacBook each keep their own.
    Scopes: pa (the PA page's Live view), bc (the Broadcast page, top to bottom), bcr (the Broadcast page's middle column). */
 const LAY = {
-  pa:[["line", "Line score"], ["last", "Last play"], ["due", "Reads due"], ["ms", "Milestones"], ["floor", "On the floor and the table"], ["lead", "Points leaders"], ["flow", "Game flow"], ["plays", "Last plays and PA notes"]],
+  pa:[["line", "Line score"], ["last", "Last play"], ["due", "Reads due"], ["ms", "Milestones"], ["floor", "On the floor and the table"], ["lead", "Points leaders"], ["flow", "Game flow"], ["edge", "Stops and win chance"], ["plays", "Last plays and PA notes"]],
   bc:[["last", "Last play"], ["ms", "Milestones"], ["grid", "Spotting boards"], ["box", "Box score"]],
-  bcr:[["pad", "Game notes"], ["drops", "Talking points"], ["line", "Line score"], ["flow", "Game flow"], ["glance", "At a glance"], ["plays", "Last plays"], ["tonight", "Tonight"]]};
+  bcr:[["pad", "Game notes"], ["drops", "Talking points"], ["line", "Line score"], ["flow", "Game flow"], ["edge", "Stops and win chance"], ["glance", "At a glance"], ["plays", "Last plays"], ["tonight", "Tonight"]]};
 const LAY_KEY = KEY + ".lay";
 function layAll(){ try{ const o = JSON.parse(localStorage.getItem(LAY_KEY) || "{}"); return o && typeof o === "object" && !Array.isArray(o) ? o : {}; }catch(e){ return {}; } }
 // The scope's keys in this device's order: saved keys that still exist, then any new card where it sits by default.
@@ -2814,6 +2816,7 @@ function viewAnn(){
     ${layBox("pa", "floor", `<div class="ann-cols">${side(sd.left)}${side(sd.right)}</div>`)}
     ${layBox("pa", "lead", `<div class="lead" style="grid-template-columns:1fr">${leadCard(g, R, "pts", "Points")}</div>`)}
     ${layBox("pa", "flow", flowHere(g, R))}
+    ${layBox("pa", "edge", edgeCard(g, R, "pa"))}
     ${layBox("pa", "plays", `<div class="ann-cols"><div class="card"><h3 style="font-size:22px;margin-bottom:4px">Last plays</h3>${playList(g, R, 10, false, p => (["FG", "FT"].includes(p.e.t) && p.e.m) || ["PF", "TF", "TMO", "PER", "NOTE", "TIP", "JUMP"].includes(p.e.t))}</div>
       <div class="card no-print stack"><div><h3 style="font-size:22px;margin-bottom:6px">PA notes</h3><textarea data-bnotes="notes" data-gid="${g.id}" rows="5" placeholder="Senior night: honor #3 at halftime. Thank the band.">${esc(b.notes)}</textarea></div>
       <p class="small" style="margin:0">${g.practice ? "Practice game: stays on this device." : Sync.live() ? "Shared with everyone signed in. Never on the public page." : "Saved on this device."}</p></div></div>`)}</div>`;
@@ -2988,7 +2991,7 @@ function drawBroadcast(pre){
       ${W("bc", "grid", `<div class="bcgrid"><div data-bc="left"></div><aside class="bcrail">
         ${W("bcr", "pad", `<div class="card bcpad"><h3>Game notes</h3><textarea data-bcpad="${esc(g.id)}" rows="6" placeholder="Storylines, stat drops, the sponsor read, who to thank. Saves as you type.">${esc(booth(g.id).bnotes || "")}</textarea><p class="small" data-bc="padnote"></p></div>`)}
         ${W("bcr", "drops", `<div class="card" data-bc="drops"></div>`)}
-        ${W("bcr", "line", `<div data-bc="line"></div>`)}${W("bcr", "flow", `<div data-bc="flow"></div>`)}${W("bcr", "glance", `<div data-bc="glance"></div>`)}
+        ${W("bcr", "line", `<div data-bc="line"></div>`)}${W("bcr", "flow", `<div data-bc="flow"></div>`)}${W("bcr", "edge", `<div data-bc="edge"></div>`)}${W("bcr", "glance", `<div data-bc="glance"></div>`)}
         ${W("bcr", "plays", `<div class="card"><h3>Last plays</h3><div data-bc="plays"></div></div>`)}
         ${W("bcr", "tonight", `<div class="card"><h3>Tonight</h3><div data-bc="tonight"></div></div>`)}
       </aside><div data-bc="right"></div></div>`)}${W("bc", "box", `<div data-bc="box" id="bcbox" class="bcboxes"></div>`)}` : `<div data-bc="none"></div>`}</div>`;
@@ -3013,6 +3016,7 @@ function drawBroadcast(pre){
   put("line", g.ev.length ? `<div class="card"><div class="linesc">${lineScore(g, R)}</div></div>` : "");
   put("glance", g.ev.length ? teamGlance(g, R) : "");
   put("flow", flowHere(g, R));
+  put("edge", edgeCard(g, R, "bc"));
   put("plays", playList(g, R, 8, false));
   put("tonight", bcTonight(g));
   put("padnote", g.practice ? "Practice game: stays on this device." : Sync.live() ? "Only signed-in people see these. Never on the fan page." : "Saved on this device. Sign in to have them on every device.");
@@ -4331,8 +4335,8 @@ function viewBox(){
       <div class="no-print" style="display:flex;flex-direction:column;align-items:flex-end;gap:4px"><div class="row">${played ? `<button class="btn" data-act="rw-open">▶ Re-watch</button>` : ""}<button class="btn" data-act="boxpdf">Box score PDF</button><button class="btn" data-act="print">Print box score</button>${canCoach() ? `<button class="btn" data-act="gbopen">More prints · Game Book</button>` : ""}<button class="btn" data-act="csv">Player stats CSV</button>${canCoach() && g.status === "final" ? `<button class="btn" data-act="mpfile" title="A file MaxPreps imports: Schedule, the game, Edit Score, Save &amp; Import Stats">MaxPreps file</button>` : ""}<button class="btn primary" data-act="send">${sb && sb.changed ? "Send again" : "Send to Scorebook"}</button></div>
       ${sb ? `<div class="small">${sb.changed ? `<b>Changed since it went to the Scorebook</b> ${esc(sbWhen(sb.at))}. Send it again.` : `Sent to Scorebook ${esc(sbWhen(sb.at))}.`}</div>` : ""}</div></div>
     ${ff ? `<div class="flag ${ff === "W" ? "ok" : "bad"}"><b>${esc(ffWords)}.</b> Played ${R0.sc.us}-${R0.sc.them}. The record goes by the ruling; the player stats below still count.</div>` : ""}
-    <div class="row" style="align-items:flex-start;gap:12px"><div style="flex:1 1 360px;max-width:520px">${board(g, R0)}</div><div style="flex:1 1 300px;max-width:420px">${boxGlance(g, R0)}</div></div>${lateCard(g, R0)}
-    ${flowHere(g, R0)}
+    <div class="row" style="align-items:flex-start;gap:12px"><div style="flex:1 1 360px;max-width:520px">${board(g, R0)}</div><div style="flex:1 1 300px;max-width:420px">${boxGlance(g, R0)}</div></div>
+    ${flowHere(g, R0)}${edgeCard(g, R0, "box")}${lateCard(g, R0)}${chgCard(g, R0)}
     <div class="card no-print"><h3 style="font-size:22px;margin-bottom:8px">Review</h3>${review(g, R0).map(([k, t]) => `<div class="flag ${k === "bad" ? "bad" : k === "ok" ? "ok" : ""}" style="margin-bottom:6px">${esc(t)}</div>`).join("")}
       ${g.status !== "final" && R0.sc.us !== R0.sc.them && g.ev.length && canEdit(g) ? `<button class="btn primary" data-act="final">Make it final: ${esc(usName(g))} ${R0.sc.us}, ${esc(g.opp)} ${R0.sc.them}</button>` : ""}</div>
     ${balanceCard(g, R0)}
@@ -4819,7 +4823,7 @@ function recSheet(team, id){
    Anything that needs the game clock counts only clock games: games where the board's (or a typed) clock is on at least
    9 plays in 10, so a game with no clock never waters down a per-minute number, and those numbers say how many games
    they come from. Anything that needs who was on the floor counts only plays with five of ours on it (subs tapped). */
-const ST_SECS = [["team", "Team"], ["players", "Players"], ["shooting", "Shooting"], ["flow", "Game flow"], ["lineups", "Lineups"], ["scout", "Scouting"], ["records", "Records"]];
+const ST_SECS = [["team", "Team"], ["players", "Players"], ["shooting", "Shooting"], ["flow", "Game flow"], ["lineups", "Lineups"], ["scout", "Scouting"], ["leaks", "Leaks"], ["records", "Records"]];
 const STAT_T = new Set(["FG", "FT", "REB", "AST", "STL", "BLK", "TO", "PF", "TF"]);
 const DIG = new WeakMap();
 const gSig = g => [g.ev.length, g.rev || 0, g.upd || 0, g.status, g.scrim ? 1 : 0, g.qlen || 0].join(":");
@@ -4831,8 +4835,12 @@ const sgn1 = v => (v > 0 ? "+" : "") + fx1(v);
 // One game taken apart (comp: competitive minutes only, see gameComp).
 function dig(g, comp){
   const k = comp ? "c" : "a", c = DIG.get(g) || {}, sig = gSig(g);
-  if(c[k] && c[k].sig === sig) return c[k];
-  const d = digOf(comp ? gameComp(g) : g, g); d.sig = sig; c[k] = d; DIG.set(g, c); return d;
+  let d = c[k] && c[k].sig === sig ? c[k] : null;
+  if(!d){ d = digOf(comp ? gameComp(g) : g, g); d.sig = sig; c[k] = d; DIG.set(g, c); }
+  // Road clock (0.27.0): a game without the clock gets one from tap times while the self-check passes (roadCard).
+  if(d.ck || PUB || RC_BUSY || ui.tab !== "stats" || !d.P.length || !roadOk(g.team)) return d;   // Stats only
+  if(!("estD" in d)){ const e = digOf(estGame(comp ? gameComp(g) : g), g); e.sig = sig; e.est = true; d.estD = e.ck ? e : null; }
+  return d.estD || d;
 }
 // Competitive minutes: the game with the stat plays from garbage time (the 4th quarter or overtime, either team up 20 or
 // more when the play started) taken out the way a removed play is, their points too. The subs and the horns stay, and
@@ -4884,7 +4892,7 @@ function stState(team){
 }
 // "from 7 of 12 games" for a number that needs the clock (or minutes: M).
 function fromN(n, of, what = "with the game clock"){ return `<span class="small fromn">From ${n} of ${of} game${of === 1 ? "" : "s"} ${what}.</span>`; }
-const clockNote = (S0, k = "cds") => fromN(S0[k].length, S0.ds.length, k === "mds" ? "with the clock and subs" : "with the game clock");
+const clockNote = (S0, k = "cds") => { const e = S0[k].filter(d => d.est).length; return fromN(S0[k].length, S0.ds.length, (k === "mds" ? "with the clock and subs" : "with the game clock") + (e ? ` (${e} with the clock worked out from tap times, est.)` : "")); };
 function noData(msg){ return `<p class="small" style="margin:6px 0 0">${msg}</p>`; }
 // Our season lines by player, from these games: {pid: {...LINE, g, gs (started), x (shooting from Every-stat games), games:[{d, ln}]}}.
 function linesOf(ds){
@@ -4958,6 +4966,8 @@ function ftTrips(d){
   const out = [], tf = {}; let cur = null, prev = [], Q = d.Q;
   const fouls = (tm, q) => { let n = 0; for(let k = q > Q ? Q : q; k <= q; k++) n += (tf[tm] || {})[k] || 0; return n; };
   for(const p of d.P){ const e = p.e; if(IGN.has(e.t)) continue;
+    // 0.27.0: the book's dead-ball rebound on a missed free throw with more to come (NFHS, 0.24.0) doesn't end the trip.
+    if(e.t === "REB" && e.auto === "dead" && cur && e.ref && cur.fts.some(f => f.id === e.ref)) continue;
     if(e.t === "PF" || e.t === "TF"){ const t = tf[e.tm] || (tf[e.tm] = {}); t[p.q] = (t[p.q] || 0) + 1; }
     if(e.t === "FT"){
       if(!cur || cur.tm !== e.tm || cur.pid !== e.pid){
@@ -4972,6 +4982,447 @@ function ftTrips(d){
 }
 // Clutch time: the last 4:00 of the 4th quarter or overtime with the score within 5 when the play started (clock games).
 const clutchP = (d, p) => p.el != null && p.q >= d.Q && d.start(p.q) + periodLen(d.gv, p.q) - p.el <= 240 && Math.abs(p.bf.us - p.bf.them) <= 5;
+/* ---- Trips: every possession counted from the plays (0.27.0) ---- */
+// Kevin (0.27.0, the no-tap stats): each trip down the floor, counted one by one instead of estimated from the totals. The
+// ball changes hands on a basket (after the last free throw of a trip), a defensive rebound, a steal, a turnover and a
+// held ball. An offensive rebound keeps the trip going (a second chance), and free throws right after the team's own
+// basket stay in it (an and-one). A trip starts off a steal, off a defensive rebound, after the other team scores, after a
+// dead ball (a turnover that wasn't a steal, a held ball, a foul on the rebound) or at the start of a period, and ends when
+// the other team gets the ball or the horn sounds. A team doing something while the book has the ball with the other team
+// means a change of hands went untapped: that trip's start is "not in the book" (gap). Every point lands in exactly one
+// trip, so a team's trips add up to its score.
+const TRIP_HOW = [["stl", "Off a steal"], ["dreb", "Off a defensive rebound"], ["make", "After the other team scores"], ["dead", "After a dead ball"], ["per", "Start of a period"], ["gap", "Start not in the book"]];
+// Each free throw's place in its trip: the last one, and whether it was a technical's.
+function ftLast(d){ if(d.ftl) return d.ftl; const m = new Map(); for(const t of ftTrips(d)) t.fts.forEach((e, i) => m.set(e, {last:i === t.fts.length - 1, tech:t.tech})); return d.ftl = m; }
+// Games a trip count means something in: every stat logged (misses, rebounds and turnovers), the same games as the four factors.
+const tripsOk = d => factorsOf(d.gv, d.R).us.poss != null;
+function tripsOf(d){
+  if(d.tr) return d.tr;
+  const L = [], ftI = ftLast(d), byId = new Map(), missOf = new Map(), tmo = {us:false, them:false};
+  for(const p of d.P) if(p.e.id) byId.set(p.e.id, p.e);
+  for(const [mid, r] of d.R.rebOf) if(r && r.e && byId.has(mid)) missOf.set(r.e, byId.get(mid));
+  let cur = null, pend = null, last = null, deadO = null;
+  const open = (tm, how, p0, p) => { const in0 = p0 && p0.q === p.q && p0.el != null;
+    const t = {tm, how, q:p.q, p0:p0 || null, el0:in0 ? p0.el : how === "per" ? d.start(p.q) : null, el1:null, end:null, done:false,
+      pts:0, pts2:0, fga:0, fta:0, to:0, sec:false, ato:tmo[tm], on:p.on, toE:null, stlEnd:false};
+    L.push(t); cur = t; pend = null; return t; };
+  const close = p => { if(cur && !cur.done){ cur.done = true; cur.end = p; } };
+  // The ball goes to tm (how: the way their trip starts). Known before they do anything with it, so it waits in pend.
+  const give = (tm, how, p) => {
+    if(cur && !cur.done && cur.tm === tm) return;
+    if(pend){ if(pend.tm === tm){ if(how === "stl") pend.how = "stl"; return; } open(pend.tm, pend.how, pend.p, p); }   // their trip had no plays in it
+    else if(!cur && how === "stl") open(OTHER(tm), "per", null, p);   // the period's first trip, ended by this steal
+    close(p); if(cur && how === "stl") cur.stlEnd = true;
+    pend = {tm, how, p};
+  };
+  // tm has the ball now: its trip (the one it's on, the one waiting for it, or a new one when the book missed the change).
+  const mine = (tm, p) => {
+    if(cur && !cur.done && cur.tm === tm) return cur;
+    if(cur && !cur.done){ close(p); return open(tm, "gap", null, p); }
+    if(pend){ if(pend.tm === tm) return open(tm, pend.how, pend.p, p);
+      open(pend.tm, pend.how, pend.p, p); close(p); return open(tm, "gap", null, p); }
+    return open(tm, cur ? "gap" : "per", null, p);
+  };
+  const first = (t, p) => { if(t.el1 == null && p.el != null) t.el1 = p.el; };
+  const score = (t, n) => { t.pts += n; if(t.sec) t.pts2 += n; };
+  for(const p of d.P){ const e = p.e, tm = e.tm;
+    switch(e.t){
+      case "PER": if(deadO && last === deadO.e) deadO.t.sec = deadO.was; close(p); cur = null; pend = null; tmo.us = tmo.them = false; break;
+      case "TIP": if(tm) pend = {tm, how:"per", p}; break;
+      case "JUMP": if(tm) give(tm, "dead", p); break;
+      case "TMO": if(!tm) break; if(cur && !cur.done && cur.tm === tm){ if(!cur.fga && !cur.fta && !cur.to && !cur.pts) cur.ato = true; } else tmo[tm] = true; break;
+      case "FG": {
+        if(e.dt){ if(e.m){ const t = [...L].reverse().find(x => x.tm === tm) || mine(tm, p); t.pts += e.p; } break; }   // a defender's tip-in: the shooting team keeps on
+        const t = mine(tm, p); first(t, p); if(d.R.sf.has(e.id)) break;   // fouled on the shot: no attempt, the free throws follow
+        t.fga++; if(e.m){ score(t, e.p); give(OTHER(tm), "make", p); } break; }
+      case "FT": { const fi = ftI.get(e) || {last:true, tech:false}; let t;
+        if(cur && cur.tm === tm && cur.done && pend && pend.tm !== tm && pend.how === "make" && pend.p.e.tm === tm){ cur.done = false; cur.end = null; pend = null; t = cur; }   // right after its own basket
+        else t = mine(tm, p);
+        first(t, p); t.fta++; if(e.m) score(t, 1);
+        if(fi.last && !fi.tech && e.m) give(OTHER(tm), "make", p); break; }
+      case "REB": if(e.o){ const m = missOf.get(e), fi = m && m.t === "FT" ? ftI.get(m) : null, t = mine(tm, p);
+          if(!(fi && !fi.last)){ if(e.auto === "dead") deadO = {t, was:t.sec, e}; t.sec = true; } }
+        else give(tm, e.auto === "dead" ? "dead" : "dreb", p); break;
+      case "STL": give(tm, "stl", p); break;
+      case "TO": { const t = cur && cur.tm === tm && (!cur.done || (cur.stlEnd && !cur.toE)) ? cur : mine(tm, p);
+        t.to++; t.toE = e; first(t, p); give(OTHER(tm), d.stl.has(e.id) ? "stl" : "dead", p); break; }
+      default: continue;
+    }
+    if(["FG", "FT", "REB", "STL", "TO", "JUMP"].includes(e.t)){ tmo.us = tmo.them = false; }
+    last = e;
+  }
+  const ball = d.R.open ? null : cur && !cur.done ? cur.tm : pend ? pend.tm : null;
+  return d.tr = {L, ball};
+}
+// Stops: a trip that ends with no points. run: each defense's streak right now (the other team's empty trips in a row,
+// the trip they're on doesn't count yet); best: its longest.
+function stopsOf(L){ const run = {us:0, them:0}, best = {us:0, them:0};
+  for(const t of L){ if(!t.done) continue; const def = OTHER(t.tm); if(t.pts) run[def] = 0; else best[def] = Math.max(best[def], ++run[def]); }
+  return {run, best}; }
+// The turnover a trip started from (its own, or the one that went with the steal), for points off each kind.
+function tripTo(d, t){ if(!t.p0 || (t.how !== "stl" && t.how !== "dead")) return null; const e = t.p0.e;
+  if(e.t === "TO") return e; if(e.t !== "STL") return null;
+  for(const [toId, s] of d.stl) if(s === e){ const p = d.P.find(x => x.e.id === toId); return p ? p.e : null; } return null; }
+const TO_ROWS = Object.entries(TT_CHIP).concat([["", "Kind not tapped"]]);
+function tripAgg(S0){ return memo(S0, "_tr", () => {
+  const blank = () => ({n:0, pts:0, by:Object.fromEntries(TRIP_HOW.map(([k]) => [k, {n:0, pts:0}])), sec:{n:0, pts:0}, ato:{n:0, pts:0}, empty:0, best:0, toK:Object.fromEntries(TO_ROWS.map(([k]) => [k, {n:0, pts:0}]))});
+  const A = {n:0, us:blank(), them:blank(), ds:[]};
+  for(const d of S0.ds){ if(!tripsOk(d)) continue; A.n++; A.ds.push(d); const T = tripsOf(d), st = stopsOf(T.L);
+    for(const t of T.L){ const a = A[t.tm]; a.n++; a.pts += t.pts; a.by[t.how].n++; a.by[t.how].pts += t.pts; if(!t.pts) a.empty++;
+      if(t.sec){ a.sec.n++; a.sec.pts += t.pts2; } if(t.ato){ a.ato.n++; a.ato.pts += t.pts; }
+      const te = tripTo(d, t); if(te){ const k = ttOf(te), b = a.toK[k]; b.n++; b.pts += t.pts; } }
+    for(const tm of ["us", "them"]) A[tm].best = Math.max(A[tm].best, st.best[OTHER(tm)]); }   // best: the longest run of this team's empty trips (the other defense's stops)
+  return A; }); }
+const ppt = (pts, n) => n ? (pts / n).toFixed(2) : "–";
+function tripCard(S0){
+  const A = tripAgg(S0); if(!A.n) return `<div class="stblk"><div class="kicker">Trips (possessions counted)</div>${noData("Trips need games with every stat logged: misses, rebounds and turnovers.")}</div>`;
+  const u = A.us, t = A.them, ff = ffAgg(A.ds), row = (lbl, a, b, tip) => [tip ? `<span title="${esc(tip)}">${lbl}</span>` : lbl, a.n, ppt(a.pts, a.n), b.n, ppt(b.pts, b.n)];
+  const rows = TRIP_HOW.filter(([k]) => u.by[k].n || t.by[k].n).map(([k, lb]) => row(lb, u.by[k], t.by[k]))
+    .concat([row("Second chances", u.sec, t.sec, "Trips with an offensive rebound, and the points after it"), row("Out of a timeout", u.ato, t.ato, "The first trip after the team's own timeout"), row("<b>All trips</b>", u, t)]);
+  const toRows = TO_ROWS.filter(([k]) => t.toK[k].n || u.toK[k].n).map(([k, lb]) => [esc(lb), t.toK[k].n, t.toK[k].pts, ppt(t.toK[k].pts, t.toK[k].n), u.toK[k].n, u.toK[k].pts, ppt(u.toK[k].pts, u.toK[k].n)]);
+  const gap = u.by.gap.n + t.by.gap.n;
+  return `<div class="stblk"><div class="kicker">Trips: points a trip by how it started</div>${stTable(["", ["Trips", "Ours"], ["PTS a trip", "Our points a trip"], ["Their trips", ""], ["Theirs", "Their points a trip"]], rows)}
+    <p class="small" style="margin:4px 0 0">Counted trip by trip: <b>${fx1(u.n / A.n)}</b> trips a game for us, <b>${fx1(t.n / A.n)}</b> for them${ff ? ` (the four-factor estimate says ${fx1(ff.us.poss)})` : ""}.
+      Stops (their trips with no points): <b>${pc(t.empty, t.n)}</b> · best streak <b>${t.best}</b> in a row.
+      ${gap ? `${gap} trip${gap === 1 ? "" : "s"} started with a change of hands the book missed.` : ""} From ${A.n} game${A.n === 1 ? "" : "s"} with every stat logged.</p>
+    ${toRows.length ? `<div class="kicker" style="margin-top:10px">Points off each kind of turnover</div>${stTable(["Kind", ["After ours", "Their trips after our turnovers of this kind"], ["They scored", ""], ["A trip", "Their points a trip"], ["After theirs", "Our trips after their turnovers of this kind"], ["We scored", ""], ["A trip", "Our points a trip"]], toRows)}<p class="small" style="margin:4px 0 0">A steal's turnover is a bad pass or a lost ball when it was tapped that way.</p>` : ""}</div>`;
+}
+// Lineups and pairs by trips: points per 100 trips at each end with the five on the floor when the trip started. Trips
+// don't need the clock, so road games count (subs tapped and every stat logged).
+function tripUnits(S0){ return memo(S0, "_tu", () => { const U = new Map(), P = new Map(); let n = 0;
+  const add = (m, k, pids, t) => { const a = m.get(k) || {pids, o:0, op:0, dn:0, dp:0, g:new Set()}; m.set(k, a); if(t.tm === "us"){ a.o++; a.op += t.pts; } else { a.dn++; a.dp += t.pts; } return a; };
+  for(const d of S0.ds){ if(!d.subs || !tripsOk(d)) continue; n++;
+    for(const t of tripsOf(d).L){ if(!t.on || t.on.length !== 5) continue; const pids = t.on.slice().sort();
+      add(U, pids.join(","), pids, t).g.add(d.g.id);
+      for(let i = 0; i < 5; i++) for(let j = i + 1; j < 5; j++) add(P, pids[i] + "," + pids[j], [pids[i], pids[j]], t); } }
+  const tot = u => u.o + u.dn; return {n, U:[...U.values()].sort((a, b) => tot(b) - tot(a)), P:[...P.values()].sort((a, b) => tot(b) - tot(a))}; }); }
+const per100 = (p, n) => n ? Math.round(100 * p / n) : "–";
+const unitNums = (S0, u) => u.pids.map(pid => numOf(S0, pid)).sort((a, b) => (parseInt(a.slice(1), 10) || 0) - (parseInt(b.slice(1), 10) || 0)).join(" ");
+function tripUnitsCard(S0){
+  const A = tripUnits(S0); if(!A.n) return `<div class="stblk"><div class="kicker">Lineups per 100 trips 🔁</div>${noData("Needs games with subs tapped and every stat logged. No clock needed, so road games count.")}</div>`;
+  const net = u => u.o >= 10 && u.dn >= 10 ? pmText(per100(u.op, u.o) - per100(u.dp, u.dn)) : "–";
+  const row = u => [unitNums(S0, u), u.o, per100(u.op, u.o), u.dn, per100(u.dp, u.dn), net(u)];
+  const head = first => [first, ["Our trips", "Our trips with them on the floor"], ["Off/100", "Our points per 100 of our trips"], ["Their trips", ""], ["Def/100", "Their points per 100 of their trips"], ["Net/100", "Needs 10 trips each way"]];
+  return `<div class="stblk"><div class="kicker">Lineups per 100 trips 🔁</div>${stTable(head("On the floor"), A.U.slice(0, 12).map(row))}
+    <div class="kicker" style="margin-top:10px">Pairs per 100 trips</div>${stTable(head("Together"), A.P.filter(u => u.o + u.dn >= 20).slice(0, 12).map(row))}
+    <p class="small" style="margin:4px 0 0">Counted trips with the five on the floor when each one started, so road games without the clock count too. From ${A.n} game${A.n === 1 ? "" : "s"} with subs tapped and every stat logged.</p></div>`;
+}
+/* ---- Keys to the game (0.27.0) ---- */
+// Kevin (0.27.0): one set of keys for the season that a coach picks (Stats, Team: Change the keys). Each is hit or missed
+// from the book. Box score shows where each stands during the game (coaches and the PA pass, never printed or on the fan
+// page) and Stats keeps the record when we hit them. [id, column, words, way (max: at most, min: at least, more: more than
+// them by more than the number), default number, value].
+const KEYDEF = [
+  ["to", "TO", "Our turnovers", "max", 12, x => x.T.us.to],
+  ["oreb", "OR%", "Our offensive rebound rate (%)", "min", 30, x => x.T.us.oreb + x.T.them.dreb ? 100 * x.T.us.oreb / (x.T.us.oreb + x.T.them.dreb) : null],
+  ["ppp", "Opp/trip", "Their points a trip", "max", .9, x => x.ok && x.tr.them.n ? x.tr.them.pts / x.tr.them.n : null],
+  ["fta", "FTA", "Free throws tried", "more", 0, x => x.T.us.fta - x.T.them.fta],
+  ["pot", "Off TO", "Points off turnovers", "more", 0, x => x.x.offTo.us - x.x.offTo.them],
+  ["oto", "Opp TO", "Their turnovers", "min", 15, x => x.T.them.to],
+  ["efg", "eFG%", "Our eFG% (%)", "min", 50, x => x.T.us.fga ? 100 * (x.T.us.fgm + .5 * x.T.us.tpm) / x.T.us.fga : null],
+  ["oefg", "Opp eFG%", "Their eFG% (%)", "max", 45, x => x.T.them.fga ? 100 * (x.T.them.fgm + .5 * x.T.them.tpm) / x.T.them.fga : null],
+  ["reb", "REB", "Rebounds", "more", 0, x => x.T.us.oreb + x.T.us.dreb - x.T.them.oreb - x.T.them.dreb],
+  ["sec", "2nd ch", "Second-chance points", "more", 0, x => x.x.second.us - x.x.second.them],
+  ["ast", "AST", "Our assists", "min", 12, x => x.T.us.ast],
+  ["uppp", "PTS/trip", "Our points a trip", "min", 1, x => x.ok && x.tr.us.n ? x.tr.us.pts / x.tr.us.n : null],
+  ["stops", "Stops", "Our longest stop streak", "min", 5, x => x.ok ? x.st.best.us : null]];
+const KEY_ON = {to:12, oreb:30, ppp:.9, fta:0, pot:0};
+const KEY_DEC = new Set(["ppp", "uppp"]);
+function keySet(){ const k = S.settings.keys; if(!k || typeof k !== "object" || Array.isArray(k)) return KEY_ON; const o = {};
+  for(const [id] of KEYDEF) if(typeof k[id] === "number" && isFinite(k[id]) && k[id] >= 0) o[id] = k[id]; return o; }
+const keyNum = (id, v) => KEY_DEC.has(id) ? (+v).toFixed(2) : /%/.test((KEYDEF.find(x => x[0] === id) || [])[2] || "") ? Math.round(v) + "%" : String(Math.round(v * 10) / 10);
+function keyGoal(id, way, v){ return way === "max" ? `${keyNum(id, v)} or fewer` : way === "min" ? `${keyNum(id, v)} or more` : v > 0 ? `By ${v + 1} or more` : "More than them"; }
+// One game's keys: {id, sh, lb, way, v, val, hit}. hit: null when the book can't say (a trip key in a game without every stat).
+function keyVals(d){
+  const ks = keySet(), ok = tripsOk(d), T = ok ? tripsOf(d) : null, tr = {us:{n:0, pts:0}, them:{n:0, pts:0}};
+  if(T) for(const t of T.L){ tr[t.tm].n++; tr[t.tm].pts += t.pts; }
+  const x = {T:d.T, tr, ok, x:extrasOf(d.gv, d.R), st:T ? stopsOf(T.L) : {best:{us:0, them:0}}};
+  return KEYDEF.filter(([id]) => id in ks).map(([id, sh, lb, way, , f]) => { const v = ks[id], val = f(x);
+    return {id, sh, lb, way, v, val, hit:val == null ? null : way === "max" ? val <= v + 1e-9 : way === "min" ? val >= v - 1e-9 : val > v}; });
+}
+const keyVal = k => k.val == null ? "–" : k.way === "more" ? pmText(Math.round(k.val)) : keyNum(k.id, k.val);
+// Box score, during the game and after it (staff): where each key stands. Live, a key you can still reach says "Not yet".
+function keysBlock(g, d){
+  const kv = keyVals(d); if(!kv.length) return "";
+  const fin = g.status === "final", st = k => k.hit == null ? ["", "–"] : k.hit ? ["green", fin ? "Hit" : "On track"] : !fin && k.way !== "max" ? ["", "Not yet"] : ["solid", "Missed"];
+  const n = kv.filter(k => k.hit).length;
+  return `<div><div class="kicker">Keys to the game · ${n} of ${kv.length} ${fin ? "hit" : "on track"}</div><table class="glance"><tr><th class="l">Key</th><th class="l">Goal</th><th>Now</th><th></th></tr>
+    ${kv.map(k => { const [c, w] = st(k); return `<tr><td class="l">${esc(k.lb.replace(/ \(%\)$/, ""))}</td><td class="l">${esc(keyGoal(k.id, k.way, k.v))}</td><td>${keyVal(k)}</td><td><span class="tag${c ? " " + c : ""}">${w}</span></td></tr>`; }).join("")}</table></div>`;
+}
+function keysCard(S0){
+  const ds = S0.ds.filter(tripsOk), edit = canCoach() ? `<button class="btn sm" data-act="keys">Change the keys</button>` : "";
+  if(!ds.length) return `<div class="stblk"><div class="row between"><div class="kicker">Keys to the game</div>${edit}</div>${noData("Keys need games with every stat logged.")}</div>`;
+  const all = ds.map(d => ({d, kv:keyVals(d)})), defs = all[0].kv;
+  if(!defs.length) return `<div class="stblk"><div class="row between"><div class="kicker">Keys to the game</div>${edit}</div>${noData("No keys picked.")}</div>`;
+  const rec = xs => `${xs.filter(x => x.d.res === "W").length}-${xs.filter(x => x.d.res === "L").length}`;
+  const per = defs.map((k, i) => { const hit = all.filter(x => x.kv[i].hit === true), miss = all.filter(x => x.kv[i].hit === false);
+    return [esc(k.lb.replace(/ \(%\)$/, "")), esc(keyGoal(k.id, k.way, k.v)), `${hit.length} of ${hit.length + miss.length}`, hit.length ? rec(hit) : "–", miss.length ? rec(miss) : "–"]; });
+  const K = defs.length, byN = []; for(let n = K; n >= 0; n--){ const xs = all.filter(x => x.kv.filter(k => k.hit).length === n); if(xs.length) byN.push([`${n} of ${K}`, xs.length, rec(xs)]); }
+  const games = all.slice().reverse().slice(0, 15).map(({d, kv}) => [`${esc(fmtDate(d.g.date))} ${d.g.ha === "Away" ? "at" : "vs"} ${esc(d.g.opp)}`, `${d.res || ""} ${d.sc.us}-${d.sc.them}`].concat(kv.map(k => k.hit == null ? "–" : `<span title="${esc(keyVal(k))}">${k.hit ? "✓" : "✗"}</span>`), [kv.filter(k => k.hit).length]));
+  return `<div class="stblk"><div class="row between"><div class="kicker">Keys to the game</div>${edit}</div>${stTable(["Key", "Goal", "Hit", ["W-L when hit", ""], ["W-L when missed", ""]], per)}
+    <div class="row" style="align-items:flex-start;gap:12px;margin-top:8px"><div style="flex:0 1 260px">${stTable(["Keys hit", "G", "W-L"], byN)}</div><div style="flex:1 1 360px">${stTable(["Game", "Result"].concat(defs.map(k => [k.sh, k.lb])).concat([["Hit", ""]]), games)}</div></div>
+    <p class="small" style="margin:4px 0 0">From ${ds.length} game${ds.length === 1 ? "" : "s"} with every stat logged; the last 15 are listed. Hover a mark for the number. The keys are on Box score during the game for coaches and the PA pass, never printed.</p></div>`;
+}
+function keySheet(){
+  openSheet({html:() => { const ks = keySet();
+    return `<h3>Keys to the game</h3><p class="small" style="margin:0 0 8px">One set for the season. Box score shows where each stands during the game (coaches and the PA pass only, never printed or on the fan page), and Stats keeps the record when we hit them.</p>
+    <div class="scroll-x"><table class="glance">${KEYDEF.map(([id, , lb, way, def]) => `<tr><td class="l"><label><input type="checkbox" data-keyon="${id}" ${id in ks ? "checked" : ""}> ${esc(lb.replace(/ \(%\)$/, ""))}</label></td>
+      <td class="l small">${way === "max" ? "At most" : way === "min" ? "At least" : "More than them by more than"}</td><td><input type="number" inputmode="decimal" step="${KEY_DEC.has(id) ? "0.05" : "1"}" min="0" data-keyv="${id}" value="${id in ks ? ks[id] : def}" style="width:84px"${id in ks && canCoach() ? "" : " disabled"}></td></tr>`).join("")}</table></div>
+    <div class="row" style="margin-top:10px"><button class="btn" data-act="keysdef">Back to the five defaults</button><button class="btn" data-close>Done</button></div>`; }});
+}
+function keyChange(t){
+  if(!canCoach()) return; const ks = {...keySet()}, id = t.dataset.keyon || t.dataset.keyv, def = KEYDEF.find(x => x[0] === id); if(!def) return;
+  if(t.dataset.keyon){ if(t.checked) ks[id] = def[4]; else delete ks[id]; }
+  else { const v = parseFloat(t.value); if(!isFinite(v) || v < 0 || v > 999){ t.value = ks[id] ?? def[4]; return; } ks[id] = KEY_DEC.has(id) ? Math.round(v * 100) / 100 : Math.round(v); }
+  S.settings.keys = ks; S.teamsRev++; save(); Sync.dirtyTeams(); render(); if(ui.sheet) renderSheet();
+}
+/* ---- Foul cost (0.27.0) ---- */
+// Each foul and what it gave the other team: a shooting foul (free throws off a shot, an and-one, or before the bonus), a
+// bonus foul (free throws with no shot) or nothing (no free throws). A technical's free throws count as the technical's.
+function foulsOf(d){
+  if(d.fc) return d.fc;
+  const out = [], start = new Map(ftTrips(d).map(t => [t.fts[0], t])), open = {us:null, them:null}, sf = {us:false, them:false};
+  for(const p of d.P){ const e = p.e, tm = e.tm;
+    if(e.t === "PF" || e.t === "TF"){ const f = {tm, pid:e.pid || null, q:p.q, el:p.el, tech:e.t === "TF", kind:"none", fta:0, pts:0, e}; out.push(f); open[tm] = f; continue; }
+    if(e.t === "FG" && d.R.sf.has(e.id)){ sf[tm] = true; continue; }
+    if(e.t === "FT"){ const t = start.get(e), f = t && open[OTHER(tm)];
+      if(f){ f.kind = f.tech || t.tech ? "tech" : t.and1 || sf[tm] || !t.bonus ? "shot" : "bonus"; f.fta = t.fts.length; f.pts = t.fts.filter(x => x.m).length; open[OTHER(tm)] = null; sf[tm] = false; }
+      continue; }
+    if(["FG", "TO", "STL", "JUMP", "PER"].includes(e.t) || (e.t === "REB" && e.auto !== "dead")){ open.us = open.them = null; sf.us = sf.them = false; }
+  }
+  return d.fc = out;
+}
+function foulCostCard(S0, L){
+  const by = {}, team = {us:{n:0, shot:0, bonus:0, none:0, tech:0, fta:0, pts:0}, them:{n:0, shot:0, bonus:0, none:0, tech:0, fta:0, pts:0}}, bon = {us:[], them:[]}; let n = 0, qs = 0;
+  for(const d of S0.ds){ if(!d.T.us.pf && !d.T.them.pf) continue; n++; const cnt = {};
+    for(const f of foulsOf(d)){ const a = team[f.tm]; a.n++; a[f.kind]++; a.fta += f.fta; a.pts += f.pts;
+      if(f.tm === "us" && f.pid){ const b = by[f.pid] || (by[f.pid] = {n:0, shot:0, bonus:0, none:0, tech:0, fta:0, pts:0}); b.n++; b[f.kind]++; b.fta += f.fta; b.pts += f.pts; }
+      const q = Math.min(f.q, d.Q), k = f.tm + q, c = cnt[k] = (cnt[k] || 0) + 1;
+      if(c === S.settings.bonus && f.el != null && f.q <= d.Q) bon[f.tm].push(d.start(f.q) + periodLen(d.gv, f.q) - f.el); }
+    if(d.ck) qs += Math.min(d.lq, d.Q); }
+  if(!n) return "";
+  const ps = plist(S0, L).filter(p => by[p.pid]);
+  const rows = ps.map(p => { const b = by[p.pid]; return [pBtn(S0, p), b.n, b.shot, b.bonus, b.none, b.fta, b.pts, (b.pts / b.n).toFixed(2)]; });
+  const avg = xs => xs.length ? mss(xs.reduce((s, v) => s + v, 0) / xs.length) : "–";
+  const tr = tm => { const a = team[tm]; return [tm === "us" ? "Our fouls" : "Their fouls", a.n, a.shot, a.bonus, a.none, a.fta, a.pts, a.n ? (a.pts / a.n).toFixed(2) : "–"]; };
+  return `<div class="stblk"><div class="kicker">What fouls cost</div>${stTable(["Player", "PF", ["Shooting", "Free throws off a shot, an and-one, or before the bonus"], ["Bonus", "Free throws with no shot: the other team was in the bonus"], ["No FTs", "Fouls that gave no free throws"], ["FTA given", ""], ["PTS given", "Free throw points those fouls gave up"], ["A foul", "Points given up a foul"]], rows.concat([tr("us"), tr("them")]))}
+    <p class="small" style="margin:4px 0 0">Into the bonus (the other team's ${esc(String(S.settings.bonus))}th foul of a quarter): them on our fouls <b>${bon.us.length}</b> time${bon.us.length === 1 ? "" : "s"}, with <b>${avg(bon.us)}</b> left on average · us on theirs <b>${bon.them.length}</b>, with <b>${avg(bon.them)}</b> left${qs ? ` (${qs} quarters with the clock)` : ""}.
+      Free throws a foul: <b>${team.us.n ? (team.us.fta / team.us.n).toFixed(2) : "–"}</b> given, <b>${team.them.n ? (team.them.fta / team.them.n).toFixed(2) : "–"}</b> drawn. From ${n} game${n === 1 ? "" : "s"}; the time left needs the clock.</p></div>`;
+}
+/* ---- Rebounding by the kind of miss (0.27.0) ---- */
+// Who got the ball after each miss, by what was missed: threes, twos at the rim (within 6 feet), other charted twos, twos
+// with no spot, and the last free throw of a trip. Live rebounds only (a dead-ball team rebound after a foul or the horn isn't a chase).
+const RB_KINDS = [["3", "Missed threes"], ["rim", "Missed twos at the rim"], ["2", "Other missed twos"], ["2n", "Twos with no spot"], ["ft", "Missed last free throws"]];
+function rebMissAgg(S0){ return memo(S0, "_rbm", () => { const A = {us:{}, them:{}}; let n = 0;
+  for(const d of S0.ds){ if(!tripsOk(d)) continue; n++; const ftI = ftLast(d);
+    for(const p of d.P){ const e = p.e; if((e.t !== "FG" && e.t !== "FT") || e.m || !e.tm) continue;
+      if(e.t === "FG" && (d.R.sf.has(e.id) || e.dt)) continue; if(e.t === "FT" && !(ftI.get(e) || {}).last) continue;
+      const r = d.R.rebOf.get(e.id); if(!r || !r.e || r.auto === "dead") continue;
+      const xy = typeof e.x === "number" && typeof e.y === "number", k = e.t === "FT" ? "ft" : e.p === 3 ? "3" : !xy ? "2n" : shotFt(e) < 6 ? "rim" : "2";
+      const a = A[e.tm][k] || (A[e.tm][k] = {n:0, o:0}); a.n++; if(r.e.tm === e.tm) a.o++; } }
+  return {n, A}; }); }
+function rebMissCard(S0){
+  const {n, A} = rebMissAgg(S0); if(!n) return "";
+  const rows = RB_KINDS.filter(([k]) => A.us[k] || A.them[k]).map(([k, lb]) => { const u = A.us[k] || {n:0, o:0}, t = A.them[k] || {n:0, o:0};
+    return [lb, u.n, pc(u.o, u.n), t.n, pc(t.o, t.n)]; }); if(!rows.length) return "";
+  return `<div class="stblk"><div class="kicker">Offensive rebounds by the kind of miss</div>${stTable(["", ["Our misses", ""], ["We got it back", "Our offensive rebound rate on these misses"], ["Their misses", ""], ["They got it back", "Their offensive rebound rate against us"]], rows)}
+    <p class="small" style="margin:4px 0 0">Live rebounds after each miss (tapped or worked out by the book). At the rim: a charted two within 6 feet. From ${n} game${n === 1 ? "" : "s"} with every stat logged.</p></div>`;
+}
+/* ---- Trip length and tempo (0.27.0, clock games) ---- */
+// How long a trip lasts on the game clock, how often the first shot comes in the first 10 seconds, and points a trip by
+// how soon the first shot (or turnover) came.
+const TEMPO_B = [["0-10 seconds", 0, 10], ["11-20 seconds", 10, 20], ["21 seconds or more", 20, 1e9]];
+function tempoCard(S0){
+  const A = {us:{n:0, sec:0, f:0, fn:0, b:TEMPO_B.map(() => ({n:0, pts:0}))}, them:{n:0, sec:0, f:0, fn:0, b:TEMPO_B.map(() => ({n:0, pts:0}))}}; let n = 0;
+  for(const d of S0.cds){ if(!tripsOk(d)) continue; n++;
+    for(const t of tripsOf(d).L){ if(t.el0 == null || !t.end || t.end.q !== t.q || t.end.el == null) continue; const a = A[t.tm], len = t.end.el - t.el0; if(len < 0 || len > 180) continue;
+      a.n++; a.sec += len; if(t.el1 != null && t.el1 >= t.el0){ const w = t.el1 - t.el0; a.fn++; if(w <= 10) a.f++; const b = TEMPO_B.findIndex(([, lo, hi]) => w > lo - (lo ? 0 : 1) && w <= hi); if(b >= 0){ a.b[b].n++; a.b[b].pts += t.pts; } } } }
+  if(!n || !A.us.n) return `<div class="stblk"><div class="kicker">Trip length and tempo ⏱</div>${noData("Needs games with the game clock and every stat logged.")}</div>`;
+  const rows = [["Seconds a trip", fx1(A.us.sec / A.us.n), A.them.n ? fx1(A.them.sec / A.them.n) : "–"], ["First shot in 10 seconds or less", pc(A.us.f, A.us.fn), pc(A.them.f, A.them.fn)]]
+    .concat(TEMPO_B.map(([lb], i) => [`Points a trip, first shot at ${lb}`, `${ppt(A.us.b[i].pts, A.us.b[i].n)} <span class="small">(${A.us.b[i].n})</span>`, `${ppt(A.them.b[i].pts, A.them.b[i].n)} <span class="small">(${A.them.b[i].n})</span>`]));
+  return `<div class="stblk"><div class="kicker">Trip length and tempo ⏱</div>${stTable(["", "Us", "Them"], rows)}<p class="small" style="margin:4px 0 0">A trip runs from when the team got the ball to when the other team did, on the game clock; the first shot can be a turnover or a foul's free throws. ${clockNote(S0)}</p></div>`;
+}
+/* ---- Book grade (0.27.0) ---- */
+// How complete a game's book is, from what got tapped: shots with a spot, rebounds tapped (not worked out by the book),
+// trips whose change of hands was tapped, the rebound balance, flags still up and changes after the final. Out of 100:
+// spots count 20, rebounds 25, trips 25, the balance 10, flags 10 (2 each), changes after the final 10 (1 each). The
+// clock on plays and plays put in later are shown, not graded (a road game has no board). Points-only games aren't graded.
+function bookGrade(d){
+  if("bg" in d) return d.bg; if(!tripsOk(d)) return d.bg = null;
+  const g = d.g, fg = d.P.filter(p => p.e.t === "FG" && !p.e.dt && !p.e.auto), sp = fg.filter(p => typeof p.e.x === "number" && typeof p.e.y === "number").length;
+  const rebs = d.P.filter(p => p.e.t === "REB" && p.e.auto !== "dead"), tapped = rebs.filter(p => !p.e.auto).length;
+  const T = tripsOf(d).L, gaps = T.filter(t => t.how === "gap").length, st = d.P.filter(p => STAT_T.has(p.e.t) && !p.e.auto), clk = st.filter(p => p.el != null).length;
+  const B = balanceOf(d.gv, d.R), bal = B.us.d === 0 && B.them.d === 0, fl = g.ev.filter(e => e && e.fl && !e.v).length;
+  const fin = g.status === "final" ? finAt(g) : 0, late = fin ? g.ev.filter(e => e && typeof e.ebt === "number" && e.ebt > fin).length : 0, ins = g.ev.filter(e => e && e.ins && !e.v).length;
+  const pen = 20 * (1 - (fg.length ? sp / fg.length : 1)) + 25 * (1 - (rebs.length ? tapped / rebs.length : 1)) + Math.min(25, 100 * (T.length ? gaps / T.length : 0)) + (bal ? 0 : 10) + Math.min(10, 2 * fl) + Math.min(10, late);
+  const sc = Math.max(0, Math.round(100 - pen));
+  return d.bg = {sc, letter:sc >= 90 ? "A" : sc >= 80 ? "B" : sc >= 70 ? "C" : sc >= 60 ? "D" : "F", fg:fg.length, sp, rebs:rebs.length, tapped, trips:T.length, gaps, clk, all:st.length, bal, fl, late, ins};
+}
+// Who scored a game: the name on most of its edits, and the device.
+function scorerOf(g){ const c = {}; for(const e of g.ev) if(e && typeof e.eb === "string" && e.eb.trim()) c[e.eb] = (c[e.eb] || 0) + 1;
+  const nm = Object.keys(c).sort((a, b) => c[b] - c[a])[0] || "", dev = !g.writer ? "" : g.writer === S.dev ? "this device" : "device …" + String(g.writer).slice(-4);
+  return {k:nm || g.writer || "?", lb:nm ? nm + (dev ? ` (${dev})` : "") : dev ? dev[0].toUpperCase() + dev.slice(1) : "Not known"}; }
+function bookCard(S0){
+  const xs = S0.ds.map(d => ({d, b:bookGrade(d)})).filter(x => x.b); if(!xs.length) return "";
+  const pcT = (a, b) => b ? Math.round(100 * a / b) + "%" : "–";
+  const rows = xs.slice().reverse().slice(0, 15).map(({d, b}) => [`${esc(fmtDate(d.g.date))} ${d.g.ha === "Away" ? "at" : "vs"} ${esc(d.g.opp)}`, `<b>${b.letter}</b> <span class="small">${b.sc}</span>`, pcT(b.sp, b.fg), pcT(b.tapped, b.rebs), b.gaps, b.bal ? "✓" : "✗", b.fl, b.late, pcT(b.clk, b.all), b.ins]);
+  const by = new Map(); for(const {d, b} of xs){ const s = scorerOf(d.g), a = by.get(s.k) || {lb:s.lb, n:0, sc:0}; by.set(s.k, a); a.n++; a.sc += b.sc; }
+  const who = [...by.values()].sort((a, b) => b.n - a.n).map(a => { const sc = Math.round(a.sc / a.n); return [esc(a.lb), a.n, `<b>${sc >= 90 ? "A" : sc >= 80 ? "B" : sc >= 70 ? "C" : sc >= 60 ? "D" : "F"}</b> <span class="small">${sc}</span>`]; });
+  return `<div class="stblk"><div class="kicker">Book grade</div>${stTable(["Game", "Grade", ["Spots", "Shots with a spot"], ["REB tapped", "Rebounds tapped, not worked out by the book"], ["Missed trips", "Changes of hands the book didn't have"], ["Balanced", "Rebounds match the misses"], ["Flags up", ""], ["After final", "Changes after the final"], ["Clock", "Plays with the game clock (not graded)"], ["Put in", "Plays put in later (not graded)"]], rows)}
+    <div class="kicker" style="margin-top:10px">By scorer</div>${stTable(["Scorer", "G", "Grade"], who)}
+    <p class="small" style="margin:4px 0 0">Out of 100: spots 20, rebounds tapped 25, trips 25, balance 10, flags 10, changes after the final 10. The scorer is the name on most of a game's edits. Points-only games aren't graded.</p></div>`;
+}
+/* ---- Shot quality (0.27.0) ---- */
+// What a shot from each zone is worth: both teams' charted shots this season pooled, nudged toward a typical high school
+// number where a zone has few shots (10 shots' worth). A team's shot quality is the average worth of its shots; points over
+// expected is what it scored on them less that.
+const XP_PRIOR = {rim:1.1, paint:.8, midL:.72, midC:.72, midR:.72, c3L:1, c3R:1, w3L:.93, t3:.9, w3R:.93};
+const xpShot = (d, e) => e.t === "FG" && !e.dt && !e.auto && !d.R.sf.has(e.id) && typeof e.x === "number" && typeof e.y === "number";
+function xpTab(S0){ return memo(S0, "_xp", () => { const z = {};
+  for(const g of S0.all){ const d = dig(g, false); for(const p of d.P){ if(!xpShot(d, p.e)) continue; const a = z[zoneOf(p.e)] || (z[zoneOf(p.e)] = {n:0, pts:0}); a.n++; if(p.e.m) a.pts += p.e.p; } }
+  const xp = {}; for(const [k] of ZONES){ const a = z[k] || {n:0, pts:0}; xp[k] = (a.pts + XP_PRIOR[k] * 10) / (a.n + 10); } return xp; }); }
+function shotQualCard(S0, L){
+  const X = xpTab(S0), T = {us:{n:0, x:0, pts:0}, them:{n:0, x:0, pts:0}}, P = {}, G = [];
+  for(const d of S0.ds){ const gg = {us:{n:0, x:0, pts:0}, them:{n:0, x:0, pts:0}};
+    for(const p of d.P){ const e = p.e; if(!xpShot(d, e) || !e.tm) continue; const v = X[zoneOf(e)], pts = e.m ? e.p : 0;
+      for(const a of [T[e.tm], gg[e.tm]].concat(e.tm === "us" && e.pid ? [P[e.pid] || (P[e.pid] = {n:0, x:0, pts:0, g:new Set()})] : [])){ a.n++; a.x += v; a.pts += pts; }
+      if(e.tm === "us" && e.pid) P[e.pid].g.add(d.g.id); }
+    if(gg.us.n + gg.them.n) G.push({d, gg}); }
+  if(!T.us.n && !T.them.n) return `<div class="stblk"><div class="kicker">Shot quality</div>${noData("Needs charted shots.")}</div>`;
+  const q = a => a.n ? (a.x / a.n).toFixed(2) : "–", act = a => a.n ? (a.pts / a.n).toFixed(2) : "–", oe = a => a.n ? sgn1(a.pts - a.x) : "–";
+  const team = [["Our shots", T.us.n, q(T.us), act(T.us), oe(T.us)], ["Their shots", T.them.n, q(T.them), act(T.them), oe(T.them)]];
+  const ps = plist(S0, L).filter(p => P[p.pid] && P[p.pid].n >= 5).map(p => { const a = P[p.pid]; return [pBtn(S0, p), a.n, q(a), act(a), oe(a), fx1((a.pts - a.x) / a.g.size)]; });
+  const gs = G.slice().reverse().slice(0, 10).map(({d, gg}) => [`${esc(fmtDate(d.g.date))} ${d.g.ha === "Away" ? "at" : "vs"} ${esc(d.g.opp)}`, q(gg.us), oe(gg.us), q(gg.them), oe(gg.them)]);
+  return `<div class="stblk"><div class="kicker">Shot quality: expected points</div>${stTable(["", "Shots", ["Worth", "Average expected points a shot, by where it came from"], ["Scored", "Points a shot"], ["Over expected", "Points scored less points expected"]], team)}
+    ${ps.length ? `<div class="kicker" style="margin-top:10px">Points over expected, by player</div>${stTable(["Player", "Shots", "Worth", "Scored", ["Over exp.", ""], ["A game", ""]], ps)}` : ""}
+    ${gs.length ? `<div class="kicker" style="margin-top:10px">By game</div>${stTable(["Game", ["Our shots worth", ""], ["Us over exp.", ""], ["Their shots worth", ""], ["Them over exp.", ""]], gs)}` : ""}
+    <p class="small" style="margin:4px 0 0">A shot's worth: points a shot from its zone, both teams this season (${ZONES.map(([k, lb]) => `${lb.toLowerCase()} ${X[k].toFixed(2)}`).join(", ")}). Charted field goals only; free throws aren't in it. Players with 5 or more charted shots.</p></div>`;
+}
+/* ---- Stint fatigue (0.27.0, clock and subs) ---- */
+// Shooting and the score by how long a player had been on the floor: minutes since the player last came in (or the
+// period started, since a quarter break is a rest).
+const FAT_B = [["First 2 minutes", 0, 120], ["2-4 minutes", 120, 240], ["4-6 minutes", 240, 360], ["6 minutes or more", 360, 1e9]];
+function fatigueAgg(S0){ return memo(S0, "_fat", () => { const T = FAT_B.map(() => ({fga:0, fgm:0, pf:0, pa:0, sec:0})), P = {}; let n = 0;
+  const pp = pid => P[pid] || (P[pid] = FAT_B.map(() => ({fga:0, fgm:0, pf:0, pa:0, sec:0}))), bk = s => FAT_B.findIndex(([, lo, hi]) => s >= lo && s < hi);
+  for(const d of S0.mds){ if(d.M.short.size) continue; n++; const st = stintsOf(d);
+    const into = (pid, t, q) => { for(const [a, b] of st[pid] || []) if(a != null && b != null && t >= a && t <= b) return t - Math.max(a, d.start(q)); return null; };
+    for(const pid in st) for(const [a, b] of st[pid]){ if(a == null || b == null) continue;
+      for(let q = 1; q <= d.lq; q++){ const s0 = Math.max(a, d.start(q)), s1 = Math.min(b, d.start(q + 1)); if(s1 <= s0) continue;
+        FAT_B.forEach(([, lo, hi], i) => { const x = Math.max(0, Math.min(s1, s0 + hi) - (s0 + lo)); if(x > 0){ T[i].sec += x; pp(pid)[i].sec += x; } }); } }
+    for(const p of d.P){ if(p.el == null) continue; const e = p.e;
+      if(e.t === "FG" && e.tm === "us" && e.pid && !e.dt && !e.auto && !d.R.sf.has(e.id)){ const s = into(e.pid, p.el, p.q); if(s != null){ const i = bk(s); for(const a of [T[i], pp(e.pid)[i]]){ a.fga++; if(e.m) a.fgm++; } } }
+      if(p.scored && p.on) for(const pid of p.on){ const s = into(pid, p.el, p.q); if(s == null) continue; const i = bk(s); for(const a of [T[i], pp(pid)[i]]){ a.pf += p.sc.us - p.bf.us; a.pa += p.sc.them - p.bf.them; } } } }
+  return {n, T, P}; }); }
+function fatigueCard(S0, L){
+  const A = fatigueAgg(S0); if(!A.n) return `<div class="stblk"><div class="kicker">Stint fatigue ⏱🔁</div>${noData("Needs games with the game clock and every sub's clock.")}</div>`;
+  const net = a => a.sec >= 120 ? sgn1((a.pf - a.pa) * 1920 / a.sec) : "–", fg = a => a.fga ? `${a.fgm}-${a.fga} <span class="small">${pc(a.fgm, a.fga)}</span>` : "–";
+  const j = (xs, i0, i1) => xs.slice(i0, i1).reduce((s, a) => ({fga:s.fga + a.fga, fgm:s.fgm + a.fgm, pf:s.pf + a.pf, pa:s.pa + a.pa, sec:s.sec + a.sec}), {fga:0, fgm:0, pf:0, pa:0, sec:0});
+  const ps = plist(S0, L).filter(p => A.P[p.pid]).map(p => { const x = A.P[p.pid], a = j(x, 0, 2), b = j(x, 2, 4); return [pBtn(S0, p), fg(a), fg(b), net(a), net(b)]; });
+  return `<div class="stblk"><div class="kicker">Stint fatigue ⏱🔁</div>${stTable(["Into the stint", "FG", ["Net/32", "The score per 32 minutes, our players' time in that stretch of a stint"], ["MIN", "Player minutes"]], FAT_B.map(([lb], i) => [lb, fg(A.T[i]), net(A.T[i]), Math.round(A.T[i].sec / 60)]))}
+    ${ps.length ? `<div class="kicker" style="margin-top:10px">By player: the first 4 minutes of a stint and after</div>${stTable(["Player", "FG first 4", "FG after 4", "Net/32 first 4", "Net/32 after 4"], ps)}` : ""}
+    <p class="small" style="margin:4px 0 0">A stint starts when a player comes in or a period starts. From ${A.n} game${A.n === 1 ? "" : "s"} with the clock and every sub's clock. Net/32 needs 2 minutes.</p></div>`;
+}
+/* ---- Road clock from tap times (0.27.0) ---- */
+// Kevin (0.27.0): a road game has no board, only the clocks typed at fouls and timeouts (the pop-up) and the horns. Tap
+// times fill in the rest: between two plays with a clock, the time that ran is shared out over the gaps between taps,
+// leaving out the stretches the clock is stopped (before a free throw, around a sub, a few seconds after a whistle, a
+// timeout). The app checks itself on games with the board (keeping only the clocks a road game would have, then comparing
+// with the board's): road estimates turn on, in Stats only and marked est., once two such games agree within 2 seconds
+// on the time between plays and 20 seconds on the clock. Box score minutes stay measured only.
+const RC_DEAD = {PF:20, TF:30, TO:12, JUMP:8, FT:5};
+function tapClock(g, R, keep){
+  const out = new Map(), plays = R.plays.filter(p => !p.void && typeof p.e.at === "number" && isFinite(p.e.at));
+  for(let q = 1; q <= lastQ(R); q++){
+    const P = plays.filter(p => p.q === q); if(!P.length) continue; const Lq = periodLen(g, q), w = []; let dead = 0;
+    P.forEach((p, i) => { const e = p.e; if(!i){ w.push(5); } else { const gap = Math.max(0, (e.at - P[i - 1].e.at) / 1000);
+        if(e.t === "FT" || e.t === "IN" || e.t === "OUT" || e.t === "TMO"){ w.push(0); dead = Math.max(0, dead - gap); } else { const x = Math.min(gap, dead); dead -= x; w.push(gap - x); } }
+      if(e.t === "TMO") dead = Math.max(dead, e.len === 30 ? 15 : 20); else if(e.t === "TO" && e.auto === "stl") dead = 0; else if(RC_DEAD[e.t] && !(e.t === "TO" && ttOf(e) && TT_LIVE.includes(ttOf(e)))) dead = Math.max(dead, RC_DEAD[e.t]); });
+    const cw = []; let c = 0; for(const x of w){ c += x; cw.push(c); }
+    const A = [[-1, Lq, 0]];
+    P.forEach((p, i) => { const s = p.e.t === "PER" ? 0 : keep(p.e) ? gcIn(g, p.e, q) : null; if(s != null && s <= A[A.length - 1][1]) A.push([i, s, cw[i]]); });
+    P.forEach((p, i) => { const at = A.find(x => x[0] === i); if(at){ out.set(p.e, at[1]); return; }
+      let a = A[0], b = null; for(const x of A){ if(x[0] < i) a = x; else if(x[0] > i){ b = x; break; } }
+      const s = b ? (b[2] > a[2] ? a[1] - (a[1] - b[1]) * (cw[i] - a[2]) / (b[2] - a[2]) : a[1] - (a[1] - b[1]) * (i - a[0]) / (b[0] - a[0])) : a[1] - (cw[i] - a[2]);
+      out.set(p.e, Math.max(0, Math.min(Lq, s))); });
+  }
+  return out;
+}
+const median = xs => { if(!xs.length) return null; const s = xs.slice().sort((a, b) => a - b), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+const RC_KEEP = e => e.t === "PF" || e.t === "TF" || e.t === "TMO";
+// The self-check: every game this season with the board's clock, as a road game would have it. {n, abs, gap, ok}.
+let RC = {sig:null, res:null}, RC_BUSY = false;
+function roadCheck(team){
+  const games = seasonGames(team), sig = team + "|" + games.map(g => g.id + ":" + gSig(g)).join("|");
+  if(RC.sig === sig) return RC.res;
+  const ab = [], gp = [];
+  for(const g of games){ const d = dig(g, false); if(!d.ck) continue;
+    const est = tapClock(g, d.R, RC_KEEP), ga = [], gg = []; let prev = null;
+    for(const p of d.R.plays){ if(p.void || p.der || !STAT_T.has(p.e.t)) continue; const m = gcIn(g, p.e, p.q), s = est.get(p.e);
+      if(m == null || s == null){ prev = null; continue; }
+      if(!RC_KEEP(p.e)) ga.push(Math.abs(s - m));
+      if(prev && prev.q === p.q){ const dm = prev.m - m; if(dm > 0 && dm <= 30) gg.push(Math.abs((prev.s - s) - dm)); }
+      prev = {q:p.q, m, s}; }
+    if(ga.length >= 20 && gg.length >= 10){ ab.push(median(ga)); gp.push(median(gg)); } }
+  const res = {n:ab.length, abs:median(ab), gap:median(gp)}; res.ok = res.n >= 2 && res.gap <= 2 && res.abs <= 20;
+  RC = {sig, res}; return res;
+}
+function roadOk(team){ if(RC_BUSY) return false; RC_BUSY = true; try{ return roadCheck(team).ok; } finally{ RC_BUSY = false; } }
+// A road game with its clock filled in from tap times (the plays' own clocks stay; each estimate is marked est).
+function estGame(g){ const R = replay(g), est = tapClock(g, R, () => true), qOf = new Map(R.plays.map(p => [p.e, p.q]));
+  return {...g, ev:g.ev.map(e => !e || e.v || !est.has(e) || gcIn(g, e, qOf.get(e)) != null ? e : {...e, gc:{q:qOf.get(e), s:Math.round(est.get(e) * 10) / 10, est:1}})}; }
+function roadCard(S0){
+  if(RC_BUSY) return ""; RC_BUSY = true; let r; try{ r = roadCheck(S0.team); } finally{ RC_BUSY = false; }
+  const est = S0.ds.filter(d => d.est).length;
+  return `<div class="stblk"><div class="kicker">Road clock from tap times</div><p class="small" style="margin:4px 0 0">${r.n ? `Checked on ${r.n} game${r.n === 1 ? "" : "s"} with the board: the time between plays comes out within <b>${fx1(r.gap)}</b> seconds and the clock within <b>${fx1(r.abs)}</b> seconds (middle game). ` : "No game with the board to check against yet. "}
+    Road estimates are <b>${r.ok ? "on" : "off"}</b>${r.ok ? `: ${est} game${est === 1 ? "" : "s"} here use${est === 1 ? "s" : ""} them, marked est.` : `: they turn on once 2 games with the board agree within 2 seconds between plays and 20 seconds on the clock.`} They feed Stats only; Box score minutes always come from the clock that was tapped or sent.</p></div>`;
+}
+/* ---- Win chance (0.27.0, staff only) ---- */
+// Kevin (0.27.0): the chance we win from here, for the PA, Jim and the bench. NEVER on the fan page, the Live stats tab,
+// the stream's score bug, the public copy or any printout: it's drawn only on the PA page, the broadcast page and Box
+// score (coaches and the PA pass), inside no-print cards. The model is the classic one for basketball (Stern, 1994): the
+// final margin is the margin now plus a normal spread that shrinks with the time left (10 points over a whole high school
+// game), and having the ball is worth about 0.8 of a point. It knows nothing about the teams, so it's labeled an estimate.
+function normCdf(x){ const z = Math.abs(x) / Math.SQRT2, t = 1 / (1 + .3275911 * z), y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - .284496736) * t + .254829592) * t * Math.exp(-z * z); return x >= 0 ? (1 + y) / 2 : (1 - y) / 2; }
+function wpAt(g, m, q, s, ball){ const Q = g.quarters || 4, full = Q * periodLen(g, 1); let left = s; for(let k = q + 1; k <= Q; k++) left += periodLen(g, k);
+  const sd = 10 * Math.sqrt(Math.max(0, left) / full), adj = ball === "us" ? .8 : ball === "them" ? -.8 : 0;
+  return left <= 0 || sd < .01 ? (m > 0 ? 1 : m < 0 ? 0 : .5) : normCdf((m + adj) / sd); }
+function wpNow(g, R, ball){
+  const q = R.q; let s = null, est = false;
+  if(R.brk) s = periodLen(g, q);
+  else { const b = Board.stamp(g); if(b && b.q === q && typeof b.s === "number") s = b.s;
+    else for(let i = R.plays.length - 1; i >= 0 && s == null; i--){ const p = R.plays[i]; if(p.void || p.q !== q) continue; s = gcIn(g, p.e, q); }
+    if(s == null){ s = periodLen(g, q); est = true; } }
+  return {p:wpAt(g, R.sc.us - R.sc.them, q, s, R.brk ? null : ball), est}; }
+// The win chance after every play with a clock (no ball adjustment), for the chart.
+function wpSeries(g, R){ const out = [], st = [0]; for(let q = 1; q <= R.q; q++) st.push(st[q - 1] + periodLen(g, q));
+  for(const p of R.plays){ if(p.void || p.der) continue; const s = gcIn(g, p.e, p.q); if(s == null) continue; out.push({t:st[p.q] - s, p:wpAt(g, p.sc.us - p.sc.them, p.q, s, null)}); }
+  return {pts:out, end:st[Math.max(g.quarters || 4, lastQ(R))]}; }
+function wpChart(g, R){
+  const W = wpSeries(g, R); if(W.pts.length < 5) return "";
+  const w = 560, h = 110, X = t => 4 + t / W.end * (w - 8), Y = p => 4 + (1 - p) * (h - 8), pts = [`${X(0)},${Y(.5)}`].concat(W.pts.map(x => `${X(x.t).toFixed(1)},${Y(x.p).toFixed(1)}`)).join(" ");
+  return `<svg class="stchart" viewBox="0 0 ${w} ${h}" role="img" aria-label="Win chance through the game" preserveAspectRatio="xMinYMin meet"><line x1="4" x2="${w - 4}" y1="${Y(.5)}" y2="${Y(.5)}" stroke="#D0D0D0" stroke-dasharray="3 3"/><polyline points="${pts}" fill="none" stroke="#094A28" stroke-width="2"/><text x="6" y="14" class="ax">${esc(usName(g))} 100%</text><text x="6" y="${h - 6}" class="ax">${esc(g.opp)} 100%</text></svg>`;
+}
+function wpBlock(g, R, ball, chart){
+  const fin = g.status === "final", w = fin ? null : wpNow(g, R, ball), pu = w ? (w.p > .99 && w.p < 1 ? 99 : w.p < .01 && w.p > 0 ? 1 : Math.round(100 * w.p)) : null, ch = chart ? wpChart(g, R) : "";
+  if(!w && !ch) return "";
+  return `<div class="wpbox"><div class="kicker">Win chance · an estimate${fin ? ", through the game" : ""}</div>${w ? `<div class="wpbar" aria-hidden="true"><span style="width:${pu}%"></span></div>
+    <div class="row between"><b>${esc(usName(g))} ${pu}%</b><b>${esc(g.opp)} ${100 - pu}%</b></div>` : ""}${ch}
+    <p class="small" style="margin:2px 0 0">From the score, the time left${w && w.est ? " (no clock yet this period, so its full length)" : ""} and who has the ball. It doesn't know the teams. Staff only: never on the fan page, the stream or a printout.</p></div>`;
+}
+/* ---- The staff card on the PA page, the broadcast page and Box score (0.27.0) ---- */
+// Stops in a row and trips (PA and broadcast), the win chance (all three) and the keys (Box score). Coaches, Admins and
+// the PA pass only, never on the fan page, and never printed.
+function edgeCard(g, R, where){
+  if(PUB || !g || !paOk() || !R.plays.some(p => !p.void && STAT_T.has(p.e.t))) return "";
+  const d = dig(g, false), full = !d.T.us.po && !d.T.them.po && R.plays.some(p => !p.void && p.e.t === "REB"), T = full ? tripsOf(d) : null, parts = [];
+  if(T && where !== "box"){ const st = stopsOf(T.L), tr = {us:{n:0, pts:0}, them:{n:0, pts:0}}; for(const t of T.L){ tr[t.tm].n++; tr[t.tm].pts += t.pts; }
+    const runs = ["us", "them"].filter(tm => st.run[tm] >= 3).map(tm => `<div class="edgerun">${esc(tmName(g, tm))}: ${st.run[tm]} straight stops</div>`).join("");
+    parts.push(`<div>${runs}<div class="small"><b>Trips:</b> ${esc(usName(g))} ${tr.us.n} (${ppt(tr.us.pts, tr.us.n)} a trip) · ${esc(g.opp)} ${tr.them.n} (${ppt(tr.them.pts, tr.them.n)})${st.best.us >= 3 || st.best.them >= 3 ? ` · longest stop streak: ${esc(usName(g))} ${st.best.us}, ${esc(g.opp)} ${st.best.them}` : ""}</div></div>`); }
+  parts.push(wpBlock(g, R, T ? T.ball : null, where !== "pa"));
+  if(where === "box") parts.push(keysBlock(g, d));
+  const html = parts.filter(Boolean).join("");
+  return html ? `<div class="card no-print edge stack">${html}</div>` : "";
+}
 /* ---- Team ---- */
 // Leader cards: the top three in each category (shooting needs some attempts: 2 shots or 1 free throw a game played).
 function stLeaders(S0, L){
@@ -5654,15 +6105,15 @@ function viewSeason(){
   const sum = any || ui.stComp ? `<div class="small" style="margin-top:6px;font-weight:600">${n} of ${S0.all.length} game${S0.all.length === 1 ? "" : "s"} · ${w}-${l}${n ? ` · ${fx1(S0.ds.reduce((s, d) => s + d.sc.us, 0) / n)}-${fx1(S0.ds.reduce((s, d) => s + d.sc.them, 0) / n)} a game` : ""}${ui.stComp ? " · competitive minutes only" : ""}</div>` : teamRecord(team);
   const csv = `<div class="row" style="margin-top:10px"><p class="small" style="margin:0;flex:1 1 260px">Season numbers count games that are over. Shooting percentages leave out points-only games. ⏱ needs the game clock, 🔁 needs subs tapped.</p><button class="btn sm" data-act="seasoncsv" data-team="${team}">Season CSV</button><button class="btn sm" data-act="allcsv" data-team="${team}">All games CSV</button></div>`;
   const empty = `<div class="card"><p style="margin:0">${S0.all.length ? "No games match these picks." : "No games over yet. A game counts here once it's over."}</p></div>`;
-  const body = sec === "records" ? recordsView(S0) : sec === "scout" ? scoutCard(S0) + mpScout(team) : !n ? empty : `<div class="card">${{
-    team:() => stLeaders(S0, L) + `<div class="stblk">${teamLineOf(S0)}</div>` + resultsChart(S0) + trendCard(S0) + ffTable(S0) + restTable(S0) + groupTable(S0, L) + teamHighs(S0) + oppTable(S0) + districtCard(team) + csv,
+  const body = sec === "records" ? recordsView(S0) : sec === "scout" ? scoutCard(S0) + mpScout(team) : sec === "leaks" ? leaksView(team) : !n ? empty : `<div class="card">${{
+    team:() => stLeaders(S0, L) + `<div class="stblk">${teamLineOf(S0)}</div>` + resultsChart(S0) + trendCard(S0) + keysCard(S0) + ffTable(S0) + tripCard(S0) + restTable(S0) + groupTable(S0, L) + teamHighs(S0) + oppTable(S0) + districtCard(team) + bookCard(S0) + csv,
     players:() => playersTable(S0, L) + rangeChart(S0, L) + scatterChart(S0, L) + compareCard(S0, L) + assistNet(S0) + csv,
-    shooting:() => shotChartCard(S0, L) + howTeam(S0) + ftTeam(S0) + rimCard(S0),
-    flow:() => quarterCard(S0) + leadsCard(S0) + clutchCard(S0) + marginCurve(S0) + startsCard(S0) + droughtCard(S0) + runsCard(S0) + timeoutCard(S0) + toCard(S0) + paceCard(S0),
-    lineups:() => unitsCard(S0) + rotationCard(S0) + minutesCard(S0, L) + benchCard(S0) + foulCard(S0, L) + bigCard(S0) + `<p class="small" style="margin:12px 0 0">Each player on and off the floor (+/-, shares, rebounding, defense): Players, On the floor.</p>`}[sec]()}</div>`;
+    shooting:() => shotChartCard(S0, L) + shotQualCard(S0, L) + howTeam(S0) + ftTeam(S0) + rebMissCard(S0) + rimCard(S0),
+    flow:() => quarterCard(S0) + leadsCard(S0) + clutchCard(S0) + marginCurve(S0) + startsCard(S0) + droughtCard(S0) + runsCard(S0) + timeoutCard(S0) + toCard(S0) + paceCard(S0) + tempoCard(S0),
+    lineups:() => unitsCard(S0) + tripUnitsCard(S0) + rotationCard(S0) + minutesCard(S0, L) + fatigueCard(S0, L) + benchCard(S0) + foulCard(S0, L) + foulCostCard(S0, L) + bigCard(S0) + roadCard(S0) + `<p class="small" style="margin:12px 0 0">Each player on and off the floor (+/-, shares, rebounding, defense): Players, On the floor.</p>`}[sec]()}</div>`;
   return `<div class="stack stv"><div class="card rcard"><div class="row between"><div class="tc-head" style="margin:0"><img src="bobcat-head.png" alt=""><div><div class="kicker">${SEASON} · Season stats</div><h2>${esc(T.name)}</h2></div></div>
       <div class="row">${["boys", "girls"].map(t => `<button class="btn sm" data-act="stteam" data-v="${t}" aria-pressed="${t === team}">${t === "girls" ? "Girls" : "Boys"}</button>`).join("")}</div></div>
-      ${sec === "records" ? "" : filterBar(S0) + sum}
+      ${sec === "records" || sec === "leaks" ? "" : filterBar(S0) + sum}
       <div class="stnav" role="group" aria-label="Stats section">${ST_SECS.map(([k, lb]) => `<button data-act="stsec" data-v="${k}" aria-pressed="${k === sec}">${lb}</button>`).join("")}</div></div>${body}</div>`;
 }
 /* ---- The player page: more on top of the game log ---- */
@@ -7210,6 +7661,101 @@ function lateCard(g, R){
     <div class="small" style="margin-top:8px">${sit.join(" ")}</div></div>`;
 }
 
+// "What's changed" (edge 2): three to five lines for the bench at a timeout or a break on what's different tonight from
+// the season. The top lines are ranked by about how many points each is worth so far tonight, good news or bad: their
+// shooting (eFG% against what we usually allow, times their shots) and ours, our turnovers, their offensive rebounds, both
+// teams' free throws against the season's pace, and points a trip by how the trip started (the possession log, 0.27.0).
+// Then who's carrying them tonight and whose fouls to go at. Coaches and Admins, Box score, live games only.
+const CHG_C = {}, HOW_W = {stl:"off a steal", dreb:"off a defensive rebound", make:"after a basket", dead:"after a dead ball", per:"to start a period"}, howW = (tm, k) => k === "make" ? (tm === "us" ? "after they score" : "after we score") : HOW_W[k];
+function tripsLog(g){ if(typeof tripsOf !== "function") return null; const d = dig(g, false); if(typeof tripsOk === "function" && !tripsOk(d)) return null;
+  const t = tripsOf(d); return t && Array.isArray(t.L) ? t.L : null; }
+function seasonBase(team, skip){
+  const gs = seasonGames(team).filter(x => x.id !== skip), k = gs.map(x => x.id + ":" + gSig(x)).join("|"), c = CHG_C[team];
+  if(c && c.k === k) return c.v;
+  const v = {n:gs.length, us:LINE(), them:LINE(), trips:{}};
+  for(const x of gs){ const R = replay(x); for(const tm of ["us", "them"]){ const t = totalsOf(R, tm); for(const kk of Object.keys(v[tm])) v[tm][kk] += t[kk]; }
+    for(const tr of tripsLog(x) || []){ const a = v.trips[tr.tm + ":" + tr.how] || (v.trips[tr.tm + ":" + tr.how] = {n:0, pts:0}); a.n++; a.pts += +tr.pts || 0; } }
+  CHG_C[team] = {k, v}; return v;
+}
+// How much of the game is behind us: whole periods, plus the one being played from the board clock (else half of it).
+function playedFrac(g, R){ const Q = g.quarters || 4, c = Board.stamp(g), len = periodLen(g, Math.min(R.q, Q)) || 1;
+  const done = R.brk ? R.q - 1 : R.q - 1 + (c && c.q === R.q ? Math.max(0, Math.min(1, 1 - c.s / len)) : .5);
+  return Math.max(.25, Math.min(1, done / Q)); }
+function chgCard(g, R){
+  if(!g || !canCoach() || PUB || OBS || g.status !== "live" || g.practice || !g.ev.some(e => !e.v && !PREGAME(e))) return "";
+  const B = seasonBase(g.team, g.id), head = `<h3 style="font-size:22px;margin:0">What's changed</h3>`;
+  if(B.n < 2) return `<div class="card no-print chg">${head}<p class="small" style="margin:4px 0 0">Once two games are over, this compares tonight with the season.</p></div>`;
+  const f = playedFrac(g, R), n = B.n, us = totalsOf(R, "us"), th = totalsOf(R, "them"), by = k => fx1(k / n * f);
+  const efg = t => t.fga ? (t.fgm + .5 * t.tpm) / t.fga : null, out = [];
+  const eT = efg(th), eT0 = efg(B.them), eU = efg(us), eU0 = efg(B.us);
+  if(eT != null && eT0 != null && th.fga >= 8) out.push({v:(eT - eT0) * 2 * th.fga, t:`They're shooting ${pctS(eT)} eFG, ${th.fgm} of ${th.fga} with ${th.tpm} three${th.tpm === 1 ? "" : "s"} (we usually allow ${pctS(eT0)}).`});
+  if(eU != null && eU0 != null && us.fga >= 8) out.push({v:-(eU - eU0) * 2 * us.fga, t:`We're shooting ${pctS(eU)} eFG, ${us.fgm} of ${us.fga} with ${us.tpm} three${us.tpm === 1 ? "" : "s"} (season ${pctS(eU0)}).`});
+  out.push({v:us.to - B.us.to / n * f, t:`${us.to} turnover${us.to === 1 ? "" : "s"} so far (we'd usually have about ${by(B.us.to)} by now).`});
+  out.push({v:1.1 * (th.oreb - B.them.oreb / n * f), t:`They have ${th.oreb} offensive rebound${th.oreb === 1 ? "" : "s"} (we usually allow about ${by(B.them.oreb)} by now).`});
+  out.push({v:.7 * (th.fta - B.them.fta / n * f), t:`They've shot ${th.fta} free throw${th.fta === 1 ? "" : "s"} (about ${by(B.them.fta)} by now most nights).`});
+  out.push({v:-.7 * (us.fta - B.us.fta / n * f), t:`We've shot ${us.fta} free throw${us.fta === 1 ? "" : "s"} (about ${by(B.us.fta)} by now most nights).`});
+  const T = tripsLog(g);
+  if(T){ const now = {}; for(const tr of T){ if(!HOW_W[tr.how]) continue; const a = now[tr.tm + ":" + tr.how] || (now[tr.tm + ":" + tr.how] = {tm:tr.tm, how:tr.how, n:0, pts:0}); a.n++; a.pts += +tr.pts || 0; }
+    for(const a of Object.values(now)){ const s = B.trips[a.tm + ":" + a.how]; if(a.n < 3 || !s || s.n < 10) continue; const p = a.pts / a.n, p0 = s.pts / s.n;
+      out.push(a.tm === "us" ? {v:-(p - p0) * a.n, t:`We're getting ${p.toFixed(2)} points a trip ${howW("us", a.how)} (season ${p0.toFixed(2)}).`} : {v:(p - p0) * a.n, t:`They're getting ${p.toFixed(2)} a trip ${howW("them", a.how)} (we usually allow ${p0.toFixed(2)}).`}); } }
+  const top = out.filter(x => Math.abs(x.v) >= 1.5).sort((a, b) => Math.abs(b.v) - Math.abs(a.v)).slice(0, 3);
+  const ppl = Object.entries(R.box.them).map(([pid, ln]) => ({p:player(g, "them", pid), ln, pid})).filter(x => x.p);
+  const go = ppl.filter(x => x.ln.fga >= 6 && th.fga && x.ln.fga / th.fga >= .3).sort((a, b) => b.ln.fga - a.ln.fga)[0];
+  const half1 = R.q <= (g.quarters || 4) / 2 && !(R.brk && R.q > (g.quarters || 4) / 2), hot = ln => ln.pf >= 3 || (half1 && ln.pf >= 2);
+  const atk = ppl.filter(x => R.court.them.has(x.pid) && hot(x.ln) && x.ln.pf < 5).sort((a, b) => b.ln.pf - a.ln.pf);
+  const ours = Object.entries(R.box.us).map(([pid, ln]) => ({p:player(g, "us", pid), ln})).filter(x => x.p && hot(x.ln) && x.ln.pf < 5).sort((a, b) => b.ln.pf - a.ln.pf);
+  const who = x => `#${esc(x.p.num)}${pShort(x.p) ? " " + esc(pShort(x.p)) : ""}`;
+  const more = [go ? `${who(go)} has taken ${go.ln.fga} of their ${th.fga} shots (${go.ln.pts} point${go.ln.pts === 1 ? "" : "s"}).` : "",
+    atk.length ? `Go at ${atk.map(x => `${who(x)} (${x.ln.pf} fouls)`).join(", ")}.` : "", ours.length ? `Our foul trouble: ${ours.map(x => `${who(x)} (${x.ln.pf})`).join(", ")}.` : ""].filter(Boolean);
+  const lis = top.map(x => `<li${x.v > 0 ? ' class="bad"' : ""}>${x.v > 0 ? "▲" : "▼"} ${x.t}</li>`).concat(more.map(t => `<li>${t}</li>`));
+  return `<div class="card no-print chg"><div class="kicker">${esc(nowLabel(g, R))} · against the season (${n} games)</div>${head}
+    ${lis.length ? `<ul style="margin:6px 0 0 18px;padding:0">${lis.join("")}</ul>` : `<p style="margin:6px 0 0">Nothing's far off the season so far.</p>`}
+    <p class="small" style="margin:6px 0 0">▲ is hurting us, ▼ is going our way, biggest first by about how many points it's worth so far tonight.</p></div>`;
+}
+
+// Where the points went (edge 4): the leaks for a stretch of games, ranked by points a game, against the whole season.
+// From the play chains Stats already keeps (chainOf): points off our live-ball and dead-ball turnovers, their second
+// chances, their transition baskets (clock games only), the free throws we missed and their points at the line.
+const LK_RANGES = [["7", "Last 7 days"], ["3", "Last 3 games"], ["5", "Last 5 games"], ["all", "Whole season"]];
+function leakGames(team, rg){
+  const all = seasonGames(team); if(rg === "all") return all; if(rg === "3" || rg === "5") return all.slice(-+rg);
+  const d = new Date(pubToday() + "T12:00:00"); d.setDate(d.getDate() - 7); const from = d.toISOString().slice(0, 10); return all.filter(g => g.date >= from);
+}
+const LEAKS = [["live", "Points off our live-ball turnovers"], ["dead", "Points off our dead-ball turnovers"], ["sec", "Their second-chance points"],
+  ["trans", "Their transition points (clock games)"], ["ftx", "Free throws we missed"], ["ftthem", "Their points at the line"]];
+function leaksOf(gs){
+  const a = {n:gs.length, ck:0}; for(const [k] of LEAKS) a[k] = 0;
+  for(const g of gs){ const d = dig(g, false), R = d.R || replay(g), us = totalsOf(R, "us"), th = totalsOf(R, "them"), ch = chainOf(d);
+    for(const p of ch.pts) if(p.tm === "them"){ if(p.to) a[p.to.stl ? "live" : "dead"] += p.n; if(p.sec) a.sec += p.n; }
+    if(d.ck){ a.ck++; for(const x of ch.fga) if(x.tm === "them" && x.tr && x.e.m) a.trans += x.e.p; }
+    if(!us.po) a.ftx += us.fta - us.ftm; a.ftthem += th.ftm; }
+  return a;
+}
+function leaksView(team){
+  const rg = LK_RANGES.some(r => r[0] === ui.lkRange) ? ui.lkRange : "7", gs = leakGames(team, rg), all = seasonGames(team);
+  const pick = `<div class="row no-print"><span class="kicker">Games</span><select data-sel="lkRange" style="width:auto">${LK_RANGES.map(([k, l]) => `<option value="${k}" ${k === rg ? "selected" : ""}>${l}</option>`).join("")}</select>${gs.length ? `<button class="btn sm" data-act="lkpdf" data-team="${team}">PDF</button>` : ""}</div>`;
+  if(!gs.length) return `<div class="card stack">${pick}<p style="margin:0">No games over in that stretch. Pick a longer one.</p></div>`;
+  const A = leaksOf(gs), S1 = leaksOf(all), per = (x, k) => k === "trans" ? (x.ck ? x[k] / x.ck : null) : x[k] / x.n;
+  const rows = LEAKS.map(([k, l]) => ({k, l, v:per(A, k), s:per(S1, k)})).filter(r => r.v != null).sort((a, b) => b.v - a.v);
+  const top = rows.filter(r => r.v > 0).slice(0, 3).map((r, i) => `<li><b>${esc(r.l)}:</b> ${fx1(r.v)} a game${rg !== "all" && r.s != null ? `, season ${fx1(r.s)}` : ""}.</li>`).join("");
+  return `<div class="card stack">${pick}<div><h3 style="font-size:22px;margin:0">Where the points went</h3><p class="small" style="margin:2px 0 0">${gs.length} game${gs.length === 1 ? "" : "s"}: ${esc(gs.map(g => `${fmtDate(g.date)} ${g.ha === "Away" ? "at" : "vs."} ${g.opp}`).join(", "))}.</p></div>
+    ${top ? `<ol style="margin:0 0 0 18px;padding:0">${top}</ol>` : `<p style="margin:0">Nothing leaked in that stretch.</p>`}
+    ${stTable(["Leak", "A game", ...(rg !== "all" ? ["Season", "Change"] : [])], rows.map(r => [esc(r.l), fx1(r.v), ...(rg !== "all" ? [r.s == null ? "–" : fx1(r.s), r.s == null ? "–" : (r.v - r.s >= 0 ? "+" : "") + fx1(r.v - r.s)] : [])]))}
+    <p class="small" style="margin:0">Points a game, biggest first. A turnover is live-ball when a steal came with it. Transition is a basket within 7 seconds of getting the ball, so it counts only games with the board clock (${A.ck} of ${A.n}).</p></div>`;
+}
+function leaksPdf(team){
+  const rg = LK_RANGES.some(r => r[0] === ui.lkRange) ? ui.lkRange : "7", gs = leakGames(team, rg); if(!gs.length) return;
+  const A = leaksOf(gs), S1 = leaksOf(seasonGames(team)), per = (x, k) => k === "trans" ? (x.ck ? x[k] / x.ck : null) : x[k] / x.n;
+  const rows = LEAKS.map(([k, l]) => ({l, v:per(A, k), s:per(S1, k)})).filter(r => r.v != null).sort((a, b) => b.v - a.v);
+  const title = `Where the points went: ${team === "girls" ? "girls" : "boys"}, ${(LK_RANGES.find(r => r[0] === rg) || [, ""])[1].toLowerCase()}`, D = pdfDoc(title), Lx = 36, RT = 576; let y = 40;
+  D.page(); D.text(Lx, y, `${team === "girls" ? "Girls" : "Boys"} varsity · ${SEASON} · staff only`.toUpperCase(), {sz:8.5, b:true, g:.35});
+  y += 22; D.text(Lx, y, "Where the points went", {sz:20, b:true});
+  y += 15; D.text(Lx, y, `${gs.length} game${gs.length === 1 ? "" : "s"}: ${gs.map(g => `${fmtDate(g.date)} ${g.ha === "Away" ? "at" : "vs."} ${g.opp}`).join(", ")}`, {sz:9, g:.25, fit:RT - Lx});
+  y += 26; D.text(Lx, y, "Leak", {sz:8, b:true, g:.4}); D.text(380, y, "A GAME", {sz:8, b:true, g:.4, al:"r"}); D.text(470, y, "SEASON", {sz:8, b:true, g:.4, al:"r"}); D.text(RT, y, "CHANGE", {sz:8, b:true, g:.4, al:"r"});
+  rows.forEach(r => { y += 18; D.text(Lx, y, r.l, {sz:11, fit:320}); D.text(380, y, fx1(r.v), {sz:11, b:true, al:"r"}); D.text(470, y, r.s == null ? "-" : fx1(r.s), {sz:11, al:"r"}); D.text(RT, y, r.s == null ? "-" : (r.v - r.s >= 0 ? "+" : "") + fx1(r.v - r.s), {sz:11, al:"r"}); });
+  y += 26; D.text(Lx, y, `Brier Stats ${BS_VERSION} · ${new Date().toLocaleDateString()} · Points a game. Transition counts only games with the board clock (${A.ck} of ${A.n}).`, {sz:7, g:.45, fit:RT - Lx});
+  shareFile(`brier-stats-points-went-${team}-${pubToday()}.pdf`, new Blob([D.bytes()], {type:"application/pdf"}), title);
+}
 /* ---------- events ---------- */
 // Viewers only watch. What would change the table, notes, name notes, the PA's prep and script, Jim's notes or the saved
 // rosters is read-only on their screens, and a tap on it says why (the cloud refuses it anyway).
@@ -7593,6 +8139,8 @@ document.addEventListener("click", async ev => {
     case "allcsv": if(canCoach()) download(`brier-stats-${a.dataset.team}-all-games.csv`, allGamesCsv(a.dataset.team), "text/csv"); break;
     case "glog": gameLog(a.dataset.team, a.dataset.pid, a.dataset.opp || ""); break;
     case "shotpl": ui.shotPid = a.dataset.pid; ui.shotSel = null; render(); break;
+    case "keys": if(canCoach()) keySheet(); break;
+    case "keysdef": if(canCoach()){ S.settings.keys = {...KEY_ON}; S.teamsRev++; save(); Sync.dirtyTeams(); render(); if(ui.sheet) renderSheet(); } break;
     case "stteam": ui.stTeam = a.dataset.v; ui.stf = {}; ui.stc = {}; ui.stSel = ui.scSel = null; ui.stScout = ui.stRot = ""; ui.stCmp = []; render(); break;
     case "stopp": (ui.stf || (ui.stf = {})).opp = a.dataset.opp; render(); break;
     case "stsec": ui.stSec = a.dataset.v; render(); break;
@@ -7619,6 +8167,7 @@ document.addEventListener("click", async ev => {
       const k = okey(s.opp), o = S.opps[k] || (S.opps[k] = {}); o.mp = {...(o.mp && typeof o.mp === "object" ? o.mp : {}), [team]:{at:Date.now(), rows:r.rows}};
       S.teamsRev++; save(); Sync.dirtyTeams(); render(); renderSheet(); toast(`Read ${r.n} ${team} player${r.n === 1 ? "" : "s"} from ${r.tables} table${r.tables === 1 ? "" : "s"}.`, 3500); break; }
     case "mpclear": { if(!s || !s.opp || !canCoach()) break; const o = S.opps[okey(s.opp)], team = a.dataset.team; if(o && o.mp && (team === "boys" || team === "girls")){ delete o.mp[team]; S.teamsRev++; save(); Sync.dirtyTeams(); render(); renderSheet(); toast("Cleared."); } break; }
+    case "lkpdf": if(canCoach() && (a.dataset.team === "boys" || a.dataset.team === "girls")) leaksPdf(a.dataset.team); break;
     case "voidtog": { if(!g || !canEdit(g)) break; const e = g.ev.find(x => x.id === a.dataset.id); if(e){ const v = !e.v, ed = Date.now(); (e.grp ? g.ev.filter(x => x.grp === e.grp) : [e]).forEach(x => { x.v = v; x.ed = ed; }); touch(g); } break; }
     case "fix": { if(!g || !canEdit(g)) break; const e = g.ev.find(x => x.id === a.dataset.id); if(e) fixSheet(g, e); break; }
     case "autofix": if(g && canEdit(g)) autoFixSheet(g, a.dataset.id); break;
@@ -7826,6 +8375,7 @@ document.addEventListener("change", ev => {
   if(t.hasAttribute("data-bcpad")){ bcPadSave(t, true); const gg = S.games[t.dataset.bcpad]; if(gg){ padStep(gg, t); afterPress(render); } }
   if(t.dataset.prior && canCoach()){ const [team, pid, k] = t.dataset.prior.split("|"), T = S.teams[team]; if(T){ const v = t.value.trim(), o = ((T.prior || (T.prior = {}))[pid] || (T.prior[pid] = {}));
     if(v === "") delete o[k]; else { const n = parseInt(v, 10); if(isNaN(n) || n < 0){ t.value = o[k] ?? ""; return; } o[k] = n; } S.teamsRev++; save(); Sync.dirtyTeams(); afterPress(softRender); } }   // a tap that ended the typing still lands
+  if((t.dataset.keyon || t.dataset.keyv) && canCoach()) keyChange(t);
   if(t.dataset.set && (t.dataset.set === "pubSec" ? canAdmin() : canCoach())){ const v = parseInt(t.value, 10); if(!isNaN(v)){ S.settings[t.dataset.set] = v; S.teamsRev++; save(); Sync.dirtyTeams(); render(); } }
   if(t.id === "script-file" && t.files[0]){ const r = new FileReader(); r.onload = () => { let segs = null; try{ segs = scriptFileSegs(JSON.parse(r.result)); }catch(e){}
       if(segs) scriptLoad(segs, "the file"); else toast("That file isn't a Brier Stats script."); }; r.readAsText(t.files[0]); t.value = ""; }
