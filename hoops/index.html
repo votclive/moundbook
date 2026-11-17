@@ -5,7 +5,7 @@
 <!-- The page's lock: the only script that may run is the one in this file (named by the SHA-256 of its text) and files
      from this folder (fb.js). Text that turns up in the page from a roster, a game or the cloud can never run as code.
      After ANY edit to the script, run "python3 hoops/stamp.py hoops": with a stale hash the browser runs nothing. -->
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-a/RoSgtYXLUPVqqvjQ6E7N7CM8TWjRQ8GyExmH6Z7g8='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-XuAcbuc/xgPxj7plJOhnRQTt5BzmFjBq3AqCn+laMNg='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#094A28">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -2271,7 +2271,7 @@ function teamBox(g, R, tm, edit){
 // A play's game clock in the list, next to its period. On the Plays page, for whoever can fix the game, it's a button that
 // sets it (and our subs with none say + clock: minutes played need them; lineup taps before the tip don't).
 function playClock(g, e, p, edit){ const c = gcText(e, g, p.q);
-  if(edit && !p.void && (c || ((e.t === "IN" || e.t === "OUT") && e.tm === "us" && !e.lu) || CK_ASK.has(e.t) || e.t === "FT")) return `<button class="gcl" data-act="gclk" data-id="${e.id}" title="Set this play's game clock">${c || "+ clock"}</button>`;
+  if(edit && !p.void && (c || ((e.t === "IN" || e.t === "OUT") && e.tm === "us" && !e.lu) || CK_ASK.has(e.t))) return `<button class="gcl" data-act="gclk" data-id="${e.id}" title="Set this play's game clock">${c || "+ clock"}</button>`;
   return c ? `<span class="gcl">${c}</span>` : ""; }
 // Which horn this is: the count of horns in the book up to it (a horn put in later renumbers the ones after it).
 function perNo(g, e){ let n = 0; for(const x of g.ev){ if(x === e) return n + 1; if(!x.v && x.t === "PER") n++; } return 0; }
