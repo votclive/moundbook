@@ -18,7 +18,7 @@ service cloud.firestore {
 
     // Claiming the program: only the owner email, only once, and only together with the owner's member record.
     match /config/owner {
-      allow read: if signedIn();
+      allow read: if member();
       allow create: if signedIn() && ownerEmail()
         && request.resource.data.uid == request.auth.uid
         && getAfter(/databases/$(db)/documents/members/$(request.auth.uid)).data.role == 'owner';
