@@ -7002,7 +7002,7 @@ Sync = (()=>{
       const app=fb.initializeApp(c.firebase, "moundbook");
       const auth=fb.initializeAuth(app, {persistence: fb.browserLocalPersistence});
       const db=fb.initializeFirestore(app, {localCache: fb.memoryLocalCache()});
-      if(c.emulator){ fb.connectAuthEmulator(auth, c.emulator.auth, {disableWarnings:true}); fb.connectFirestoreEmulator(db, c.emulator.host, c.emulator.port); }
+      if(c.emulator && (location.hostname==="localhost" || location.hostname==="127.0.0.1")){ fb.connectAuthEmulator(auth, c.emulator.auth, {disableWarnings:true}); fb.connectFirestoreEmulator(db, c.emulator.host, c.emulator.port); }
       Object.assign(st, {fb, auth, db});
       fb.onAuthStateChanged(auth, u=>onUser(u));
       window.addEventListener("online", ()=>{ st.net=true; if(live()){ restartData(); kick(300); } paint(); });
@@ -8025,7 +8025,7 @@ Sync = (()=>{
   function readJoin(text){
     const t=String(text||"").trim().replace(/\s+/g,"");
     if(!t.startsWith("MB1:")) return null;
-    try{ const o=JSON.parse(decodeURIComponent(escape(atob(t.slice(4))))); return o && o.firebase && o.firebase.apiKey ? o : null; }catch(e){ return null; }
+    try{ const o=JSON.parse(decodeURIComponent(escape(atob(t.slice(4))))); if(o && o.emulator && !(location.hostname==="localhost" || location.hostname==="127.0.0.1")) delete o.emulator; return o && o.firebase && o.firebase.apiKey ? o : null; }catch(e){ return null; }
   }
   function parseFirebase(text){
     const t=String(text||""); const pick=k=>{ const m=t.match(new RegExp("[\"']?"+k+"[\"']?\\s*:\\s*[\"']([^\"']+)[\"']")); return m?m[1]:""; };
