@@ -5,7 +5,7 @@
 <!-- The page's lock: the only script that may run is the one in this file (named by the SHA-256 of its text) and files
      from this folder (fb.js). Text that turns up in the page from a roster, a game or the cloud can never run as code.
      After ANY edit to the script, run "python3 hoops/stamp.py hoops": with a stale hash the browser runs nothing. -->
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-WxRS3a9HYiMXSpqy5mDAQyU6RYo+dKSa0yZqw3xfXyo='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-2QAW58dL5lkhIsSx6jagmQcs/or/WJtCKwN94TUXLE4='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#094A28">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -859,14 +859,29 @@ td .face{width:24px;height:24px;margin:-5px 7px -4px 0}
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
 { const n = document.getElementById("nostart"); if(n) n.remove(); }   // the script is running: see #nostart
-const BS_VERSION = "0.28.1";
+const BS_VERSION = "0.29.0";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
 const pct = (m, a) => a ? Math.round(100 * m / a) + "%" : "–";
-// The public page for fans: no sign-in, read only. On votclive.com (votclive.com/hoops/livestats/, a Netlify proxy of this
-// folder, Kevin 0.20.3) it is the only page: no ?live needed, and staff can't sign in there.
-const PUB = /[?&#]live\b/.test(location.search + location.hash) || /(^|\.)votclive\.com$/i.test(location.hostname);
+// The public page for fans: no sign-in, read only. On votclive.com itself (votclive.com/hoops/livestats/, a Netlify proxy of
+// this folder, Kevin 0.20.3) it is the only page: no ?live needed, and staff can't sign in there. stats.votclive.com (the
+// club's Cloudflare copy of this folder, 0.29.0) is the full app, so staff can score and sign in from the school network.
+const PUB = /[?&#]live\b/.test(location.search + location.hash) || /^(www\.)?votclive\.com$/i.test(location.hostname);
+// The school network blocks Google's addresses. On any votclive.com address, sync and sign-in go through the club's
+// Cloudflare relay instead (fs., id. and tok.votclive.com, cloudflare/brier-relay.js in the project files), same database.
+// Everywhere else (github.io) they go straight to Google as before. Drive backup and the scoreboard relay Mac stay direct.
+const RELAY = /(^|\.)votclive\.com(:\d+)?$/i.test(location.host) ? location.host.replace(/^(stats|www)\./i, "") : null;
+function viaRelay(m){
+  if(!RELAY) return m;
+  const ssl = location.protocol === "https:";
+  return Object.assign({}, m, {
+    initializeFirestore: (app, s) => m.initializeFirestore(app, Object.assign({}, s, {host: "fs." + RELAY, ssl})),
+    // Auth has no public host setting; its config is a plain object that every request (and token refresh) reads.
+    initializeAuth: (app, d) => { const a = m.initializeAuth(app, d);
+      Object.assign(a.config, {apiHost: "id." + RELAY, tokenApiHost: "tok." + RELAY, apiScheme: ssl ? "https" : "http"}); return a; }
+  });
+}
 const ANN_ONLY = !PUB && /[?&#]announcer\b/.test(location.search + location.hash);
 // The score bug for the stream (?bug, or /hoops/bug/): an OBS browser source on Jim's MacBook. No sign-in, see-through page.
 const OBS = !PUB && /[?&#]bug\b/.test(location.search + location.hash);
@@ -9052,7 +9067,7 @@ function pubPick(){
 const PubRead = (() => {
   async function start(){
     try{
-      const fb = await import(new URL("fb.js", document.baseURI).href);
+      const fb = viaRelay(await import(new URL("fb.js", document.baseURI).href));
       const app = fb.initializeApp(FB, "brierpublic"), db = fb.initializeFirestore(app, {localCache:fb.memoryLocalCache()});
       Object.assign(PS, {fb, db, board:boardFeed(fb, db, render)}); listen();
       // The board's clock ticks in place; anything else the board changes redraws the page.
@@ -9133,7 +9148,7 @@ const BugRead = (() => {
     addEventListener("resize", render);
     if(BS.q.has("demo")){ demo(); return; }
     try{
-      const fb = await import(new URL("fb.js", document.baseURI).href);
+      const fb = viaRelay(await import(new URL("fb.js", document.baseURI).href));
       const app = fb.initializeApp(FB, "brierbug"), db = fb.initializeFirestore(app, {localCache:fb.memoryLocalCache()});
       Object.assign(BS, {fb, db, board:boardFeed(fb, db, render)});
       fb.onSnapshot(fb.doc(db, "hoopsPublic", "_bug"), d => { let b = null; try{ b = d.exists() ? pubSafe(JSON.parse(d.data().j)) : null; }catch(e){}
@@ -9468,7 +9483,7 @@ const Sync = (() => {
     st.phase = "loading"; paint();
     try{
       // A failed import can stick to its address: a retry asks for it under a new one (the offline copy still answers).
-      const fb = await import(new URL("fb.js" + (st.tries++ ? "?r=" + st.tries : ""), document.baseURI).href);
+      const fb = viaRelay(await import(new URL("fb.js" + (st.tries++ ? "?r=" + st.tries : ""), document.baseURI).href));
       const app = fb.initializeApp(FB, "moundbook");       // same app name as Mound Book: one sign-in covers both on this site
       const auth = fb.initializeAuth(app, {persistence: fb.browserLocalPersistence});
       const db = fb.initializeFirestore(app, {localCache: fb.memoryLocalCache()});
