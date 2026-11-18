@@ -27,7 +27,7 @@ Each write costs one read for every listener, so listen to one game doc at a tim
 
 ## Reading it safely (0.16.3)
 
-Any scorer's sign-in (and the scoreboard relay's) can write these documents, so a reader should treat every value as somebody else's writing:
+Any scorer's sign-in can write these documents (the scoreboard's `_board` and `_boardHb` only the scoreboard relay's sign-in or an Admin's), so a reader should treat every value as somebody else's writing:
 
 - A play's `text` is already HTML-escaped text (an apostrophe arrives as `&#39;`). Decode it and show it as text, or strip anything that looks like a tag before putting it in a page. Never put it into a page as HTML as it comes.
 - Names (`opp`, `usName`, `event`, `sponsor`, the box rows' names) are plain text: escape them when they go into HTML.
