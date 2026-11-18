@@ -1,0 +1,19 @@
+{
+  "name": "moundbook-security-tests",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Local-emulator security tests for the Mound Book / Brier Stats Firestore rules and the Brier Stats client. Never talks to the real Firebase project.",
+  "type": "module",
+  "scripts": {
+    "test:rules": "firebase emulators:exec --only firestore --project demo-moundbook \"node --test rules.test.mjs smoke-game-night.test.mjs\"",
+    "test:client": "node --test moundbook.test.mjs",
+    "check": "python3 ../hoops/stamp.py ../hoops --check && python3 check_rules_copies.py",
+    "test": "npm run test:rules && npm run test:client && npm run check"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "5.0.2",
+    "firebase": "12.19.0",
+    "firebase-tools": "15.36.0",
+    "jsdom": "31.0.1"
+  }
+}
