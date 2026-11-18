@@ -4038,7 +4038,7 @@ function zoneSVG(o){
   quads.forEach(([z,x,y])=>{ s+=`<rect class="zc" data-z="${z}" x="${x}" y="${y}" width="${W/2}" height="${H/2}" fill="${fillFor(z)}" stroke="var(--line)" stroke-width="1" tabindex="0" role="button" aria-label="Out of zone ${({11:"up, catcher-left",12:"up, catcher-right",13:"down, catcher-left",14:"down, catcher-right"})[z]}" aria-pressed="${z===sel}"/>`; });
   for(let r=0;r<3;r++) for(let c=0;c<3;c++){ const z=r*3+c+1; s+=`<rect class="zc" data-z="${z}" x="${x0+c*cw}" y="${y0+r*ch}" width="${cw}" height="${ch}" fill="${fillFor(z)}" stroke="var(--ink)" stroke-width="1" tabindex="0" role="button" aria-label="Zone ${z}" aria-pressed="${z===sel}"/>`; }
   s+=`<rect x="${x0}" y="${y0}" width="${cw*3}" height="${ch*3}" fill="none" stroke="var(--ink)" stroke-width="2" pointer-events="none"/>`;
-  if(o.hand){ const left=o.hand==="R"; s+=`<text x="${left?3:W-3}" y="${H/2+4}" text-anchor="${left?"start":"end"}" font-size="11" font-weight="700" fill="var(--muted)" font-family="Barlow Condensed,sans-serif">${o.hand}HB</text>`; }
+  if(o.hand){ const left=o.hand==="R"; s+=`<text x="${left?3:W-3}" y="${H/2+4}" text-anchor="${left?"start":"end"}" font-size="11" font-weight="700" fill="var(--muted)" font-family="Barlow Condensed,sans-serif">${esc(o.hand)}HB</text>`; }
   return s+"</svg>";
 }
 function diamondSVG(st, cls){
@@ -4216,7 +4216,7 @@ function renderChart(){
   const lastPE=lastPitchEntry(g); const lastP=R.pitches.filter(x=>!x.extra).pop();
   const prevPA=R.pitches.filter(x=>x.paNo===L.paNo-1);
   const curB = L.lineup.length && L.spot!=null ? L.lineup[L.spot] : null;
-  const dots=(n,max,cls)=>Array.from({length:max},(_,i)=>`<button class="dot ${cls} ${i<n?"on":""}" data-dot="${cls}" aria-label="${({b:"Balls",s:"Strikes",o:"Outs"})[cls]}: ${n}. Tap to fix"></button>`).join("");
+  const dots=(n,max,cls)=>Array.from({length:max},(_,i)=>`<button class="dot ${cls} ${i<n?"on":""}" data-dot="${cls}" aria-label="${({b:"Balls",s:"Strikes",o:"Outs"})[cls]}: ${esc(n)}. Tap to fix"></button>`).join("");
   const loc = charter ? "off" : S.settings.loc;
   const resBtns = [
     ["B","Ball","B","var(--ball)"],["BD","Ball, dirt","D","var(--ball)"],["CS","Called","C","var(--strike)"],["SS","Swinging","S","var(--strike)"],
@@ -4226,7 +4226,7 @@ function renderChart(){
   const dug=dugoutLines(todayPs); const dugKey=g.id+"|"+dug.join("|");
   const star = lastPE ? `<button class="star" data-act="star" aria-pressed="${!!lastPE.star}" aria-label="Flag the last pitch for Coach" title="Coach, look at this">${lastPE.star?"★":"☆"}</button>` : "";
   const chips = paItems.length ? paItems.map(x=>x.kind ? `<span class="chip ev">${esc(evLabel(x))}</span>`
-      : `<button class="chip ${x.est?"est":""}" style="${pcStyle(x.type)}" ${lastP&&x.id===lastP.id?`data-act="retype" aria-label="Change the last pitch's type"`:"disabled"}><i></i>${x.est?"":`${x.balls}-${x.strikes} `}${pname(x.type)} · ${esc(resLabel(x))}${x.ttp?` · ${x.ttp.toFixed(2)}s`:""}</button>`).join("")
+      : `<button class="chip ${x.est?"est":""}" style="${pcStyle(x.type)}" ${lastP&&x.id===lastP.id?`data-act="retype" aria-label="Change the last pitch's type"`:"disabled"}><i></i>${x.est?"":`${esc(x.balls)}-${esc(x.strikes)} `}${pname(x.type)} · ${esc(resLabel(x))}${x.ttp?` · ${x.ttp.toFixed(2)}s`:""}</button>`).join("")
     : (prevPA.length ? `<span class="muted" style="font-size:14px">New batter. Last one: ${prevPA.map(x=>pname(x.type)).join(", ")} → <b>${esc(paLabel(prevPA[prevPA.length-1].pa))}</b>${prevPA[prevPA.length-1].d3?" (reached)":""}.</span> ${lastP&&lastP.paNo===L.paNo-1?`<button class="chip" style="${pcStyle(lastP.type)}" data-act="retype"><i></i>Last pitch: ${pname(lastP.type)}${lastP.type==="UN"?" (tap to set)":""}</button>`:""}${L.lineup.length?"":" <b>Check L/R.</b>"}`
       : `<span class="muted">No pitches yet this at-bat.</span>`);
 
@@ -4235,15 +4235,15 @@ function renderChart(){
   <div class="chart-grid">
     <div class="col">
       <div class="board${watch?" ro":""}" ${watch?"inert":""}>
-        <div><div class="cell-lab">Inning</div><div class="inning"><button class="step" data-act="inn-" aria-label="Previous inning">−</button><span class="num">${L.inning}</span><button class="step" data-act="inn+" aria-label="Next inning">+</button></div>
+        <div><div class="cell-lab">Inning</div><div class="inning"><button class="step" data-act="inn-" aria-label="Previous inning">−</button><span class="num">${esc(L.inning)}</span><button class="step" data-act="inn+" aria-label="Next inning">+</button></div>
           <div class="lights"><div class="grp"><span>OUTS</span>${dots(L.outs,2,"o")}</div></div></div>
         <div><div class="cell-lab">Runners</div>${diamondSVG(L)}</div>
-        <div><div class="cell-lab">Count</div><div class="count" aria-live="polite"><span class="b">${L.balls}</span><span class="dash">–</span><span class="s">${L.strikes}</span></div>
+        <div><div class="cell-lab">Count</div><div class="count" aria-live="polite"><span class="b">${esc(L.balls)}</span><span class="dash">–</span><span class="s">${esc(L.strikes)}</span></div>
           <div class="lights"><div class="grp"><span>B</span>${dots(L.balls,3,"b")}</div><div class="grp"><span>S</span>${dots(L.strikes,2,"s")}</div></div></div>
         ${boardPC(g,R)}
         <div class="batbar">
           ${L.lineup.length?`<button class="step" data-act="bat-" aria-label="Previous batter">‹</button>`:""}
-          <div class="who"><div class="cell-lab">At bat${g.hitting==="us"?" · "+esc(S.settings.ourName||"Us"):g.bTeam?" · "+esc(g.bTeam):""}</div>${curB?`<b>${L.spot+1}. ${esc(batterText(curB))}</b> <span class="muted">${curB.hand==="S"?"switch, batting "+L.hand:"bats "+L.hand}</span>`:`<input type="text" id="batter" value="${esc(L.batter)}" placeholder="Batter # or name (optional)" style="width:100%;max-width:220px">`}</div>
+          <div class="who"><div class="cell-lab">At bat${g.hitting==="us"?" · "+esc(S.settings.ourName||"Us"):g.bTeam?" · "+esc(g.bTeam):""}</div>${curB?`<b>${esc(L.spot+1)}. ${esc(batterText(curB))}</b> <span class="muted">${esc(curB.hand==="S"?"switch, batting "+L.hand:"bats "+L.hand)}</span>`:`<input type="text" id="batter" value="${esc(L.batter)}" placeholder="Batter # or name (optional)" style="width:100%;max-width:220px">`}</div>
           ${L.lineup.length?`<button class="step" data-act="bat+" aria-label="Next batter">›</button>`:""}
           <div class="hand ${ui.pulseHand?"pulse":""}" role="group" aria-label="Batter side"><button data-hand="L" aria-pressed="${L.hand==="L"}">L</button><button data-hand="R" aria-pressed="${L.hand==="R"}">R</button></div>
           ${L.lineup.length?`<button class="btn small" data-act="sub">Sub</button>`:""}<button class="btn small" data-act="lineup">${L.lineup.length?"Lineup":"Add lineup"}</button>
@@ -4251,7 +4251,7 @@ function renderChart(){
       </div>
       ${ended ? gameOverHTML(g,R,watch) : watch ? watchHTML(g,R) : `
       <div class="panel">
-        <div class="row between" style="margin-bottom:10px"><h3 style="margin:0">${esc(pLabel(p))} <span class="h3note">${esc(g.pTeam||"")} · ${handKnown(p) ? p.hand+"HP" : "hand ?"} · pitch ${L.pop} to this batter</span></h3>
+        <div class="row between" style="margin-bottom:10px"><h3 style="margin:0">${esc(pLabel(p))} <span class="h3note">${esc(g.pTeam||"")} · ${handKnown(p) ? esc(p.hand)+"HP" : "hand ?"} · pitch ${L.pop} to this batter</span></h3>
           <div class="row"><button class="btn small" data-act="changep">Change pitcher</button></div></div>
         <div class="types">${shown.map((c,i)=>`<button class="type" style="${pcStyle(c)}" data-type="${esc(c)}" aria-pressed="${ui.type===c}">${c==="UN"?"<kbd>0</kbd>":i<9?`<kbd>${i+1}</kbd>`:""}<b>${pname(c)}</b><small>${c==="UN"?"Not sure (or just tap a result)":esc(ars(c).name)}</small></button>`).join("")}<button class="type add" data-act="addtype"><b>+</b><small>Pitch he just showed</small></button></div>
         ${loc==="height"?`<div class="heights" role="group" aria-label="Pitch height (optional)">${["U","M","D"].map(h=>`<button data-h="${h}" aria-pressed="${ui.h===h}">${HEIGHTS[h]}</button>`).join("")}</div>`:""}
@@ -4296,7 +4296,7 @@ function watchHTML(g, R){
   return `<div class="panel watchbox">
     <div class="row between" style="margin-bottom:6px"><h3 style="margin:0">Watching live <span class="h3note">charted on ${esc(Sync.devName(Sync.writerOf(g)))}</span></h3><button class="btn small" data-act="takeover">Take over charting here</button></div>
     <p style="margin:0 0 8px"><b>${esc(pLabel(p))}</b> · ${L.pc[L.pitcher]||0} pitches · pitch ${L.pop} to this batter</p>
-    ${last.length?`<div class="pa-strip">${last.map(x=>`<span class="chip${x.est?" est":""}" style="${pcStyle(x.type)}"><i></i>${x.est?"":`${x.balls}-${x.strikes} `}${pname(x.type)} · ${esc(resLabel(x))}</span>`).join("")}</div>`:`<p class="muted" style="margin:0">No pitches yet.</p>`}
+    ${last.length?`<div class="pa-strip">${last.map(x=>`<span class="chip${x.est?" est":""}" style="${pcStyle(x.type)}"><i></i>${x.est?"":`${esc(x.balls)}-${esc(x.strikes)} `}${pname(x.type)} · ${esc(resLabel(x))}</span>`).join("")}</div>`:`<p class="muted" style="margin:0">No pitches yet.</p>`}
     <p class="muted watch-st" style="margin:8px 0 0;font-size:13px">${esc(Sync.watchLine?Sync.watchLine(g):Sync.statusText())}</p>
     ${g.hitting==="us" && !g.endedAt && !isCharter() ? `<button class="btn primary" data-act="box" style="margin-top:10px">Coach box view</button>` : ""}</div>`;
 }
@@ -4344,7 +4344,7 @@ function coachDrawer(g, R){
   const a=agg(real(gp)), fp=real(gp).filter(x=>x.balls===0&&x.strikes===0), st=paStats(gp,ge);
   return `<details class="panel" data-keep="drawer" ${isOpen("drawer",true)?"open":""}><summary class="label" style="cursor:pointer">Coach drawer</summary>
     <div class="stack" style="margin-top:10px">
-      <div><h3>${L.balls}-${L.strikes} vs ${L.hand==="R"?"righties":"lefties"} <span class="h3note">all charted games</span></h3>
+      <div><h3>${esc(L.balls)}-${esc(L.strikes)} vs ${L.hand==="R"?"righties":"lefties"} <span class="h3note">all charted games</span></h3>
         ${inCount.length>=MIN_ROW?`${mixBar(cm,co)}<div class="mixlist" style="margin-top:8px">${co.map(k=>`<b style="${pcStyle(k)}">${pname(k)}</b><div><div class="bar" style="${pcStyle(k)};width:${100*cm[k]/inCount.length}%"></div></div><span>${xofy(cm[k],inCount.length)}</span>`).join("")}</div>`:`<p class="muted" style="margin:0">Only ${inCount.length} charted in this spot. It shows at ${MIN_ROW}.</p>`}</div>
       <div><h3>${esc(pLabel(p))} today</h3>${gp.length?`<div class="mixlist">${go.map(k=>{ const x=agg(gp.filter(q=>q.type===k)); return `<b style="${pcStyle(k)}">${pname(k)}</b><div><div class="bar" style="${pcStyle(k)};width:${100*gm[k]/gmax}%"></div></div><span>${gm[k]} <span class="muted">· ${fmtPct(x.str,x.n)} strikes</span></span>`; }).join("")}</div>
         <p class="muted" style="margin:8px 0 0;font-size:13px">${gp.length} pitches · ${fmtPct(a.str,a.n)} strikes · first-pitch strikes ${xofy(fp.filter(x=>isStrike(x.result)).length,fp.length)} · ${st.pa} batters · ${st.k} K · ${st.bb} BB · ${st.h} H</p>`:`<p class="muted" style="margin:0">No pitches yet.</p>`}</div>
@@ -4557,8 +4557,8 @@ function missedSheet(g, preset){
   const fewest=()=> mode==="ended" ? fewestToEnd(L, outcome) : (balls<L.balls||strikes<L.strikes) ? 0 : Math.max(0,balls-L.balls)+Math.max(0,strikes-L.strikes);
   const draw=()=>sheet(`<h3>Missed pitches</h3>
     <div class="seg" role="group">${[["count","He's still up"],["ended","The at-bat ended"],["extra","Book has more pitches"],["fix","Just fix the count"]].map(([k,l])=>`<button data-mode="${k}" aria-pressed="${mode===k}">${l}</button>`).join("")}</div>
-    ${mode==="count"||mode==="fix"?`<div class="row" style="gap:20px"><div><div class="label">Balls now</div><div class="stepper"><button class="step" data-b="-1">−</button><b>${balls}</b><button class="step" data-b="1">+</button></div></div>
-      <div><div class="label">Strikes now</div><div class="stepper"><button class="step" data-s="-1">−</button><b>${strikes}</b><button class="step" data-s="1">+</button></div></div></div>`:""}
+    ${mode==="count"||mode==="fix"?`<div class="row" style="gap:20px"><div><div class="label">Balls now</div><div class="stepper"><button class="step" data-b="-1">−</button><b>${esc(balls)}</b><button class="step" data-b="1">+</button></div></div>
+      <div><div class="label">Strikes now</div><div class="stepper"><button class="step" data-s="-1">−</button><b>${esc(strikes)}</b><button class="step" data-s="1">+</button></div></div></div>`:""}
     ${mode==="ended"?`<div class="label">How did it end?</div><div class="opts">${ENDINGS.map(([k,l])=>`<button class="opt" data-end="${k}" aria-pressed="${outcome===k}">${l}</button>`).join("")}</div>`:""}
     ${mode!=="fix"?`<label class="fld"><span class="label">${mode==="extra"?"How many more pitches":"Pitches you missed"} ${mode==="count"||mode==="ended"?`(blank = ${fewest()}, the fewest it could be)`:""}</span><input type="number" id="ms-n" inputmode="numeric" min="0" max="20" value="${esc(n)}" style="max-width:120px"></label>`:""}
     <p class="muted" style="margin:0;font-size:13px">${mode==="fix"?"No pitches are added. Use this when the count was just tapped wrong.":mode==="extra"?"They go in as '?' pitches marked estimated. They count toward his pitch count only, not toward any batter.":"They go in as '?' pitches marked estimated. They count toward his pitch count and batters faced, but stay out of his pitch mix and strike rates."}</p>
@@ -4738,7 +4738,7 @@ function officialCountsSheet(g, o){
 function arsenalChecks(sel){ return `<div class="checks">${S.catalog.filter(a=>a.code!=="UN").map(a=>`<label><input type="checkbox" name="ars" value="${esc(a.code)}" ${sel.includes(a.code)?"checked":""}><span class="chip" style="${pcStyle(a.code)}"><i></i><b>${esc(a.code)}</b> ${esc(a.name)}</span></label>`).join("")}</div><p class="muted" style="margin:0;font-size:12.5px">A "?" button is always there, and any result with no pitch picked records a "?".</p>`; }
 function armsOf(team){ return Object.values(S.pitchers).filter(p=>!p.mergedInto && !p.example && slug(p.team)===slug(team)).sort((a,b)=>(parseInt(a.num)||999)-(parseInt(b.num)||999)); }
 // A pasted arm whose hand nobody has seen yet shows no hand here.
-function armsPick(team, cur){ const arms=armsOf(team); return arms.length?`<div class="label">${esc(team||"")} arms on file</div><div class="picklist" id="arms">${arms.map(p=>`<button type="button" data-arm="${esc(p.id)}" aria-pressed="${!!(cur&&cur.id===p.id)}">${esc(pLabel(p))}${handKnown(p)?` ${p.hand}HP`:""}</button>`).join("")}</div>`:""; }
+function armsPick(team, cur){ const arms=armsOf(team); return arms.length?`<div class="label">${esc(team||"")} arms on file</div><div class="picklist" id="arms">${arms.map(p=>`<button type="button" data-arm="${esc(p.id)}" aria-pressed="${!!(cur&&cur.id===p.id)}">${esc(pLabel(p))}${handKnown(p)?` ${esc(p.hand)}HP`:""}</button>`).join("")}</div>`:""; }
 function pitcherFields(team, cur, o){
   const c=cur||{num:"", name:"", hand:"R", arsenal:DEFAULT_ARSENAL.slice()}, unk=!!cur && !handKnown(cur);
   return `<div class="pf" data-pf-team="${esc(team||"")}">${o&&o.arms===false?"":`<div id="arms-w">${armsPick(team, cur)}</div>`}
@@ -5104,7 +5104,7 @@ function boxHTML(g, R){
   if(!seen || seen.pid!==pid) boxSeen[g.id]={pid, at:seen && seen.pid && pid ? (resolvePid(seen.pid)===resolvePid(pid) ? seen.at : now) : 0};
   const newAt=boxSeen[g.id].at, banner=pid && newAt && now-newAt<10000 ? `<div class="cb-new" style="animation-delay:${10000-(now-newAt)}ms">New pitcher: ${esc(pLabel(p))} ${esc(boxHand(p))}</div>` : "";
   const band=pid ? boxBand(g, R, pid) : null, n=band ? band.gameN : 0;
-  const line=`<div class="cb-line"><div class="cb-sit"><span class="nw">${esc(ordinal(L.inning))} ·</span> <span class="nw">${L.outs} out${L.outs===1?"":"s"} ·</span> <span class="nw"><b class="cb-count">${L.balls}-${L.strikes}</b>${pid?" ·":""}</span>${pid?` <span class="nw cb-asof">as of pitch ${n}</span>`:""}</div>${boxDiamond(L)}</div>`;
+  const line=`<div class="cb-line"><div class="cb-sit"><span class="nw">${esc(ordinal(L.inning))} ·</span> <span class="nw">${esc(L.outs)} out${L.outs===1?"":"s"} ·</span> <span class="nw"><b class="cb-count">${esc(L.balls)}-${esc(L.strikes)}</b>${pid?" ·":""}</span>${pid?` <span class="nw cb-asof">as of pitch ${n}</span>`:""}</div>${boxDiamond(L)}</div>`;
   const status=`<p class="muted watch-st cb-st">${esc(Sync.watchLine?Sync.watchLine(g):Sync.statusText())}</p>`;
   // The gray bar is one line, so the run call stays on the first screen; what it needs is under the status line.
   const bar=`<div class="cb-stalebar" role="status"><b class="cb-lastword">${boxLastWord()}</b></div>`;
@@ -5117,7 +5117,7 @@ function boxHTML(g, R){
   const big=()=>{ const k=lk.order[0], rest=lk.order.slice(1);
     return `<div class="cb-top"><b>${esc(ars(k).name)}</b> <span>${xofy(lk.mix[k], lk.n)}</span></div>${rest.length?`<p class="cb-rest">${rest.map(x=>`${pname(x)} ${xofy(lk.mix[x], lk.n)}`).join(" · ")}</p>`:""}`; };
   const look = lk.kind==="exact" ? big()
-    : lk.kind==="group" ? `<p class="cb-why">Not enough in ${cnt} (${lk.seen} seen). ${esc(lk.label)}:</p>${big()}`
+    : lk.kind==="group" ? `<p class="cb-why">Not enough in ${esc(cnt)} (${lk.seen} seen). ${esc(lk.label)}:</p>${big()}`
     : `<p class="cb-why">${lk.n ? `Only ${lk.n} pitch${lk.n===1?"":"es"} seen in counts like this.` : "No pitches seen in counts like this yet."}</p>`;
   const thisCount=`<div class="cb-blk cb-this cb-o2">${look}<p class="cb-side">to ${side} · all charted games</p></div>`;
   // 3. The running call: today's times to the plate once there are 2, else every game's; the catcher's pop time today, else his games'.
@@ -5189,17 +5189,17 @@ function renderLog(){
         // Nothing goes in ahead of the starting pitcher: a pitch there would belong to nobody.
         const ctl = ui.logConfirm===e.id ? `<button class="btn small danger" data-del="${i}">Confirm delete</button>` : `${i>firstPitcher?`<button class="btn small" data-ins="${i}" title="Insert before this">Insert before</button>`:""}${i===firstPitcher?"":`<button class="btn small" data-ask="${esc(e.id)}">Delete</button>`}`;
         if(e.k==="pitch" && d && d.extra) return `<tr class="dim">
-          <td>${d.n}</td><td>${d.inning}</td><td class="l" colspan="4"><i>Added to match the book</i></td>
+          <td>${d.n}</td><td>${esc(d.inning)}</td><td class="l" colspan="4"><i>Added to match the book</i></td>
           <td class="l" colspan="3"><span class="chip est">estimated</span> Missed pitch. It counts toward his pitch count only.</td><td></td><td><div class="row" style="justify-content:flex-end;flex-wrap:nowrap">${ctl}</div></td></tr>`;
         if(e.k==="pitch" && d) return `<tr${e.est?' class="dim"':""}>
-          <td>${d.n}</td><td>${d.inning}</td><td class="l">${d.hand}HB ${esc(d.batter||"")}</td><td>${d.balls}-${d.strikes}</td><td>${d.outs}</td><td class="l">${[d.r1?"1":"",d.r2?"2":"",d.r3?"3":""].filter(Boolean).join(",")||"–"}</td>
+          <td>${d.n}</td><td>${esc(d.inning)}</td><td class="l">${esc(d.hand)}HB ${esc(d.batter||"")}</td><td>${esc(d.balls)}-${esc(d.strikes)}</td><td>${esc(d.outs)}</td><td class="l">${[d.r1?"1":"",d.r2?"2":"",d.r3?"3":""].filter(Boolean).join(",")||"–"}</td>
           <td class="l"><select data-f="type" data-i="${i}" aria-label="Pitch type">${S.catalog.map(a=>`<option value="${esc(a.code)}" ${a.code===e.type?"selected":""}>${pname(a.code)} ${a.code!=="UN"?esc(a.name):""}</option>`).join("")}</select>${e.est?' <span class="chip est">estimated</span>':""}</td>
           <td class="l"><select data-f="result" data-i="${i}" aria-label="Result">${resOpts.map(r=>`<option value="${r}" ${r===e.result?"selected":""}>${RESULTS[r].label}</option>`).join("")}</select>
             ${e.result==="IP"?`<select data-f="ip" data-i="${i}" aria-label="In play">${IP_RESULTS.map(([k,l])=>`<option value="${k}" ${k===(e.ip||"OUT")?"selected":""}>${l}</option>`).join("")}</select>`:""}</td>
           <td class="l"><span class="checks">${e.result==="B"?`<label><input type="checkbox" data-f="dirt" data-i="${i}" ${e.dirt?"checked":""}> dirt</label>`:""}${e.result==="IP"?`<label><input type="checkbox" data-f="hh" data-i="${i}" ${e.hh?"checked":""}> hard</label><button class="btn small" data-ra="${i}">Runners${e.ra?" (set by hand)":""}</button>`:""}${d.pa==="K"&&e.result!=="BF"?`<label><input type="checkbox" data-f="d3" data-i="${i}" ${e.d3?"checked":""}> reached on dropped 3rd</label>`:""}<label><input type="checkbox" data-f="star" data-i="${i}" ${e.star?"checked":""}> ★</label></span>
             <select data-f="h" data-i="${i}" aria-label="Height"><option value="">height –</option>${["U","M","D"].map(h=>`<option value="${h}" ${e.h===h?"selected":""}>${HEIGHTS[h]}</option>`).join("")}</select>${e.ttp?` ${e.ttp.toFixed(2)}s`:""}</td>
           <td class="l">${d.pa?`<b>${esc(paLabel(d.pa))}</b>${d.d3?" (reached)":""}`:""}</td><td><div class="row" style="justify-content:flex-end;flex-wrap:nowrap">${ctl}</div></td></tr>`;
-        return `<tr><td></td><td>${d?d.inning:""}</td><td class="l">${d?esc(d.batter||""):""}</td><td>${d?d.balls+"-"+d.strikes:""}</td><td>${d?d.outs:""}</td><td class="l"></td>
+        return `<tr><td></td><td>${d?esc(d.inning):""}</td><td class="l">${d?esc(d.batter||""):""}</td><td>${d?esc(d.balls+"-"+d.strikes):""}</td><td>${d?esc(d.outs):""}</td><td class="l"></td>
           <td class="l" colspan="3"><i>${esc(entryText(e))}</i></td><td class="l">${d&&d.pa?`<b>${esc(paLabel(d.pa))}</b>`:""}</td><td><div class="row" style="justify-content:flex-end;flex-wrap:nowrap">${ctl}</div></td></tr>`;
       }).join("")}</tbody></table></div>
   </div>`;
@@ -5230,7 +5230,7 @@ function insertSheet(g, idx){
   const at=g.log[idx] && g.log[idx].id;   // the entry it goes in front of, found again when saved
   const before={...g, log:g.log.slice(0,idx), rev:-1-idx};
   const L=replay(before).live; let kind="pitch", type="UN", result="B", ip="OUT", est=false, ev="PK", base=1;
-  const draw=()=>sheet(`<h3>Insert before entry ${idx+1}</h3><p class="muted" style="margin:0;font-size:14px">At that point: inning ${L.inning}, ${L.outs} out${L.outs===1?"":"s"}, ${L.balls}-${L.strikes}, ${esc(L.batter||"batter")}.</p>
+  const draw=()=>sheet(`<h3>Insert before entry ${idx+1}</h3><p class="muted" style="margin:0;font-size:14px">At that point: inning ${esc(L.inning)}, ${esc(L.outs)} out${L.outs===1?"":"s"}, ${esc(L.balls)}-${esc(L.strikes)}, ${esc(L.batter||"batter")}.</p>
     <div class="seg">${[["pitch","A pitch"],["missed","A missed pitch"],["ev","A play"],["pitcher","Pitching change"]].map(([k,l])=>`<button data-kind="${k}" aria-pressed="${kind===k}">${l}</button>`).join("")}</div>
     ${kind==="pitch"?`<div class="types">${arsenalFor(g,L.pitcher).map(c=>`<button class="type" style="${pcStyle(c)}" data-t="${esc(c)}" aria-pressed="${type===c}"><b>${pname(c)}</b></button>`).join("")}</div>
       <div class="row"><select id="in-r">${["B","CS","SS","F","BF","IP","HBP","CI","ILL"].map(r=>`<option value="${r}" ${r===result?"selected":""}>${RESULTS[r].label}</option>`).join("")}</select>${result==="IP"?`<select id="in-ip">${IP_RESULTS.map(([k,l])=>`<option value="${k}" ${k===ip?"selected":""}>${l}</option>`).join("")}</select>`:""}</div>`:""}
@@ -5266,9 +5266,9 @@ function raSheet(g, i, note){
   const done=(fn, msg)=>{ if(change(g, x=>{ const y=x.log.find(z=>z.id===e.id); if(y){ fn(y); markEdited(y); } touch(x,dev()); })) toast(msg); renderLog(); };
   const draw=()=>sheet(`<h3>Runners and outs: ${esc(paLabel(e.ip||"OUT"))}</h3>
     ${note?`<p style="margin:0;font-size:14px">${esc(note)}</p>`:""}
-    <p class="muted" style="margin:0;font-size:14px">Before the play: ${d.outs} out${d.outs===1?"":"s"}, ${on(d)}. The usual guess: ${on(guess)}, ${guess.outs} out${guess.outs===1?"":"s"} on the play.</p>
+    <p class="muted" style="margin:0;font-size:14px">Before the play: ${esc(d.outs)} out${d.outs===1?"":"s"}, ${on(d)}. The usual guess: ${on(guess)}, ${guess.outs} out${guess.outs===1?"":"s"} on the play.</p>
     <div class="row" style="align-items:flex-start;gap:16px"><div><div class="label">Runners after the play</div>${diamondSVG(st,"big")}<div class="muted" style="font-size:12.5px">Tap a base to change it.</div></div>
-      <div><div class="label">Outs on the play</div><div class="stepper"><button class="step" data-o="-1" aria-label="Fewer outs">−</button><b>${outs}</b><button class="step" data-o="1" aria-label="More outs">+</button></div></div></div>
+      <div><div class="label">Outs on the play</div><div class="stepper"><button class="step" data-o="-1" aria-label="Fewer outs">−</button><b>${esc(outs)}</b><button class="step" data-o="1" aria-label="More outs">+</button></div></div></div>
     <div class="row" style="justify-content:flex-end"><button class="btn" data-x>Cancel</button>${e.ra?`<button class="btn" data-guess>Use the usual guess</button>`:""}<button class="btn primary" data-ok>Save</button></div>`, (m, close)=>{
       $$("[data-base]",m).forEach(b=>bindTap(b,()=>{ st={...st, [b.dataset.base]:!st[b.dataset.base]}; draw(); }));
       $$("[data-o]",m).forEach(b=>b.onclick=()=>{ outs=Math.max(0,Math.min(3,outs+(+b.dataset.o))); draw(); });
@@ -5347,7 +5347,7 @@ function ourHittersHTML(d, o){
   const usG=new Set(us.map(g=>g.id));
   const ps=d.ps.filter(p=>usG.has(p.gameId)), evs=d.evs.filter(e=>usG.has(e.gameId)); const rows=ourHitters(ps,evs); if(!rows.length) return "";
   return `<div class="rsec"><h2>Our hitters vs him <em>each at-bat, pitch by pitch (b ball, c called, s swinging, f foul)</em></h2><table class="rtable ours"><tbody>
-    ${rows.map(r=>`<tr><td class="l" style="width:110px"><b>${esc(r.name)}</b></td><td class="l">${r.abs.map(a=>`<span style="white-space:nowrap">${esc(shortDate(a.date).split(" ")[1])} ${ordinal(a.inn)}:</span> ${esc(a.seq)}`).join("; ")}</td></tr>`).join("")}</tbody></table>
+    ${rows.map(r=>`<tr><td class="l" style="width:110px"><b>${esc(r.name)}</b></td><td class="l">${r.abs.map(a=>`<span style="white-space:nowrap">${esc(shortDate(a.date).split(" ")[1])} ${esc(ordinal(a.inn))}:</span> ${esc(a.seq)}`).join("; ")}</td></tr>`).join("")}</tbody></table>
     ${left?moreLine(`Last ${plural(us.length,"game")} vs us. ${plural(left,"earlier game is","earlier games are")} in the app.`):""}</div>`;
 }
 // A small line under a section that was cut short to fit on paper.
@@ -5384,7 +5384,7 @@ function buildReport(pid, d, o){
   const cf=countFacts(ps, games, markFor(M.T, totals)); const gen=generalNotes(ps,evs,games);
   const stars=ps.filter(x=>x.star), paper=!o.screen;
   const ctl=(html)=>o.screen?`<div class="noprint row" style="margin-top:6px">${html}</div>`:"";
-  const head=pg=>`<div class="rhead"><div style="flex:1 1 320px;min-width:0"><div class="sub">PITCHER SCOUTING REPORT${ex?" · EXAMPLE DATA":""}</div><h1>${esc(pLabel(p))} <span style="font-weight:500">(${handKnown(p)?p.hand+"HP":"hand ?"})</span></h1>
+  const head=pg=>`<div class="rhead"><div style="flex:1 1 320px;min-width:0"><div class="sub">PITCHER SCOUTING REPORT${ex?" · EXAMPLE DATA":""}</div><h1>${esc(pLabel(p))} <span style="font-weight:500">(${handKnown(p)?esc(p.hand)+"HP":"hand ?"})</span></h1>
     <div class="sub">${esc(p.team||"Team not set")} · ${esc(seenText(games,ps,evs))}: ${games.map(g=>`${esc(shortDate(g.date))}${g.hitting==="us"?" vs us":g.bTeam?" vs "+esc(g.bTeam):""}`).join("; ")}</div></div>
     <div class="meta">Page ${pg}<br>${plural(ps.length,"pitch","pitches")} · ${plural(paGroups(ps,evs).filter(x=>x.ps.length).length,"batter")}<br>${rH} to righties · ${lH} to lefties</div></div>`;
   const runLine = [rv, R.pk?`${R.pk} throw-over${R.pk>1?"s":""}, never more than ${R.maxPerPA} to one runner in an at-bat.`:(R.r1PAs?"Never threw over.":""), R.sb+R.cs?`Runners went ${R.sb} for ${R.sb+R.cs} stealing.`:"", R.wp+R.pb?`${R.wp+R.pb} wild pitch${R.wp+R.pb>1?"es":""} or passed ball${R.wp+R.pb>1?"s":""}.`:"", dl].filter(Boolean).join(" ");
@@ -5416,7 +5416,7 @@ function buildReport(pid, d, o){
         <div class="scout-notes">${notes.length?notes.map(noteHTML).join("\n"):`<span class="muted">No notes yet. Add them on the Teams tab: tipping, slide step, pickoff move, fielding, body language.</span>`}</div>
         ${allNotes.length>notes.length?moreLine(`Newest ${notes.length} notes. ${plural(allNotes.length-notes.length,"older note is","older notes are")} on the Teams tab.`):""}</div>
     </div>
-    ${stars.length?`<div class="rsec"><h2>Flagged by the charter</h2><ul class="notes-list">${starsShown.map(x=>`<li>${esc(shortDate(x.date))}, ${ordinal(x.inning)}, ${x.balls}-${x.strikes} to ${esc(x.batter||"?")} (${x.hand}): ${pname(x.type)} ${esc(resLabel(x))}${x.pa?" → "+esc(paLabel(x.pa)):""}</li>`).join("")}</ul>${stars.length>starsShown.length?moreLine(`Latest ${starsShown.length}. ${plural(stars.length-starsShown.length,"earlier flagged pitch is","earlier flagged pitches are")} in the app.`):""}</div>`:""}
+    ${stars.length?`<div class="rsec"><h2>Flagged by the charter</h2><ul class="notes-list">${starsShown.map(x=>`<li>${esc(shortDate(x.date))}, ${esc(ordinal(x.inning))}, ${esc(x.balls)}-${esc(x.strikes)} to ${esc(x.batter||"?")} (${esc(x.hand)}): ${pname(x.type)} ${esc(resLabel(x))}${x.pa?" → "+esc(paLabel(x.pa)):""}</li>`).join("")}</ul>${stars.length>starsShown.length?moreLine(`Latest ${starsShown.length}. ${plural(stars.length-starsShown.length,"earlier flagged pitch is","earlier flagged pitches are")} in the app.`):""}</div>`:""}
     <div class="foot">Strikes = called + swinging + fouls + balls in play. Free bases = walks, HBP, wild pitches, passed balls, balks and catcher's interference. "x of y" means x of the y pitches or batters that fit. Estimated (missed) pitches count toward pitch counts only. Rest days use your ${esc(RT.name)} table (${esc(RT.source||"edit on the Data tab")}); the home book is official, so check it near band lines. Generated ${esc(today())} with Mound Book.</div>
   </div>`;
   return page1+page2;
@@ -5654,7 +5654,7 @@ function paperChart(g){
   const bat=i=>lu.length&&i<lu.length*2?`${(i%lu.length)+1}. ${batterText(lu[i%lu.length])}`:"";
   const hand=i=>lu.length&&i<lu.length*2?(lu[i%lu.length].hand||""):"";
   return `<div class="paper"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:12px"><b style="font-family:var(--f-display);font-size:18px;letter-spacing:.04em">MOUND BOOK PAPER CHART</b>
-    <span>Date: <u>${esc(g?g.date:"__________")}</u></span><span>Pitching team: <u>${esc(g&&g.pTeam||"________________")}</u></span><span>Pitcher #<u>${esc(p&&p.num||"____")}</u> ${esc(p&&p.name||"")} Throws: ${p && handKnown(p) ? p.hand : "R / L"}</span><span>Charter: ______</span><span>Level: V / JV</span></div>
+    <span>Date: <u>${esc(g?g.date:"__________")}</u></span><span>Pitching team: <u>${esc(g&&g.pTeam||"________________")}</u></span><span>Pitcher #<u>${esc(p&&p.num||"____")}</u> ${esc(p&&p.name||"")} Throws: ${p && handKnown(p) ? esc(p.hand) : "R / L"}</span><span>Charter: ______</span><span>Level: V / JV</span></div>
     <div class="key"><div><b>Pitch:</b> ${ars.map((c,i)=>`${i+1} ${esc(c)}`).join(" · ")} · 0 ?</div><div><b>Result:</b> B ball · D ball in dirt · C called · S swinging · F foul · X in play (write it) · H hit by pitch</div>
       <div><b>Rare:</b> N foul bunt · I intentional walk · M missed pitch(es)</div><div><b>Runners:</b> O1 throw over to 1st · G2 steals 2nd · Q2 caught stealing at 2nd · J1 picked off 1st · W wild pitch · P passed ball · Z balk</div></div>
     <div style="font-size:10.5px;margin-bottom:4px">Each pitch is number + letter: <b>1C</b> = ${esc(ars[0]||"FB")} called strike, <b>0B</b> = not sure, ball. Time to plate goes in small numbers under the pitch. Pitching change: draw a line across and write the new #.</div>
@@ -5733,7 +5733,7 @@ function teamHTML(team){
   return `<div class="panel"><div class="row between"><h3 style="margin:0">${esc(teamName(team))} arms</h3><div class="row">${staffBtn}<button class="btn small" data-act="addarm">Add a pitcher</button>${team && !ours?`<button class="btn small" data-act="paste">Paste pitch counts</button>`:""}${team?`<button class="btn small" data-act="renameteam">Rename team</button>`:""}</div></div>
     <div class="tbl-wrap" style="margin-top:8px"><table><thead><tr><th class="l">Pitcher</th><th>Throws</th><th class="l">Last out</th><th class="l">Per your table</th><th>Charted</th><th></th></tr></thead><tbody>
     ${arms.map(p=>{ const os=outingsOf(p.id), rl=restLine(p.id, lev), n=pitcherData(p.id,null).ps.length;
-      return `<tr><td class="l"><b>${esc(pLabel(p))}</b>${p.example?' <span class="chip">example</span>':""}</td><td>${handText(p)}</td><td class="l">${os[0]?`${esc(shortDate(os[0].date))}, ${os[0].pitches}${srcNote(os[0])}`:"–"}</td>
+      return `<tr><td class="l"><b>${esc(pLabel(p))}</b>${p.example?' <span class="chip">example</span>':""}</td><td>${handText(p)}</td><td class="l">${os[0]?`${esc(shortDate(os[0].date))}, ${os[0].pitches}${esc(srcNote(os[0]))}`:"–"}</td>
         <td class="l">${rl?restCell(rl):"–"}</td><td>${n}</td>
         <td><div class="row" style="justify-content:flex-end;flex-wrap:nowrap"><button class="btn small" data-open="${esc(p.id)}">Open</button>${n?`<button class="btn small" data-rep="${esc(p.id)}">Report</button>`:""}</div></td></tr>`; }).join("")||`<tr><td class="l" colspan="6">No arms yet. They appear when you chart them or add them here.</td></tr>`}
     </tbody></table></div>
@@ -5786,7 +5786,7 @@ function outingRows(os){
       o.maybeSame && (vsUs || !blank) ? "Pasted game vs us on a day we charted a game vs us. Same game? Remove the pasted one and use Paste this game's box score." : "",
       o.maybeSame && blank ? "A pasted game with no opponent, on a day we charted him vs us. Same game? Remove the pasted one and use Paste this game's box score." : ""].filter(Boolean);
     const one=solo && box[0].via==="paste" ? ` · ${boxLineWord(box[0], o)}` : "";
-    return `<tr><td class="l wrap"><b>${esc(shortDate(o.date))} ${o.date.slice(0,4)}</b><br><span class="muted" style="font-size:13px">${esc(what+one)}</span>${notes.map(t=>`<br><span class="muted" style="font-size:13px">${esc(t)}</span>`).join("")}</td><td><b>${o.pitches}</b></td><td>${solo?rm(box[0]):""}</td></tr>`
+    return `<tr><td class="l wrap"><b>${esc(shortDate(o.date))} ${esc(o.date.slice(0,4))}</b><br><span class="muted" style="font-size:13px">${esc(what+one)}</span>${notes.map(t=>`<br><span class="muted" style="font-size:13px">${esc(t)}</span>`).join("")}</td><td><b>${o.pitches}</b></td><td>${solo?rm(box[0]):""}</td></tr>`
       + (solo?"":box.map(b=>`<tr><td class="l wrap muted" style="padding-left:20px;font-size:13px">Box line: ${esc(boxLineWord(b, o))}</td><td class="muted">${+b.pitches||0}</td><td>${rm(b)}</td></tr>`).join(""));
   }).join("");
 }
@@ -5994,7 +5994,7 @@ function moveArmsToTeam(ids, team, o){
   };
   if(!pairs.length){ go([]); return; }
   const pick=pairs.map(()=>false);
-  const lab=id=>{ const x=S.pitchers[id]; return `<b>${esc(pLabel(x))}</b> (${handKnown(x)?x.hand+"HP":"hand not seen yet"}, ${esc(teamName(x.team))})`; };
+  const lab=id=>{ const x=S.pitchers[id]; return `<b>${esc(pLabel(x))}</b> (${handKnown(x)?esc(x.hand)+"HP":"hand not seen yet"}, ${esc(teamName(x.team))})`; };
   sheet(`<h3>${pairs.length===1?"A number is":"Some numbers are"} already on file for ${esc(team)}</h3>
     <p style="margin:0">Moving these pitchers to ${esc(team)} puts them next to kids with the same number. Is each pair the same kid?</p>
     <div class="checklist">${pairs.map((pr,i)=>`<div class="ci"><span>${lab(pr.a)} and ${lab(pr.b)}</span><div class="seg"><button type="button" data-pair="${i}" data-v="1" aria-pressed="false">Same kid. Merge them</button><button type="button" data-pair="${i}" data-v="0" aria-pressed="true">Different kids</button></div></div>`).join("")}</div>
@@ -6305,11 +6305,11 @@ function pasteSheet(team){
         if(r.pitches==null) bits.push(`<span>On their list (no count)</span>`);
         else bits.push(`<span>· ${r.pitches} pitches</span>`, x.tick && !st.nostart ? `<button type="button" class="chip pa-start" data-pa-start="${i}" aria-pressed="${i===starter}">Started</button>` : "");
         const k=x.m && x.m.kind;
-        if(k==="file" && p){ const last=outingsOf(p.id)[0]; bits.push(`<span class="muted">On file (${handKnown(p) ? "throws "+p.hand : "hand not seen yet"}${last ? `, last out ${esc(shortDate(last.date))}, ${last.pitches}` : ""})</span>`); }
+        if(k==="file" && p){ const last=outingsOf(p.id)[0]; bits.push(`<span class="muted">On file (${handKnown(p) ? "throws "+esc(p.hand) : "hand not seen yet"}${last ? `, last out ${esc(shortDate(last.date))}, ${last.pitches}` : ""})</span>`); }
         else if(k==="same?") bits.push(`<span class="muted">${esc(x.m.text)}</span><span class="seg"><button type="button" data-pa-same="${i}" data-v="1" aria-pressed="${x.same===true}">Same kid</button><button type="button" data-pa-same="${i}" data-v="0" aria-pressed="${x.same===false}">New kid</button></span>`);
         else if(k==="pick") bits.push(`<span class="muted">${esc(x.m.text)}</span><select data-pa-pick="${i}" aria-label="Which one">${x.pickPid ? "" : `<option value="" disabled selected>Which one?</option>`}${x.m.options.map(op=>`<option value="${esc(op.pid)}" ${x.pickPid===op.pid ? "selected" : ""}>${esc(op.label)}</option>`).join("")}<option value="new" ${x.pickPid==="new" ? "selected" : ""}>New kid</option></select>`);
         if(pid==="new") bits.push(`<span class="muted">New arm: adds ${esc(r.num ? "#"+r.num : r.name)} with hand ${r.hand||"?"}</span>`);
-        if(p && r.hand){ if(!handKnown(p)) bits.push(`<span class="muted">Throws ${r.hand}, from the paste.</span>`); else if(r.hand!==p.hand) bits.push(`<span class="muted">The paste says ${r.hand}HP. On file he throws ${p.hand}.</span>`); }
+        if(p && r.hand){ if(!handKnown(p)) bits.push(`<span class="muted">Throws ${r.hand}, from the paste.</span>`); else if(r.hand!==p.hand) bits.push(`<span class="muted">The paste says ${r.hand}HP. On file he throws ${esc(p.hand)}.</span>`); }
         if(r.cls==="Sr" && (!p || edStamp(p, "check."+GRAD)===0)) bits.push(`<label class="chip"><input type="checkbox" data-pa-sr="${i}" ${x.sr ? "checked" : ""}> Mark as senior</label>`);
         if(x.ours==="warn") bits.push(`<span class="muted" style="font-size:13px">Same name as one of our players. Leave it out unless he's theirs.</span>`);
         if(r.err) bits.push(`<span class="pa-err">${esc(r.err)}</span>`);

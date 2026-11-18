@@ -136,6 +136,78 @@ test("normal ids: escaping is a no-op (markup identical to pre-fix template)", (
   }
 });
 
+// ---- #14 (second pass): pitcher hand and game-log values (inning, count, outs, batter hand) ----
+// text from `start` up to (not including) `stop`, on one source line
+function fragTo(lineNeedle, start, stop) {
+  const line = lineWith(lineNeedle);
+  const i = line.indexOf(start);
+  assert.ok(i >= 0, `cannot find start "${start}" on the line with "${lineNeedle}"`);
+  const j = line.indexOf(stop, i);
+  assert.ok(j >= 0, `cannot find "${stop}" after "${start}"`);
+  return line.slice(i, j);
+}
+const HAND = 'R"><img src=x onerror="globalThis.__pwned=1">';
+const BAD = '<img src=x onerror="globalThis.__pwned=4">';
+const SINKS2 = {
+  chartHead: () => frag('<span class="h3note">${esc(g.pTeam||"")} · ', '<h3 style="margin:0">', "</h3>"),
+  chartInning: () => frag('data-act="inn-"', '<span class="num">', "</span>"),
+  chartCount: () => frag('<div class="count" aria-live="polite">', '<span class="b">', "</div>"),
+  chartBatter: () => frag("switch, batting ", "<b>${", "</span>"),
+  zoneHand: () => frag('font-family="Barlow Condensed,sans-serif">${', "<text ", "</text>"),
+  logRow: () => fragTo('HB ${esc(d.batter||"")}', "<td>${d.n}</td>", '<td class="l">${[d.r1'),
+  reportStar: () => frag("Flagged by the charter</h2>", "<li>${esc(shortDate(x.date))}, ", "</li>"),
+};
+const NAMES2 = {
+  chartHead: ["pLabel", "p", "g", "handKnown", "L"],
+  chartInning: ["L"],
+  chartCount: ["L"],
+  chartBatter: ["L", "batterText", "curB"],
+  zoneHand: ["left", "W", "H", "o"],
+  logRow: ["d"],
+  reportStar: ["x", "shortDate", "ordinal", "pname", "resLabel", "paLabel"],
+};
+const ordinal = (n) => { const s = ["th", "st", "nd", "rd"], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); };
+const r2 = (k) => tpl(SINKS2[k](), NAMES2[k]);
+const id = (v) => String(v);
+const args2 = (hand, inning, balls, bhand) => ({
+  chartHead: [() => "#12 Smith", { hand, num: "12", name: "Smith" }, { pTeam: "Westlake" }, () => true, { pop: 2 }],
+  chartInning: [{ inning }],
+  chartCount: [{ balls, strikes: balls }],
+  chartBatter: [{ spot: 2, hand: bhand }, () => "#7 Jones", { hand: bhand }],
+  zoneHand: [true, 100, 120, { hand: bhand }],
+  logRow: [{ n: 9, inning, hand: bhand, batter: "Jones", balls, strikes: 1, outs: inning }],
+  reportStar: [{ date: "2026-03-03", inning, balls, strikes: 1, batter: "Jones", hand: bhand, type: "FB", pa: null }, () => "Mar 3", ordinal, id, () => "Called", id],
+});
+// The pre-fix template: the same fragment with this pass's esc() wrappers taken off.
+const UNFIX2 = ['L.spot+1', 'curB.hand==="S"?"switch, batting "+L.hand:"bats "+L.hand', "p.hand", "L.inning", "L.balls", "L.strikes",
+  "d.inning", "d.hand", "d.balls", "d.strikes", "d.outs", "ordinal(x.inning)", "x.balls", "x.strikes", "x.hand", "o.hand"];
+const unfix2 = (f) => UNFIX2.reduce((s, e) => s.split("esc(" + e + ")").join(e), f);
+
+test("#14 hostile pitcher hand, batter hand, inning and count are inert (Chart tab, zone, Log, report)", () => {
+  const a = args2(HAND, BAD, BAD, HAND), open = [];
+  for (const k of Object.keys(SINKS2)) {
+    const html = r2(k)(...a[k]);
+    const root = k === "zoneHand" ? parse(`<svg>${html}</svg>`) : k === "logRow" ? parse(`<table><tbody><tr>${html}</tr></tbody></table>`) : parse(html);
+    try { assertInert(root, k); } catch (e) { open.push(k); }
+  }
+  assert.deepEqual(open, [], `injected markup in: ${open.join(", ")}`);
+});
+
+test("normal use: legit hand, inning and count render byte-identical to the pre-fix template", () => {
+  for (const [hand, bhand] of [["R", "R"], ["L", "L"], ["S", "S"], ["R", "L"]]) {
+    const a = args2(hand, 3, 2, bhand);
+    for (const k of Object.keys(SINKS2)) {
+      const f = SINKS2[k]();
+      const fixed = tpl(f, NAMES2[k])(...a[k]);
+      const prefix = tpl(unfix2(f), NAMES2[k])(...a[k]);
+      assert.equal(fixed, prefix, k);
+      assert.ok(!/esc\(/.test(unfix2(f).replace(/esc\((?:g\.pTeam\|\|""|pLabel\(p\)|batterText\(curB\)|d\.batter\|\|""|shortDate\(x\.date\)|x\.batter\|\|"\?"|resLabel\(x\)|paLabel\(x\.pa\))\)/g, "")), `${k}: unfix2 left a wrapper`);
+    }
+  }
+  assert.ok(tpl(SINKS2.chartHead(), NAMES2.chartHead)(...args2("L", 3, 2, "L").chartHead).includes("LHP"));
+  assert.ok(tpl(SINKS2.chartInning(), ["L"])({ inning: 3 }).includes(">3<"));
+});
+
 function loadReadJoin(hostname) {
   const s = SRC.indexOf("function readJoin(text){");
   assert.ok(s >= 0, "cannot find readJoin in index.html");
