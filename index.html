@@ -4029,7 +4029,7 @@ const pname = k => k==="UN"?"?":esc(k);
 const BASE = {1:"1st",2:"2nd",3:"3rd"};
 function evLabel(e){ const b=BASE[e.base]||""; switch(e.kind){ case "PK": return `Throw over to ${b}`; case "PO": return `Picked off ${b}`; case "SB": return e.base===3?"Steals home":`Steals ${BASE[e.base+1]}`; case "CS": return `Caught stealing ${e.base===3?"home":BASE[e.base+1]}`; default: return EVENTS[e.kind]||e.kind; } }
 function resLabel(p){ if(p.est) return p.result==="UNK"?"missed":RESULTS[p.result].short+" (est.)"; if(p.result==="B"&&p.dirt) return "Ball, dirt"; return RESULTS[p.result]?RESULTS[p.result].short:p.result; }
-function mixBar(m, order){ const tot=Object.values(m).reduce((a,b)=>a+b,0); if(!tot) return `<div class="mixbar"></div>`; return `<div class="mixbar" role="img" aria-label="${order.filter(k=>m[k]).map(k=>k+" "+pct(m[k],tot)+"%").join(", ")}">${order.filter(k=>m[k]).map(k=>`<span style="${pcStyle(k)};width:${100*m[k]/tot}%"></span>`).join("")}</div>`; }
+function mixBar(m, order){ const tot=Object.values(m).reduce((a,b)=>a+b,0); if(!tot) return `<div class="mixbar"></div>`; return `<div class="mixbar" role="img" aria-label="${esc(order.filter(k=>m[k]).map(k=>k+" "+pct(m[k],tot)+"%").join(", "))}">${order.filter(k=>m[k]).map(k=>`<span style="${pcStyle(k)};width:${100*m[k]/tot}%"></span>`).join("")}</div>`; }
 function zoneSVG(o){
   const W=100, H=120, x0=20, y0=22, cw=20, ch=25.3, sel=o.selected, color=o.color||"var(--accent)";
   const fillFor = z => z===sel?color:"var(--surface)";
@@ -5187,7 +5187,7 @@ function renderLog(){
       <thead><tr><th>#</th><th>Inn</th><th class="l">Batter</th><th>Count</th><th>Outs</th><th class="l">On</th><th class="l">Pitch / entry</th><th class="l">Result</th><th class="l">Details</th><th class="l">PA</th><th></th></tr></thead>
       <tbody>${rows.map(({e,i})=>{ const d=byIdx[i];
         // Nothing goes in ahead of the starting pitcher: a pitch there would belong to nobody.
-        const ctl = ui.logConfirm===e.id ? `<button class="btn small danger" data-del="${i}">Confirm delete</button>` : `${i>firstPitcher?`<button class="btn small" data-ins="${i}" title="Insert before this">Insert before</button>`:""}${i===firstPitcher?"":`<button class="btn small" data-ask="${e.id}">Delete</button>`}`;
+        const ctl = ui.logConfirm===e.id ? `<button class="btn small danger" data-del="${i}">Confirm delete</button>` : `${i>firstPitcher?`<button class="btn small" data-ins="${i}" title="Insert before this">Insert before</button>`:""}${i===firstPitcher?"":`<button class="btn small" data-ask="${esc(e.id)}">Delete</button>`}`;
         if(e.k==="pitch" && d && d.extra) return `<tr class="dim">
           <td>${d.n}</td><td>${d.inning}</td><td class="l" colspan="4"><i>Added to match the book</i></td>
           <td class="l" colspan="3"><span class="chip est">estimated</span> Missed pitch. It counts toward his pitch count only.</td><td></td><td><div class="row" style="justify-content:flex-end;flex-wrap:nowrap">${ctl}</div></td></tr>`;
@@ -5445,7 +5445,7 @@ function renderReport(){
   const byTeam={}; pids.forEach(id=>{ const t=P(id).team||"Team not set"; (byTeam[t]=byTeam[t]||[]).push(id); });
   el.innerHTML=`<div class="panel noprint" style="margin-top:14px"><div class="rep-controls">
       <label class="fld"><span class="label">Pitcher</span><select id="rp-p">${Object.keys(byTeam).sort().map(t=>`<optgroup label="${esc(t)}">${byTeam[t].map(id=>`<option value="${esc(id)}" ${id===pid?"selected":""}>${esc(pLabel(P(id)))}${P(id).example?" (example)":""}</option>`).join("")}</optgroup>`).join("")}</select></label>
-      <div><div class="label" style="margin-bottom:4px">Games included</div><div class="games">${all.games.map(x=>`<label><input type="checkbox" data-rg="${x.id}" ${ui.report.games.has(x.id)?"checked":""}> ${esc(shortDate(x.date))} ${x.date.slice(0,4)} <span class="muted">(${all.ps.filter(q=>q.gameId===x.id).length})</span></label>`).join("")}</div></div>
+      <div><div class="label" style="margin-bottom:4px">Games included</div><div class="games">${all.games.map(x=>`<label><input type="checkbox" data-rg="${esc(x.id)}" ${ui.report.games.has(x.id)?"checked":""}> ${esc(shortDate(x.date))} ${esc(x.date.slice(0,4))} <span class="muted">(${all.ps.filter(q=>q.gameId===x.id).length})</span></label>`).join("")}</div></div>
       <div class="seg" style="margin-left:auto">${[["report","Coach report"],["card","Hitter's card"],["grid","Full count grid"]].map(([k,l])=>`<button data-view="${k}" aria-pressed="${view===k}">${l}</button>`).join("")}</div></div>
       ${ui.report.old?`<div class="flag" style="margin-top:10px"><span>Nothing from this season, so older games are shown. Pitchers change: read it with care.</span></div>`:""}
       <div class="row" style="margin-top:10px">${printButtons(view)}</div></div>
@@ -6735,10 +6735,10 @@ function renderData(){
     <div class="row" style="margin-top:8px"><button class="btn small" data-act="persist">Ask this device to keep Mound Book's data</button><label class="fld" style="flex-direction:row;align-items:center;gap:8px"><span class="label">Device name</span><input type="text" id="dv-name" value="${esc(S.device.name||"")}" placeholder="e.g. Dugout iPad" style="width:170px"></label></div>
   </div>
   ${conf.length?`<div class="panel"><h3>Changed on two devices</h3><p class="muted" style="margin:0 0 8px;font-size:14px">Nothing was overwritten. Pick which copy to keep, or keep both as separate games.</p>
-    ${conf.map(c=>{ const o=S.games.find(g=>g.id===c.conflictOf), both=!o || !onlyTakesOut(c, o) ? `<button class="btn small" data-cf-both="${c.id}">Keep both</button>` : ""; return `<div class="row" style="margin-bottom:8px;border-bottom:1px solid var(--line);padding-bottom:8px"><span style="flex:1;min-width:200px">${esc(gameName(c))}<br>${c.mine?`<span class="muted" style="font-size:13px">Team copy: ${o?o.log.length:0} entries, edited ${o?esc(edWhen(o)):"?"} · This device's, never sent: ${c.log.length} entries, edited ${esc(edWhen(c))}</span></span>
-      <button class="btn small" data-cf-keep="${c.id}">Keep the team copy</button><button class="btn small" data-cf-use="${c.id}">Use this device's</button>${both}</div>`
+    ${conf.map(c=>{ const o=S.games.find(g=>g.id===c.conflictOf), both=!o || !onlyTakesOut(c, o) ? `<button class="btn small" data-cf-both="${esc(c.id)}">Keep both</button>` : ""; return `<div class="row" style="margin-bottom:8px;border-bottom:1px solid var(--line);padding-bottom:8px"><span style="flex:1;min-width:200px">${esc(gameName(c))}<br>${c.mine?`<span class="muted" style="font-size:13px">Team copy: ${o?o.log.length:0} entries, edited ${o?esc(edWhen(o)):"?"} · This device's, never sent: ${c.log.length} entries, edited ${esc(edWhen(c))}</span></span>
+      <button class="btn small" data-cf-keep="${esc(c.id)}">Keep the team copy</button><button class="btn small" data-cf-use="${esc(c.id)}">Use this device's</button>${both}</div>`
       :`<span class="muted" style="font-size:13px">This device: ${o?o.log.length:0} entries, edited ${o?esc(edWhen(o)):"?"} · Other copy: ${c.log.length} entries, edited ${esc(edWhen(c))}</span></span>
-      <button class="btn small" data-cf-keep="${c.id}">Keep this device's</button><button class="btn small" data-cf-use="${c.id}">Use the other copy</button>${both}</div>`}`; }).join("")}</div>`:""}
+      <button class="btn small" data-cf-keep="${esc(c.id)}">Keep this device's</button><button class="btn small" data-cf-use="${esc(c.id)}">Use the other copy</button>${both}</div>`}`; }).join("")}</div>`:""}
   <div class="two">
     <div class="panel"><h3>Send to Coach</h3><p class="muted" style="margin-top:0;font-size:14px">${us.length?`${us.length} game${us.length>1?"s":""} not sent yet.`:"Everything has been sent."} The file merges on Coach's device without overwriting anything.</p>
       <div class="row"><button class="btn primary" data-act="sendunsent" ${us.length?"":"disabled"}>Send unsent games</button><button class="btn" data-act="sendall" ${realGames.length?"":"disabled"}>Send every game</button></div>
@@ -6754,7 +6754,7 @@ function renderData(){
   <div class="panel"><h3>Games</h3><div class="tbl-wrap"><table><thead><tr><th class="l">Date</th><th class="l">Game</th><th>Pitches</th><th class="l">Status</th><th></th></tr></thead><tbody>
     ${games.map(g=>{ const r=replay(g); return `<tr><td class="l">${esc(g.date)}</td><td class="l wrap">${esc(gameName(g))}</td><td>${r.pitches.length}</td>
       <td class="l">${[g.example?"example":"", g.practice?"practice":"", g.conflictOf?"second copy":"", g.endedAt?"ended":"open", sentOK(g)?"sent":g.example?"":"not sent"].filter(Boolean).join(", ")}</td>
-      <td><div class="row" style="justify-content:flex-end;flex-wrap:nowrap"><button class="btn small" data-open="${g.id}">Open</button><button class="btn small" data-prac="${g.id}">${g.practice?"Count it":"Practice"}</button>${ui.dataConfirm===g.id?`<button class="btn small danger" data-delg="${g.id}">Confirm delete</button>`:`<button class="btn small" data-askg="${g.id}">Delete</button>`}</div></td></tr>`; }).join("")||`<tr><td class="l" colspan="5">No games.</td></tr>`}
+      <td><div class="row" style="justify-content:flex-end;flex-wrap:nowrap"><button class="btn small" data-open="${esc(g.id)}">Open</button><button class="btn small" data-prac="${esc(g.id)}">${g.practice?"Count it":"Practice"}</button>${ui.dataConfirm===g.id?`<button class="btn small danger" data-delg="${esc(g.id)}">Confirm delete</button>`:`<button class="btn small" data-askg="${esc(g.id)}">Delete</button>`}</div></td></tr>`; }).join("")||`<tr><td class="l" colspan="5">No games.</td></tr>`}
     </tbody></table></div>
     <div class="row" style="margin-top:10px"><button class="btn primary" data-act="newgame">New game</button>${S.games.some(g=>g.example)?`<button class="btn" data-act="clearex">Remove example data</button>`:`<button class="btn" data-act="addex">Load example data</button>`}</div></div>
   ${seasonsHTML()}
@@ -8238,7 +8238,7 @@ function bindModeButton(){
 }
 function refreshGamePick(){
   const s=$("#game-select"); const gs=[...S.games].sort(newestFirst);
-  s.innerHTML=gs.map(g=>`<option value="${g.id}" ${g.id===S.cur?"selected":""}>${esc(gameName(g))}${g.conflictOf?" (second copy)":""}</option>`).join("")||"<option>No games</option>";
+  s.innerHTML=gs.map(g=>`<option value="${esc(g.id)}" ${g.id===S.cur?"selected":""}>${esc(gameName(g))}${g.conflictOf?" (second copy)":""}</option>`).join("")||"<option>No games</option>";
 }
 // Keep the screen on while a game is live on the Chart tab. Called after every chart redraw, so one request runs at a time,
 // and a change that comes in while it runs is looked at again once it's done. In the coach box view only with Keep screen
