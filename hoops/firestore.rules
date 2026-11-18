@@ -178,7 +178,8 @@ service cloud.firestore {
     function hoopsBoard() { let me = /databases/$(db)/documents/hoopsMembers/$(request.auth.uid);
       return exists(me) && get(me).data.get('role', '') == 'scorer' && get(me).data.get('tier', '') == 'board'; }
     match /hoopsPublic/{doc} {
-      allow read: if doc in ['_season', '_board', '_boardHb', '_bug'] || hoopsPubOn() || hoopsIn();
+      allow get: if doc in ['_season', '_board', '_boardHb', '_bug'] || hoopsPubOn() || hoopsIn();
+      allow list: if hoopsIn();
       allow create, update: if signedIn() && (doc in ['_board', '_boardHb'] ? (hoopsBoard() || hoopsLevel() >= 4)
         : doc in ['_faces', '_logos'] ? hoopsLevel() >= 3 : hoopsPublicWrite(hoopsLevel(), doc));
       allow delete: if signedIn() && (doc == '_season' ? hoopsLevel() >= 4
