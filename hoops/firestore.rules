@@ -18,7 +18,7 @@ service cloud.firestore {
 
     // Claiming the program: only the owner email, only once, and only together with the owner's member record.
     match /config/owner {
-      allow read: if signedIn();
+      allow read: if member();
       allow create: if signedIn() && ownerEmail()
         && request.resource.data.uid == request.auth.uid
         && getAfter(/databases/$(db)/documents/members/$(request.auth.uid)).data.role == 'owner';
@@ -117,7 +117,7 @@ service cloud.firestore {
     function myEmail() { return request.auth.token.email != null ? request.auth.token.email.lower() : '-'; }
     function hoopsInviteOk(d) { return d.keys().hasOnly(['email', 'name', 'role', 'tier', 'by', 'at']) && hoopsEntry(d) && d.get('tier', '') != 'board'
         && d.email is string && d.email.size() > 3 && d.email.size() <= 120 && d.email == d.email.lower() && d.name is string && d.name.size() <= 80
-        && d.by == request.auth.uid && d.at is number; }
+        && d.by == request.auth.uid && d.at is number && d.at <= request.time.toMillis() + 86400000; }
     function hoopsInvited(uid, d) {
       let inv = /databases/$(db)/documents/hoopsInvites/$(d.get('inv', '-'));
       let i = exists(inv) ? get(inv).data : {};
@@ -178,9 +178,13 @@ service cloud.firestore {
     function hoopsBoard() { let me = /databases/$(db)/documents/hoopsMembers/$(request.auth.uid);
       return exists(me) && get(me).data.get('role', '') == 'scorer' && get(me).data.get('tier', '') == 'board'; }
     match /hoopsPublic/{doc} {
-      allow read: if doc in ['_season', '_board', '_boardHb', '_bug'] || hoopsPubOn() || hoopsIn();
-      allow create, update: if signedIn() && ((doc in ['_board', '_boardHb'] && hoopsBoard()) || hoopsPublicWrite(hoopsLevel(), doc));
-      allow delete: if signedIn() && (doc == '_season' ? hoopsLevel() >= 4 : hoopsLevel() >= 2);
+      allow get: if doc in ['_season', '_board', '_boardHb', '_bug'] || hoopsPubOn() || hoopsIn();
+      allow list: if hoopsIn();
+      allow create, update: if signedIn() && (doc in ['_board', '_boardHb'] ? (hoopsBoard() || hoopsLevel() >= 4)
+        : doc in ['_faces', '_logos'] ? hoopsLevel() >= 3 : hoopsPublicWrite(hoopsLevel(), doc));
+      allow delete: if signedIn() && (doc == '_season' ? hoopsLevel() >= 4
+        : doc in ['_board', '_boardHb'] ? hoopsLevel() >= 4
+        : doc in ['_faces', '_logos'] ? hoopsLevel() >= 3 : hoopsLevel() >= 2);
     }
     // A game's copy comes only from the device scoring it, so copies queued on a device that lost the game are refused.
     // The season list's off switch (the fan page turned off) is an Admin's: anyone else's write leaves it as it was.

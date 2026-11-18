@@ -1,0 +1,23 @@
+# Read-only guard rails. No secrets, no deploys, nothing that touches the real Firebase project.
+name: security-checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Brier Stats stamps are current (a stale stamp blanks the app)
+        run: python3 hoops/stamp.py hoops --check
+      - name: The two rules copies inside the apps match hoops/firestore.rules
+        run: python3 security-tests/check_rules_copies.py
