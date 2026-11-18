@@ -212,35 +212,6 @@ describe("#3 Listing hoopsPublic: only people let in can list it", () => {
   });
 });
 
-// ======================= #12 rev lock =======================
-describe("#12 Poisoned game revision: an Admin can always recover a game", () => {
-  test("hole is closed: after a scorer writes rev 1e15, an Admin can write the game with a normal rev", async () => {
-    await seedGame();
-    await works(setDoc(doc(ctx("scorer"), "hoopsGames", GID), game({ rev: 1e15 })));
-    await works(setDoc(doc(ctx("admin"), "hoopsGames", GID), game({ rev: 6 })));
-  });
-  test("hole is closed: a game created with a NaN rev is recoverable by an Admin", async () => {
-    await seed();
-    const id = "2026-12-05-girls";
-    await works(setDoc(doc(ctx("scorer"), "hoopsGames", id), game({ id, rev: NaN })));
-    await closed(setDoc(doc(ctx("scorer"), "hoopsGames", id), game({ id, rev: 1e300 })));
-    await works(setDoc(doc(ctx("admin"), "hoopsGames", id), game({ id, rev: 7 })));
-  });
-  test("normal use still works: scorer and coach cannot lower rev; NaN cannot overwrite a real rev", async () => {
-    await seedGame({ rev: 50 });
-    await closed(setDoc(doc(ctx("scorer"), "hoopsGames", GID), game({ rev: 49 })));
-    await closed(setDoc(doc(ctx("coach"), "hoopsGames", GID), game({ rev: 49 })));
-    await closed(setDoc(doc(ctx("scorer"), "hoopsGames", GID), game({ rev: NaN })));
-    await works(setDoc(doc(ctx("scorer"), "hoopsGames", GID), game({ rev: 51 })));
-  });
-  test("normal use still works: a poisoned (huge) rev is escaped by a client adopting the cloud rev + 1; an Admin can delete the game", async () => {
-    await seedGame();
-    await works(setDoc(doc(ctx("scorer"), "hoopsGames", GID), game({ rev: 1e15 })));
-    await works(setDoc(doc(ctx("scorer"), "hoopsGames", GID), game({ rev: 1e15 + 1 })));
-    await works(deleteDoc(doc(ctx("admin"), "hoopsGames", GID)));
-  });
-});
-
 // ======================= #20 invite time =======================
 describe("#20 Invite time: an invite cannot be dated in the far future", () => {
   test("hole is closed: a coach cannot create an invite dated 10 years ahead (it would never expire)", async () => {
@@ -425,5 +396,19 @@ describe("Unchanged on purpose (not part of the approved fixes; the ORIGINAL beh
     await works(updateDoc(doc(k, "hoopsGames/2026-12-04-ghs"), { rev: 6, writer: "kevin-dev" }));
     await works(setDoc(doc(k, "hoopsPublic/_season"), { off: true }));
     await works(getDocs(collection(k, "hoopsMembers")));
+  });
+  test("game revision: nobody, not even an Admin, can write a game with a lower rev than the stored one (an old copy can't overwrite a live game)", async () => {
+    await seedGame({ rev: 1000050 });
+    await closed(setDoc(doc(ctx("admin"), "hoopsGames", GID), game({ rev: 40 })));
+    await closed(setDoc(doc(ctx("coach"), "hoopsGames", GID), game({ rev: 40 })));
+    await closed(setDoc(doc(ctx("scorer"), "hoopsGames", GID), game({ rev: 40 })));
+    await closed(setDoc(doc(ctx("admin"), "hoopsGames", GID), game({ rev: NaN })));
+    await works(setDoc(doc(ctx("scorer"), "hoopsGames", GID), game({ rev: 1000051 })));
+  });
+  test("game revision: an Admin can still delete a game document (the way back from a poisoned rev)", async () => {
+    await seedGame();
+    await works(setDoc(doc(ctx("scorer"), "hoopsGames", GID), game({ rev: 1e15 })));
+    await closed(setDoc(doc(ctx("admin"), "hoopsGames", GID), game({ rev: 6 })));
+    await works(deleteDoc(doc(ctx("admin"), "hoopsGames", GID)));
   });
 });
