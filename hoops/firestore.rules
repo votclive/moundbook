@@ -117,7 +117,7 @@ service cloud.firestore {
     function myEmail() { return request.auth.token.email != null ? request.auth.token.email.lower() : '-'; }
     function hoopsInviteOk(d) { return d.keys().hasOnly(['email', 'name', 'role', 'tier', 'by', 'at']) && hoopsEntry(d) && d.get('tier', '') != 'board'
         && d.email is string && d.email.size() > 3 && d.email.size() <= 120 && d.email == d.email.lower() && d.name is string && d.name.size() <= 80
-        && d.by == request.auth.uid && d.at is number; }
+        && d.by == request.auth.uid && d.at is number && d.at <= request.time.toMillis() + 86400000; }
     function hoopsInvited(uid, d) {
       let inv = /databases/$(db)/documents/hoopsInvites/$(d.get('inv', '-'));
       let i = exists(inv) ? get(inv).data : {};
