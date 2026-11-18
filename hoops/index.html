@@ -5,7 +5,7 @@
 <!-- The page's lock: the only script that may run is the one in this file (named by the SHA-256 of its text) and files
      from this folder (fb.js). Text that turns up in the page from a roster, a game or the cloud can never run as code.
      After ANY edit to the script, run "python3 hoops/stamp.py hoops": with a stale hash the browser runs nothing. -->
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-aGUfWO7mGK21mkr0NBa1g20LPqRhffRQ5o1gW1P+dDA='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-ZM67GQn4xjH2Wx1s2i5vlYrcP6Pq0jwYne9MfdZjnWM='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#094A28">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -6381,7 +6381,7 @@ function face(p, cls, ours){
   const n = p && typeof p === "object" && p.num != null ? String(p.num).trim().slice(0, 3) : "";
   return c ? `<i class="face ${c}${cls ? " " + cls : ""}"></i>` : ours && id && Faces.any() ? `<i class="face none${cls ? " " + cls : ""}"${n ? ` data-n="${esc(n)}"` : ""}></i>` : "";
 }
-// A photo file's name: "B_20_Hudson_Savage_Black_StepRepeat.jpg" is boys #20 Hudson Savage, "LC_5_Alysia_Graham.jpg" girls
+// A photo file's name: "B_20_Jordan_Example_Black_StepRepeat.jpg" is boys #20 Jordan Example, "LC_5_Taylor_Sample.jpg" girls
 // #5. The team letters and the name are optional; the first one- or two-digit number is the jersey.
 // A sheet's or page's heading with the kid's photo to its left. With no photo the heading is exactly what it was.
 // ours: one of our kids with no photo gets the bobcat circle, once any photos are loaded (so do face and faceNm).
@@ -6518,7 +6518,7 @@ const Faces = (() => {
     const opts = t => sortRoster((S.teams[t] || {}).roster || []).map(p => `<option value="${t}|${p.pid}">${esc(tname(t))} ${esc(p.num)} ${esc(p.name || "")}</option>`).join("");
     const n = mine.length, cnt = t => s.items.filter(it => it.pid && it.team === t).length;
     return `<div class="row between"><h3 style="margin:0">Player photos</h3><div class="seg" role="group" aria-label="Team">${["boys", "girls"].map(t => `<button class="btn sm" data-act="facesteam" data-team="${t}" aria-pressed="${s.team === t}">${esc(tname(t))}${cnt(t) ? ` · ${cnt(t)} new` : ""}</button>`).join("")}</div></div>
-      <p class="small" style="margin:8px 0">A small round photo shows beside each player's name on every page: the Scorer, PA and broadcast screens, Stats, the fan page and the stream. A player marked <b>number only on the public page</b> keeps the photo on staff pages only. Pick one picture or the whole folder at once: a file named with the jersey number (B_20_Hudson_Savage.jpg, LC_5_Alysia_Graham.jpg) finds its player by itself.</p>
+      <p class="small" style="margin:8px 0">A small round photo shows beside each player's name on every page: the Scorer, PA and broadcast screens, Stats, the fan page and the stream. A player marked <b>number only on the public page</b> keeps the photo on staff pages only. Pick one picture or the whole folder at once: a file named with the jersey number (B_20_Jordan_Example.jpg, LC_5_Taylor_Sample.jpg) finds its player by itself.</p>
       ${live ? "" : `<div class="flag"><span>Photos are saved to the cloud so every device gets them. Turn on live sync and sign in (Setup) to add or remove one.</span></div>`}
       <div class="row"><button class="btn${n ? "" : " primary"}" data-act="facespick" data-pid="" ${live && !s.busy ? "" : "disabled"}>Add photos</button><input type="file" id="faces-file" accept="image/*" multiple hidden>
         ${n ? `<button class="btn primary" data-act="facessave" ${s.busy ? "disabled" : ""}>Save ${n} photo${n === 1 ? "" : "s"}</button>` : ""}${s.busy ? `<span class="small" role="status"><b>${esc(s.busy)}</b></span>` : ""}</div>
