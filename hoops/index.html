@@ -5,7 +5,7 @@
 <!-- The page's lock: the only script that may run is the one in this file (named by the SHA-256 of its text) and files
      from this folder (fb.js). Text that turns up in the page from a roster, a game or the cloud can never run as code.
      After ANY edit to the script, run "python3 hoops/stamp.py hoops": with a stale hash the browser runs nothing. -->
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-NXXeSHB11k7WNJgv4Ovgu7YhEvKn53Cn7U+9Z3wbGGQ='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-JOYZ6oJ79tGQTPDmSwfEf1mp4udadl5s8CPzn3Ar5y8='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#094A28">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -835,6 +835,13 @@ td .face{width:24px;height:24px;margin:-5px 7px -4px 0}
 .seg{display:flex;gap:4px}
 #nostart{visibility:hidden;animation:nostart 0s linear 5s forwards;margin:24px;font:600 18px/1.4 system-ui,sans-serif}
 @keyframes nostart{to{visibility:visible}}
+.simple .sphead{margin-bottom:10px}.spwrap{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:12px;align-items:start}
+@media (max-width:860px){.spwrap{grid-template-columns:1fr}}
+.spgrid4{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.spb{min-height:64px;font-size:19px;font-weight:800}.spb.warn{border-color:var(--red,#B3261E);border-width:2px}
+.spteam{margin-top:10px}.spchips{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+.chip.spc{min-height:54px;min-width:110px;font-size:17px;padding:6px 12px}.chip.spno{font-weight:600;font-style:italic}
+.spbench summary{cursor:pointer;margin-top:8px;font-weight:700}.spcourt{max-width:560px;width:100%;cursor:crosshair}
 </style>
 </head>
 <body>
@@ -859,7 +866,7 @@ td .face{width:24px;height:24px;margin:-5px 7px -4px 0}
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
 { const n = document.getElementById("nostart"); if(n) n.remove(); }   // the script is running: see #nostart
-const BS_VERSION = "0.30.0";
+const BS_VERSION = "0.31.0";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -1506,10 +1513,10 @@ function playText(g, e, o = {}){
 
 /* ---------- ui state ---------- */
 const ui = {open:{}, pa:true, tab:"desk", gid:null, find:{us:"", them:""}, lineup:null, fu:[], narrow:"home", shotTm:"all", shotPid:"", gfilter:"all", sheet:null, follow:true, annMode:"live", night:null, pubTm:"home"};
-try{ const p = JSON.parse(localStorage.getItem(KEY + ".ui") || "{}"); if(p.tab) ui.tab = p.tab; if(p.gid) ui.gid = p.gid; if(p.annMode) ui.annMode = p.annMode; ui.caps = p.caps !== false; ui.pa = p.mic === true; ui.micSet = p.micSet === true || p.mic === true; }catch(e){ ui.pa = false; }
+try{ const p = JSON.parse(localStorage.getItem(KEY + ".ui") || "{}"); if(p.tab) ui.tab = p.tab; if(p.gid) ui.gid = p.gid; if(p.annMode) ui.annMode = p.annMode; ui.simple = p.simple === true; ui.caps = p.caps !== false; ui.pa = p.mic === true; ui.micSet = p.micSet === true || p.mic === true; }catch(e){ ui.pa = false; }
 if(ANN_ONLY){ ui.tab = "ann"; document.body.classList.add("annfull"); }
 if(BC_ONLY){ ui.tab = "bc"; document.body.classList.add("annfull", "bcfull"); }
-function saveUi(){ if(PUB) return; try{ const p = JSON.parse(localStorage.getItem(KEY + ".ui") || "{}"); if(!ANN_ONLY && !BC_ONLY){ p.tab = ui.tab; p.gid = ui.gid; } p.annMode = ui.annMode; p.caps = ui.caps !== false; if(ui.micSet){ p.mic = ui.pa; p.micSet = true; } localStorage.setItem(KEY + ".ui", JSON.stringify(p)); }catch(e){} }
+function saveUi(){ if(PUB) return; try{ const p = JSON.parse(localStorage.getItem(KEY + ".ui") || "{}"); if(!ANN_ONLY && !BC_ONLY){ p.tab = ui.tab; p.gid = ui.gid; } p.annMode = ui.annMode; p.simple = !!ui.simple; p.caps = ui.caps !== false; if(ui.micSet){ p.mic = ui.pa; p.micSet = true; } localStorage.setItem(KEY + ".ui", JSON.stringify(p)); }catch(e){} }
 function cur(){ const g = ui.gid && S.games[ui.gid]; return g && !g.deleted ? g : null; }
 // Who can do what with live sync on. Sync.role(): "owner" is an Admin (Coach, Mound Book's owner and Admins, and anyone made
 // an Admin here), then "coach", "scorer" and "viewer". Admins: deleting and resetting games, the fan page switch, the Drive
@@ -2205,6 +2212,7 @@ function gameSub(g){ return [g.team === "girls" ? "Girls" : "Boys", fmtDate(g.da
 
 function viewDesk(){
   const g = cur(); if(!g) return needGame();
+  if(ui.simple && canScore()) return viewSimple(g);
   const R = replay(g), ha = homeAway(g), sd = sides(g), Q = g.quarters || 4, edit = canEdit(g), hk = tm => tm === ha.home ? "home" : "away";
   let h = "";
   if(!canScore()) h += `<div class="flag">You're signed in as a viewer. <button class="btn sm" data-act="go" data-tab="box">Open the box score</button></div>`;
@@ -2219,7 +2227,7 @@ function viewDesk(){
   h += `<div class="deskhead"><div class="game"><h2>${esc(usName(g))} ${gameTitle(g)}</h2><span class="small">${gameSub(g)}</span>
     ${g.practice ? `<span class="tag solid" title="Sample rosters. Nothing here syncs or counts.">Practice</span><button class="btn sm no-print" data-act="resetprac">Clear practice game</button>` : ""}</div>
     <div class="periods" role="group" aria-label="Period">${pers.map(q => `<button class="${q === R.q ? "on" : ""}" data-act="period" data-q="${q}" ${edit ? "" : "disabled"} aria-pressed="${q === R.q}">${perLabel(g, q)}</button>`).join("")}${R.q >= Q && !ended ? `<button data-act="period" data-q="${R.q + 1}" ${edit ? "" : "disabled"}>${R.sc.us !== R.sc.them ? "End " + perLabel(g, R.q) : "+OT"}</button>` : ""}</div>
-    <div class="row no-print"><button class="btn sm" data-act="toggle" data-k="extra" aria-pressed="${!!S.settings.extra}">Every stat</button><button class="btn sm" data-act="toggle" data-k="chart" aria-pressed="${!!S.settings.chart}">Shot spots</button>${flipBtn()}<button class="btn sm" data-act="flaglast" ${edit && lastPlay(g) ? "" : "disabled"} title="Flag the last play to check against the official book at the break">⚑ Flag</button><button class="btn sm dark" data-act="undo" ${edit && g.ev.some(e => !e.v) ? "" : "disabled"} title="Undo the last play (${UNDO_KEY})">↶ Undo</button></div></div>`;
+    <div class="row no-print"><button class="btn sm" data-act="simpleon" title="One question at a time, for a student manager">Simple scoring</button><button class="btn sm" data-act="toggle" data-k="extra" aria-pressed="${!!S.settings.extra}">Every stat</button><button class="btn sm" data-act="toggle" data-k="chart" aria-pressed="${!!S.settings.chart}">Shot spots</button>${flipBtn()}<button class="btn sm" data-act="flaglast" ${edit && lastPlay(g) ? "" : "disabled"} title="Flag the last play to check against the official book at the break">⚑ Flag</button><button class="btn sm dark" data-act="undo" ${edit && g.ev.some(e => !e.v) ? "" : "disabled"} title="Undo the last play (${UNDO_KEY})">↶ Undo</button></div></div>`;
   h += `<div class="row only-narrow" style="margin-bottom:8px">${[sd.left, sd.right].map(tm => `<button class="btn sm" aria-pressed="${ui.narrow === hk(tm)}" data-act="narrow" data-v="${hk(tm)}">${esc(tmName(g, tm))}</button>`).join("")}</div>`;
   h += `<div class="desk">${teamCol(g, R, sd.left, sd.left === ha.home ? "Home" : "Away", ui.narrow !== hk(sd.left))}<div class="center">${board(g, R)}${Board.strip(g)}${teamBox(g, R, sd.left, edit)}${teamBox(g, R, sd.right, edit)}
     <div class="cact no-print">
@@ -4349,7 +4357,7 @@ function viewBox(){
   const sb = sbSent(g);
   const qsel = `<select data-boxq style="width:auto"><option value="all">Whole game</option>${Array.from({length:lastQ(R0)}, (_, i) => `<option value="${i + 1}" ${bq === i + 1 ? "selected" : ""}>${perLabel(g, i + 1)} only</option>`).join("")}</select>`;
   return `<div class="stack"><div class="row between"><div><div class="kicker">Box score · ${ff ? esc(ffWords) : g.status === "final" ? "final" : nowLabel(g, R)}</div><h2>${esc(usName(g))} ${gameTitle(g)}</h2><div class="small">${gameSub(g)}</div></div>
-      <div class="no-print" style="display:flex;flex-direction:column;align-items:flex-end;gap:4px"><div class="row">${played ? `<button class="btn" data-act="rw-open">▶ Re-watch</button>` : ""}<button class="btn" data-act="boxpdf">Box score PDF</button><button class="btn" data-act="print">Print box score</button>${canCoach() ? `<button class="btn" data-act="gbopen">More prints · Game Book</button>` : ""}<button class="btn" data-act="csv">Player stats CSV</button>${canCoach() && g.status === "final" ? `<button class="btn" data-act="mpfile" title="A file MaxPreps imports: Schedule, the game, Edit Score, Save &amp; Import Stats">MaxPreps file</button>` : ""}${canCoach() && g.status === "final" && g.team === "boys" ? `<button class="btn" data-act="hudlopen" title="Fill what the book missed from Hudl's box score, and see where they disagree">Hudl check</button>` : ""}<button class="btn primary" data-act="send">${sb && sb.changed ? "Send again" : "Send to Scorebook"}</button></div>
+      <div class="no-print" style="display:flex;flex-direction:column;align-items:flex-end;gap:4px"><div class="row">${played ? `<button class="btn" data-act="rw-open">▶ Re-watch</button>` : ""}<button class="btn" data-act="boxpdf">Box score PDF</button><button class="btn" data-act="print">Print box score</button>${canCoach() ? `<button class="btn" data-act="gbopen">More prints · Game Book</button>` : ""}<button class="btn" data-act="csv">Player stats CSV</button>${canCoach() && g.status === "final" ? `<button class="btn" data-act="mpfile" title="A file MaxPreps imports: Schedule, the game, Edit Score, Save &amp; Import Stats">MaxPreps file</button>` : ""}${canCoach() && g.status === "final" && g.team === "boys" ? `<button class="btn" data-act="hudlopen" title="Fill what the book missed from Hudl's box score, and see where they disagree">Hudl check</button>` : ""}${canCoach() && g.ev.some(e => !e.v && e.t === "PER") ? `<button class="btn" data-act="fqopen" title="Type the scoreboard at a quarter's end and the horn moves there">Fix quarters</button>` : ""}<button class="btn primary" data-act="send">${sb && sb.changed ? "Send again" : "Send to Scorebook"}</button></div>
       ${R0.filled ? `<div class="small">Includes ${R0.filled} Hudl fill${R0.filled === 1 ? "" : "s"} (box score only, not plays).</div>` : ""}${sb ? `<div class="small">${sb.changed ? `<b>Changed since it went to the Scorebook</b> ${esc(sbWhen(sb.at))}. Send it again.` : `Sent to Scorebook ${esc(sbWhen(sb.at))}.`}</div>` : ""}</div></div>
     ${ff ? `<div class="flag ${ff === "W" ? "ok" : "bad"}"><b>${esc(ffWords)}.</b> Played ${R0.sc.us}-${R0.sc.them}. The record goes by the ruling; the player stats below still count.</div>` : ""}
     <div class="row" style="align-items:flex-start;gap:12px"><div style="flex:1 1 360px;max-width:520px">${board(g, R0)}</div><div style="flex:1 1 300px;max-width:420px">${boxGlance(g, R0)}</div></div>
@@ -7691,6 +7699,145 @@ function hudlLoad(g, text, file){ const h = hudlParse(text); if(!h){ toast("That
   const st = hudlState(g), q0 = /2h|2nd.?half|second.?half/i.test(file || "") ? 3 : st.q0;
   ui.hudl = {gid:g.id, h, q0, file:String(file || "").slice(0, 80), keep:{}, ok:false}; renderSheet();
   toast(`Read ${Object.keys(h).length} Hudl players.${q0 > 1 ? ` The file name says second half: set to ${perLabel(g, q0)} on.` : ""}`, 4000); }
+/* ---------- Simple scoring (Kevin, 0.31.0) ----------
+   A switch on the Scorer screen for one student manager on one iPad. One question at a time: what happened, then who.
+   Every shot starts on the court, so the spot decides 2 or 3. A make asks who passed and a turnover asks who stole it,
+   with No assist / No steal one tap away, so a skip is a choice. A miss always asks for the rebound. A free-throw trip
+   names its shooter once. "Ball changed hands" asks what ended the trip when nothing did. The other team stays light:
+   shots, free throws, fouls, turnovers, and Not sure is allowed. It writes the same plays the full scorer does, so the
+   box score, the fan page and the Hudl check all work the same. ui.simple is this device's choice (saveUi). */
+const SP_META = new Set(["IN", "OUT", "NOTE", "POSS", "TMO", "AST"]);
+function spChips(g, R, tm, opt = {}){
+  const c = R.court[tm], all = sortRoster(roster(g, tm)).filter(p => p.pid !== opt.excl), on = c.size ? all.filter(p => c.has(p.pid)) : [], rest = c.size ? all.filter(p => !c.has(p.pid)) : all;
+  const chip = p => `<button class="chip spc${tm === "them" ? " skip" : ""}" data-act="sp" data-v="pick" data-tm="${tm}" data-pid="${esc(p.pid)}"><b>${esc(p.num)}</b> ${esc(pShort(p))}</button>`;
+  const row = l => `<div class="spchips">${l.map(chip).join("")}</div>`;
+  return (on.length ? row(on) + (rest.length ? `<details class="spbench"><summary>Bench</summary>${row(rest)}</details>` : "") : row(rest))
+    + (opt.none ? `<div class="spchips"><button class="chip spc spno" data-act="sp" data-v="pick" data-tm="${tm}" data-pid="">${esc(opt.none)}</button></div>` : "");
+}
+// What ended the trip, from the last play that says: null when it ended, else the team that still had the ball (or "").
+function spOpen(g, R){
+  for(let i = R.plays.length - 1; i >= 0; i--){ const p = R.plays[i], e = p.e; if(p.void || p.der || SP_META.has(e.t) || PREGAME(e)) continue;
+    switch(e.t){
+      case "FG": return e.m ? null : {tm:e.tm, why:"a miss with no rebound"};
+      case "FT": return e.m ? null : {tm:e.tm, why:"a missed free throw with no rebound"};
+      case "REB": return e.o ? {tm:e.tm, why:"an offensive rebound, then nothing"} : null;
+      case "PF": case "TF": return {tm:OTHER(e.tm), why:"a foul, then nothing"};
+      default: return null;   // a turnover, a steal, a horn, the tip
+    } }
+  return {tm:"", why:"nothing logged yet"};
+}
+function spCheck(g, R){
+  const t = totalsOf(R, "us"), bad = [];
+  if(t.fga >= 6 && t.fgm === t.fga) bad.push(`${t.fgm} for ${t.fga} from the floor. Nobody shoots 100%: misses are getting skipped.`);
+  if(R.q >= 2 && !t.to) bad.push("No turnovers since the tip. Every lost ball counts.");
+  if(t.fgm >= 5 && !t.ast) bad.push(`No assists on ${t.fgm} baskets. Who passed?`);
+  const B = balanceOf(g, R).us; if(B.miss >= 4 && B.d < -2) bad.push(`${B.miss} misses but only ${B.reb} rebounds after them. Every miss gets a rebound.`);
+  return `<div class="card spcheck"><h3>Book check</h3><p class="small" style="margin:0 0 6px">FG ${t.fgm}-${t.fga} · 3PT ${t.tpm}-${t.tpa} · FT ${t.ftm}-${t.fta} · REB ${t.oreb + t.dreb} · AST ${t.ast} · TO ${t.to}</p>
+    ${bad.length ? bad.map(x => `<div class="flag bad" style="margin:4px 0">${esc(x)}</div>`).join("") : `<div class="flag ok" style="margin:0">Looks like a real game so far.</div>`}</div>`;
+}
+function viewSimple(g){
+  const R = replay(g), edit = canEdit(g) && g.status !== "final", s = ui.sp, nm = tm => esc(tmName(g, tm)), Q = g.quarters || 4;
+  const big = (v, l, tm, x = "") => `<button class="btn spb${x}" data-act="sp" data-v="${v}"${tm ? ` data-tm="${tm}"` : ""} ${edit ? "" : "disabled"}>${l}</button>`;
+  let body = "";
+  if(!edit) body = `<div class="flag">${g.status === "final" ? "This game is final." : !canScore() ? "Viewers can't score." : locked(g) ? "This final is locked." : "Another device is scoring this game. Take it over on the full scorer."}</div>`;
+  else if(!s){ const o = spOpen(g, R);
+    body = `<h3>What happened?</h3>${["us", "them"].map(tm => `<div class="spteam"><div class="kicker">${nm(tm)}</div><div class="spgrid4">${big("shot", "Shot", tm, " primary")}${big("ft", "Free throws", tm)}${big("to", "Turnover", tm)}${big("pf", "Foul by " + nm(tm), tm)}</div></div>`).join("")}
+      <div class="spgrid4" style="margin-top:12px">${big("poss", "Ball changed hands", "", o ? " warn" : "")}${big("tmo", nm("us") + " timeout", "us")}${big("tmo", nm("them") + " timeout", "them")}${big("per", "End of " + esc(perLabel(g, R.q)))}</div>`; }
+  else { const S2 = (h, x) => `<h3>${h}</h3>${x}`;
+    switch(s.k){
+      case "spot": body = S2(`${nm(s.tm)} shot. Where? Tap the spot.`, courtSvg(R.shots.filter(x => x.e.tm === s.tm && x.q === R.q), null, g, s.tm).replace('<svg class="court', '<svg data-court="sloc" class="court spcourt'))
+        + `<div class="row" style="margin-top:6px"><span class="small">Couldn't see where:</span><button class="btn sm" data-act="sp" data-v="nospot" data-p="2">It was a 2</button><button class="btn sm" data-act="sp" data-v="nospot" data-p="3">It was a 3</button></div>`; break;
+      case "mm": body = S2(`${nm(s.tm)}: a ${s.p}-pointer${s.x == null ? "" : " from the spot you tapped"}.`, `<div class="spgrid4">${big("made", "Made it", "", " primary")}${big("miss", "Missed it")}</div>`); break;
+      case "who": body = S2({fg:`Who ${s.m ? "made" : "missed"} the ${s.p}?`, ft:"Who's shooting the free throws?", to:"Who turned it over?", pf:"Who fouled?"}[s.act], spChips(g, R, s.tm, {none:s.tm === "them" || s.act === "to" ? (s.act === "to" ? nm(s.tm) + " team (no one player)" : "Not sure who") : ""})); break;
+      case "ast": body = S2("Who passed for the basket?", spChips(g, R, "us", {excl:s.shooter, none:"No assist"})); break;
+      case "stl": body = S2(`Did ${nm(s.tm)} steal it?`, spChips(g, R, s.tm, {none:"No steal"})); break;
+      case "reb": body = S2("Who got the rebound?", ["us", "them"].map(tm => `<div class="kicker" style="margin-top:8px">${nm(tm)}${tm === s.miss ? " (offensive)" : " (defensive)"}</div>${spChips(g, R, tm, {none:nm(tm) + " team rebound"})}`).join("")); break;
+      case "ftn": body = S2(`Free throws for ${nm(s.tm)}. How many?`, `<div class="spgrid4">${s.after ? big("ftn0", "None") : ""}${[1, 2, 3].map(n => `<button class="btn spb" data-act="sp" data-v="ftn" data-n="${n}">${n}</button>`).join("")}</div>`); break;
+      case "ftm": { const p = player(g, s.tm, s.pid); body = S2(`${p ? "#" + esc(p.num) + " " + esc(pShort(p)) : nm(s.tm)}: free throw ${s.i} of ${s.n}`, `<div class="spgrid4">${big("ftmade", "Made it", "", " primary")}${big("ftmiss", "Missed it")}</div>`); break; }
+      case "why": body = S2(`Nothing ended ${s.tm ? nm(s.tm) + "'s" : "that"} trip (${esc(s.why)}). What happened?`, `<div class="spgrid4">${(s.tm ? [s.tm] : ["us", "them"]).map(tm => big("shot", nm(tm) + " shot", tm) + big("to", nm(tm) + " turnover", tm)).join("")}${big("pf", "Foul by " + nm("us"), "us")}${big("pf", "Foul by " + nm("them"), "them")}</div>`); break;
+      case "per": body = S2(`End of ${esc(perLabel(g, R.q))}?`, `<p>${nm("us")} ${R.sc.us}, ${nm("them")} ${R.sc.them}. Check it against the scoreboard first.</p><div class="spgrid4">${big("peryes", "Yes, the horn went", "", " primary")}</div>`); break;
+    }
+    body = `<button class="btn sm" data-act="sp" data-v="back" style="margin-bottom:8px">← Back</button>${body}`;
+  }
+  return `<div class="simple"><div class="row between sphead"><div><div class="kicker">Simple scoring · ${esc(nowLabel(g, R))}${R.q > Q ? "" : ""}</div><h2 style="margin:0">${nm("us")} ${R.sc.us} · ${nm("them")} ${R.sc.them}</h2><div class="small">${esc(usName(g))} ${gameTitle(g)}</div></div>
+    <div class="row no-print"><button class="btn" data-act="undo" ${edit ? "" : "disabled"}>Undo</button><button class="btn" data-act="simpleoff">Full scorer</button></div></div>
+    <div class="spwrap"><div class="card spmain">${body}</div><div class="spside">${spCheck(g, R)}<div class="card"><h3>Last plays</h3>${playList(g, R, 6, false, null, false)}</div></div></div></div>`;
+}
+function spSaid(g, e){ if(!e) return; toast(playText(g, e).replace(/<[^>]+>/g, ""), 4000); $("#toast").insertAdjacentHTML("beforeend", ` <button class="btn sm" data-act="undo">Undo</button>`); }
+function spAct(g, d){
+  const s = ui.sp, v = d.v, tm = d.tm === "them" ? "them" : d.tm === "us" ? "us" : null, pid = d.pid || null, R = replay(g);
+  if(v === "back"){ ui.sp = null; render(); return; }
+  if(!canEdit(g) || g.status === "final") return;
+  const go = x => { ui.sp = x; render(); };
+  switch(v){
+    case "shot": if(tm) go({k:"spot", tm}); return;
+    case "nospot": if(s && s.k === "spot") go({k:"mm", tm:s.tm, p:d.p === "3" ? 3 : 2, x:null, y:null}); return;
+    case "made": case "miss": if(s && s.k === "mm") go({...s, k:"who", act:"fg", m:v === "made"}); return;
+    case "ft": if(tm) go({k:"ftn", tm}); return;
+    case "ftn": { const n = +d.n; if(s && s.k === "ftn" && [1, 2, 3].includes(n)) go(s.pid !== undefined ? {k:"ftm", tm:s.tm, pid:s.pid, n, i:1} : {k:"who", tm:s.tm, act:"ft", n}); return; }
+    case "ftn0": go(null); return;
+    case "ftmade": case "ftmiss": { if(!s || s.k !== "ftm") return; const m = v === "ftmade", e = rec({tm:s.tm, pid:s.pid, t:"FT", m}); if(!e) return; spSaid(g, e);
+      go(s.i < s.n ? {...s, i:s.i + 1} : m ? null : {k:"reb", miss:s.tm, ref:e.id}); return; }
+    case "to": if(tm) go({k:"who", tm, act:"to"}); return;
+    case "pf": if(tm) go({k:"who", tm, act:"pf"}); return;
+    case "tmo": { if(!tm) return; const l = toLeft(g, R, tm), len = l[60] > 0 ? 60 : l[30] > 0 ? 30 : 0; if(!len){ toast(tmName(g, tm) + " has no timeouts left."); return; }
+      const e = rec({tm, pid:null, t:"TMO", len}); if(e){ spSaid(g, e); go(null); } return; }
+    case "poss": { const o = spOpen(g, R); if(!o){ toast("Got it. Next trip."); return; } go({k:"why", tm:o.tm, why:o.why}); return; }
+    case "per": go({k:"per"}); return;
+    case "peryes": ui.sp = null; endPeriod(); render(); return;
+    case "pick": { if(!s || !tm) return;
+      if(s.k === "who" && tm === s.tm){
+        if(s.act === "fg"){ const e = rec({tm, pid, t:"FG", p:s.p, m:s.m, ...(s.x != null ? {x:s.x, y:s.y} : {})}); if(!e) return; spSaid(g, e);
+          go(s.m ? (tm === "us" && pid ? {k:"ast", ref:e.id, shooter:pid} : null) : {k:"reb", miss:tm, ref:e.id}); return; }
+        if(s.act === "ft"){ go({k:"ftm", tm, pid, n:s.n, i:1}); return; }
+        if(s.act === "to"){ const e = rec({tm, pid, t:"TO"}); if(!e) return; spSaid(g, e); go({k:"stl", tm:OTHER(tm), ref:e.id}); return; }
+        if(s.act === "pf"){ const e = rec({tm, pid, t:"PF"}); if(!e) return; spSaid(g, e); go({k:"ftn", tm:OTHER(tm), after:1}); return; }
+      }
+      if(s.k === "ast" && tm === "us"){ if(pid && pid !== s.shooter){ const e = rec({tm, pid, t:"AST", ref:s.ref}); spSaid(g, e); } go(null); return; }
+      if(s.k === "stl" && tm === s.tm){ if(pid){ const e = rec({tm, pid, t:"STL", ref:s.ref}); spSaid(g, e); } go(null); return; }
+      if(s.k === "reb"){ const m = g.ev.find(x => x.id === s.ref && !x.v); const e = rec({tm, pid, t:"REB", o:tm === s.miss, ...(m ? {ref:m.id} : {})}); spSaid(g, e); go(null); return; }
+      return; }
+  }
+}
+// A tap on the court: the spot, and from it 2 or 3.
+function spSpot(svg, ev){ const s = ui.sp; if(!s || s.k !== "spot") return;
+  const u = zUnits(), r = svg.getBoundingClientRect(), x = Math.min(1, Math.max(0, (ev.clientX - r.left * u) / (r.width * u))), y = Math.min(1, Math.max(0, (ev.clientY - r.top * u) / (r.height * u)));
+  ui.sp = {k:"mm", tm:s.tm, x:Math.round(x * 1000) / 1000, y:Math.round(y * 1000) / 1000, p:isThree(x, y) ? 3 : 2}; render(); }
+
+/* ---------- Fix quarters (Kevin, 0.31.0) ----------
+   Managers forget to end a quarter, so plays land in the wrong one. A coach types what the scoreboard said when the
+   horn went; the book finds where it read that score and the horn moves there (the old one is removed, the new one is
+   marked added later, both in the change log). Every play after it moves into the next quarter, fouls and timeouts too. */
+function fqCands(g, n, us, them){
+  const R = replay(g), hi = hornAt(g, n), lo = n > 1 ? hornAt(g, n - 1) : -1, up = hornAt(g, n + 1), idx = new Map(g.ev.map((e, i) => [e, i]));
+  const live = R.plays.filter(p => !p.void && !p.der && idx.has(p.e) && !PREGAME(p.e) && p.e.t !== "PER");
+  const k = live.findIndex(p => p.sc.us === us && p.sc.them === them); if(k < 0) return {none:true};
+  const out = []; for(let j = k; j < live.length && out.length < 15; j++){ const p = live[j]; if(p.sc.us !== us || p.sc.them !== them) break; const i = idx.get(p.e);
+    if(i > lo && (up < 0 || i < up)) out.push({id:p.e.id, here:hi > i && g.ev.slice(i + 1, hi).every(x => x.v || PREGAME(x) || x.t === "IN" || x.t === "OUT"), t:`${perLabel(g, p.q)} · ${playText(g, p.e)}`}); }
+  return {list:out};
+}
+function fqHtml(g){
+  const R = replay(g), nH = g.ev.filter(e => !e.v && e.t === "PER").length, ed = canCoach() && canEdit(g), st = ui.fq && ui.fq.gid === g.id ? ui.fq : null;
+  const scAt = n => { const e = g.ev[hornAt(g, n)], p = R.plays.find(x => x.e === e); return p ? p.sc : {us:0, them:0}; };
+  const rows = Array.from({length:nH}, (_, i) => i + 1).map(n => { const sc = scAt(n), mine = st && st.n === n ? st : null;
+    return `<div class="card" style="margin:0 0 8px;padding:10px"><div class="row between"><b>End of ${esc(perLabel(g, n))}</b><span class="small">The book: ${esc(usName(g))} ${sc.us}, ${esc(g.opp)} ${sc.them}</span></div>
+      <div class="row" style="margin-top:6px"><span class="small">The scoreboard said</span><label class="small">${esc(usName(g))} <input type="text" inputmode="numeric" data-fq="us" data-n="${n}" style="width:60px" value="${mine ? mine.us : ""}"></label><label class="small">${esc(g.opp)} <input type="text" inputmode="numeric" data-fq="them" data-n="${n}" style="width:60px" value="${mine ? mine.them : ""}"></label>${ed ? `<button class="btn sm" data-act="fqfind" data-n="${n}">Find it</button>` : ""}</div>
+      ${mine ? mine.none ? `<div class="flag bad" style="margin-top:6px">The book never reads ${mine.us}-${mine.them} in ${esc(perLabel(g, n))} or ${esc(perLabel(g, n + 1))}. A basket is missing or extra: fix the plays first, then come back.</div>`
+        : mine.list.length ? `<p class="small" style="margin:8px 0 4px">The book reads ${mine.us}-${mine.them} after these plays. Tap the last play before the horn.</p><ul class="closel">${mine.list.map(c => `<li><span>${c.t}${c.here ? ' <span class="tag">the horn is here now</span>' : ""}</span>${ed && !c.here ? `<button class="btn sm primary" data-act="fqmove" data-id="${esc(c.id)}">Horn after this</button>` : ""}</li>`).join("")}</ul>`
+        : `<div class="flag" style="margin-top:6px">That score is outside this quarter's neighbors. Check the numbers.</div>` : ""}</div>`; }).join("");
+  return `<h3>Fix quarters: ${esc(usName(g))} ${gameTitle(g)}</h3><p class="small" style="margin:0 0 8px">Type what the scoreboard said when each quarter ended. The book finds that score and moves the horn there. Scores by quarter, team fouls and timeouts follow. Both changes go in the change log.</p>
+    ${locked(g) ? `<div class="flag bad"><b>This final is locked.</b> Unlock it with a reason to fix the quarters.${canCoach() ? ` <button class="btn sm" data-act="unlock">Unlock to fix</button>` : ""}</div>` : !ed ? `<div class="flag">Only a coach can move a quarter's end.</div>` : ""}
+    ${rows || `<p>No quarter has ended in this book yet. Use Insert under Plays to put in a missing horn.</p>`}<div class="row"><button class="btn" data-close>Close</button></div>`;
+}
+function fqMove(g, id){
+  if(!canCoach() || !canEdit(g) || !ui.fq || ui.fq.gid !== g.id) return;
+  const n = ui.fq.n, c = fqCands(g, n, ui.fq.us, ui.fq.them), pick = c.list && c.list.find(x => x.id === id && !x.here); if(!pick) return;
+  const old = g.ev[hornAt(g, n)], ref = g.ev.find(x => x.id === id && !x.v); if(!old || !ref) return;
+  const e = putAt(g, {tm:"us", pid:null, t:"PER", q:0}, ref, true); if(!e) return;
+  old.v = true; old.ed = Date.now(); g.ev.forEach(y => { if(y.t === "PER" && !y.v) y.q = perNo(g, y); });
+  const R = replay(g), q = R.qs; ui.fq = null; touch(g); renderSheet();
+  toast(`End of ${perLabel(g, n)} moved. ${perLabel(g, n)}: ${usName(g)} ${q.us[n - 1] || 0}, ${g.opp} ${q.them[n - 1] || 0}.`, 5000);
+}
 function mpParse(text){
   const w = String(text || "").replace(/ /g, " ").split(/\s+/).filter(Boolean), rows = {};
   const isNum = x => /^-?(\d+\.?\d*|\.\d+)%?$/.test(x) || /^[-–—]$/.test(x), val = x => /^[-–—]$/.test(x) ? null : parseFloat(x);
@@ -7946,6 +8093,7 @@ document.addEventListener("click", async ev => {
     return; }
   const pk = t.closest("svg[data-pick]");
   if(pk){ shotPick(pk, ev); return; }
+  const sct = t.closest('[data-court="sloc"]'); if(sct){ spSpot(sct, ev); return; }
   const court = t.closest('[data-court="loc"]');
   if(court){
     const g = cur(), f = ui.fu[0]; if(!g || !f || f.k !== "loc") return;
@@ -8251,6 +8399,13 @@ document.addEventListener("click", async ev => {
         gg.unl = unlOf(gg).concat([{at:Date.now(), by:Sync.who(), u:Sync.uid() || "", why}]).slice(-30); edField(gg, ["unl"]); touch(gg); toast("Unlocked for 24 hours. It's in the change log."); }, 2, "Paper book had #24 with 3 fouls, not 4"); break; }
     case "relock": { if(!g || !canCoach() || !lockOpen(g)) break; g.unl = unlOf(g).concat([{at:Date.now(), by:Sync.who(), u:Sync.uid() || "", lock:1}]).slice(-30); edField(g, ["unl"]); touch(g); toast("Locked again."); break; }
     case "chglog": if(g) chgLog(g); break;
+    case "simpleon": ui.simple = true; ui.sp = null; ui.fu = []; ui.rq = null; saveUi(); render(); window.scrollTo(0, 0); break;
+    case "simpleoff": ui.simple = false; ui.sp = null; saveUi(); render(); break;
+    case "sp": if(g) spAct(g, a.dataset); break;
+    case "fqopen": if(g && canCoach()){ if(!ui.fq || ui.fq.gid !== g.id) ui.fq = null; const gid = g.id; openSheet({wide:true, html:() => S.games[gid] ? fqHtml(S.games[gid]) : ""}); } break;
+    case "fqfind": { if(!g || !canCoach()) break; const n = +a.dataset.n, v = k => { const el = $(`#sheet [data-fq="${k}"][data-n="${n}"]`), x = el ? String(el.value).trim() : ""; return /^\d{1,3}$/.test(x) ? +x : NaN; }, us = v("us"), them = v("them");
+      if(!Number.isFinite(us) || !Number.isFinite(them)){ toast("Type both scores, like 41 and 66."); break; } const c = fqCands(g, n, us, them); ui.fq = {gid:g.id, n, us, them, none:!!c.none, list:c.list || []}; renderSheet(); break; }
+    case "fqmove": if(g) fqMove(g, a.dataset.id); break;
     case "hudlopen": if(g && canCoach()){ if(ui.hudl && ui.hudl.gid !== g.id) ui.hudl = null; const gid = g.id; openSheet({wide:true, html:() => S.games[gid] ? hudlHtml(S.games[gid]) : ""}); } break;
     case "hudlload": { const f = $("#hudl-file"); if(f) f.click(); break; }
     case "hudlpaste": { const hg = ui.hudl && S.games[ui.hudl.gid], ta = $('#sheet [name="hudlpaste"]'); if(hg && ta) hudlLoad(hg, ta.value, ""); break; }
