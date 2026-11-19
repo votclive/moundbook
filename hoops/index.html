@@ -5,7 +5,7 @@
 <!-- The page's lock: the only script that may run is the one in this file (named by the SHA-256 of its text) and files
      from this folder (fb.js). Text that turns up in the page from a roster, a game or the cloud can never run as code.
      After ANY edit to the script, run "python3 hoops/stamp.py hoops": with a stale hash the browser runs nothing. -->
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-2QAW58dL5lkhIsSx6jagmQcs/or/WJtCKwN94TUXLE4='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-NXXeSHB11k7WNJgv4Ovgu7YhEvKn53Cn7U+9Z3wbGGQ='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#094A28">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -859,7 +859,7 @@ td .face{width:24px;height:24px;margin:-5px 7px -4px 0}
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
 { const n = document.getElementById("nostart"); if(n) n.remove(); }   // the script is running: see #nostart
-const BS_VERSION = "0.29.0";
+const BS_VERSION = "0.30.0";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -1180,6 +1180,7 @@ function replay(g){
   // lineup taps and the arrow during the break don't end it (the PA's Read now stays up): the next real play does.
   for(let i = R.plays.length - 1; i >= 0; i--){ const p = R.plays[i]; if(p.void || p.der || ["NOTE", "IN", "OUT", "POSS"].includes(p.e.t)) continue; R.brk = p.e.t === "PER"; break; }
   R.flip = flip && !!R.poss;   // a new period's throw-in hasn't happened yet: the arrow switches with play's first action
+  fillApply(g, R);   // Hudl check fills (0.30.0): whole-game box lines only, after every play
   return R;
 }
 // The period as a scoreboard says it: Q3, or END Q1 / HALFTIME / END REG between periods.
@@ -1663,7 +1664,7 @@ function touch(g){ byWho(g); g.rev = (g.rev || 0) + 1; g.upd = Date.now(); save(
 function claim(g){ if(!g.writer){ g.writer = S.dev; g.writerAt = Date.now(); } }
 // The game fields the edit sheet, Final and Reopen change. g.fed keeps when each was last changed, so two devices fixing a
 // game that's over at the same time keep each other's fields (mergeGame). A copy from before stamps counts as 0.
-const GFIELDS = ["date", "time", "opp", "ha", "event", "district", "off", "forfeit", "ppdFrom", "offWas", "status", "quarters", "qlen", "bfin", "rv", "scrim", "uni", "unl", "site", "att"];
+const GFIELDS = ["date", "time", "opp", "ha", "event", "district", "off", "forfeit", "ppdFrom", "offWas", "status", "quarters", "qlen", "bfin", "rv", "scrim", "uni", "unl", "site", "att", "fill"];
 function edField(g, ks){ if(!ks.length) return; const t = Date.now(); g.fed = {...(g.fed || {})}; ks.forEach(k => { g.fed[k] = t; }); }
 // One game from two copies of it: base, plus every change in other that's newer (plays by mergeEv, players by their edit
 // stamp ed, game fields by g.fed, numbers the PA's list put in). Where neither side's change is newer, base's stands.
@@ -4264,6 +4265,7 @@ function gapsOf(g, R){
 }
 const playWhen = (g, p) => perLabel(g, p.q) + (gcText(p.e, g, p.q) ? " " + gcText(p.e, g, p.q) : "");
 function balanceCard(g, R){
+  if(R.filled) R = replay({...g, fill:null});   // the plays balance on their own: Hudl's fills aren't plays
   const gaps = gapsOf(g, R); if(!gaps.length && !R.plays.some(p => !p.void && ((p.e.t === "FG" || p.e.t === "FT") && !p.e.m || p.e.t === "REB"))) return "";   // nothing to look at (or points only)
   const B = balanceOf(g, R), sd = sides(g), ed = canEdit(g), orph = R.orphans, cut = 12;
   const line = tm => { const b = B[tm], ok = b.d === 0;
@@ -4347,8 +4349,8 @@ function viewBox(){
   const sb = sbSent(g);
   const qsel = `<select data-boxq style="width:auto"><option value="all">Whole game</option>${Array.from({length:lastQ(R0)}, (_, i) => `<option value="${i + 1}" ${bq === i + 1 ? "selected" : ""}>${perLabel(g, i + 1)} only</option>`).join("")}</select>`;
   return `<div class="stack"><div class="row between"><div><div class="kicker">Box score · ${ff ? esc(ffWords) : g.status === "final" ? "final" : nowLabel(g, R)}</div><h2>${esc(usName(g))} ${gameTitle(g)}</h2><div class="small">${gameSub(g)}</div></div>
-      <div class="no-print" style="display:flex;flex-direction:column;align-items:flex-end;gap:4px"><div class="row">${played ? `<button class="btn" data-act="rw-open">▶ Re-watch</button>` : ""}<button class="btn" data-act="boxpdf">Box score PDF</button><button class="btn" data-act="print">Print box score</button>${canCoach() ? `<button class="btn" data-act="gbopen">More prints · Game Book</button>` : ""}<button class="btn" data-act="csv">Player stats CSV</button>${canCoach() && g.status === "final" ? `<button class="btn" data-act="mpfile" title="A file MaxPreps imports: Schedule, the game, Edit Score, Save &amp; Import Stats">MaxPreps file</button>` : ""}<button class="btn primary" data-act="send">${sb && sb.changed ? "Send again" : "Send to Scorebook"}</button></div>
-      ${sb ? `<div class="small">${sb.changed ? `<b>Changed since it went to the Scorebook</b> ${esc(sbWhen(sb.at))}. Send it again.` : `Sent to Scorebook ${esc(sbWhen(sb.at))}.`}</div>` : ""}</div></div>
+      <div class="no-print" style="display:flex;flex-direction:column;align-items:flex-end;gap:4px"><div class="row">${played ? `<button class="btn" data-act="rw-open">▶ Re-watch</button>` : ""}<button class="btn" data-act="boxpdf">Box score PDF</button><button class="btn" data-act="print">Print box score</button>${canCoach() ? `<button class="btn" data-act="gbopen">More prints · Game Book</button>` : ""}<button class="btn" data-act="csv">Player stats CSV</button>${canCoach() && g.status === "final" ? `<button class="btn" data-act="mpfile" title="A file MaxPreps imports: Schedule, the game, Edit Score, Save &amp; Import Stats">MaxPreps file</button>` : ""}${canCoach() && g.status === "final" && g.team === "boys" ? `<button class="btn" data-act="hudlopen" title="Fill what the book missed from Hudl's box score, and see where they disagree">Hudl check</button>` : ""}<button class="btn primary" data-act="send">${sb && sb.changed ? "Send again" : "Send to Scorebook"}</button></div>
+      ${R0.filled ? `<div class="small">Includes ${R0.filled} Hudl fill${R0.filled === 1 ? "" : "s"} (box score only, not plays).</div>` : ""}${sb ? `<div class="small">${sb.changed ? `<b>Changed since it went to the Scorebook</b> ${esc(sbWhen(sb.at))}. Send it again.` : `Sent to Scorebook ${esc(sbWhen(sb.at))}.`}</div>` : ""}</div></div>
     ${ff ? `<div class="flag ${ff === "W" ? "ok" : "bad"}"><b>${esc(ffWords)}.</b> Played ${R0.sc.us}-${R0.sc.them}. The record goes by the ruling; the player stats below still count.</div>` : ""}
     <div class="row" style="align-items:flex-start;gap:12px"><div style="flex:1 1 360px;max-width:520px">${board(g, R0)}</div><div style="flex:1 1 300px;max-width:420px">${boxGlance(g, R0)}</div></div>
     ${flowHere(g, R0)}${edgeCard(g, R0, "box")}${lateCard(g, R0)}${chgCard(g, R0)}
@@ -7511,6 +7513,8 @@ function chgLog(g){
       rows.push({at:e.ebt, by:e.eb, after, what:`${e.v ? "Removed" : e.ins && e.ebt === e.la ? "Put in" : "Changed"}: ${esc(perLabel(g, qOf.get(e) || 1))} · ${playText(g, e)}${e.fl && !e.v ? " ⚑" : ""}`}); }
     if(fin) rows.push({at:fin, by:"", what:`<b>Marked final</b>`});
     for(const u of unlOf(g)) rows.push({at:u.at, by:u.by, what:u.lock ? "<b>Locked again</b>" : `<b>Unlocked</b>: ${esc(String(u.why || ""))}`});
+    const fl = g.fill && typeof g.fill === "object" && Array.isArray(g.fill.log) ? g.fill.log : [];
+    for(const x of fl.slice(-40)) if(x && typeof x.at === "number") rows.push({at:x.at, by:typeof x.by === "string" ? x.by : "", after:fin && x.at > fin, what:`<b>Hudl check</b>: ${esc(String(x.what || "").slice(0, 140))}`});
     rows.sort((a, b) => b.at - a.at);
     const when = t => esc(new Date(t).toLocaleString([], {month:"short", day:"numeric", hour:"numeric", minute:"2-digit"}));
     return `<h3>Change log: ${esc(usName(g))} ${gameTitle(g)}</h3><p class="small" style="margin:0 0 8px">Changes a minute or more after the play, plays put in later, and everything after the final. A final locks 24 hours after it's marked final; a coach unlocks it with a reason.</p>
@@ -7564,6 +7568,129 @@ function mpName(g){ const w = v => String(v || "").replace(/[^A-Za-z0-9]+/g, "-"
 const MP_HEAD = {gp:"gp", min:"min", mpg:"min/", pts:"pts", ppg:"pts/", fgm:"fgm", fga:"fga", "3pm":"tpm", "3pa":"tpa", ftm:"ftm", fta:"fta",
   oreb:"oreb", offr:"oreb/", dreb:"dreb", defr:"dreb/", reb:"reb", rpg:"reb/", ast:"ast", apg:"ast/", stl:"stl", spg:"stl/", blk:"blk", bpg:"blk/", to:"to", tpg:"to/", pf:"pf", pfpg:"pf/"};
 const MP_KEYS = ["gp", "min", "pts", "fgm", "fga", "tpm", "tpa", "ftm", "fta", "oreb", "dreb", "reb", "ast", "stl", "blk", "to", "pf"];
+// Kevin (0.30.0): Hudl check (boys). Hudl Assist tags every boys game; the box score Hudl exports (Box Score > Export, a
+// MaxPreps .txt, Bobcats only, no quarters) fills what the book missed and lists every place the two disagree. Fills go on
+// g.fill as box-score numbers added to the whole-game line (adj), never as made-up plays, so the score, the plays and the
+// by-quarter box never move. Makes and points are never filled: a make the book is missing gets fixed play by play.
+// Missed shots are filled as misses (Hudl's tries minus makes against the book's), so fixing a make later never counts
+// its try twice. A locked final has to be unlocked (with a reason, in the change log) before anything goes in.
+const HUDL_K = ["fgm", "fga", "tpm", "tpa", "ftm", "fta", "oreb", "dreb", "ast", "stl", "blk", "to", "pf"];
+const FILL_OK = ["fga", "tpa", "fta", "oreb", "dreb", "ast", "stl", "blk", "to"];   // Hudl higher: one tap fills these
+const ADJ_K = FILL_OK.concat(["pf"]);
+const HK_LBL = {fgm:"FG made", fga:"missed FGs", tpm:"3s made", tpa:"missed 3s", ftm:"FTs made", fta:"missed FTs", oreb:"off. rebounds", dreb:"def. rebounds", ast:"assists", stl:"steals", blk:"blocks", to:"turnovers", pf:"fouls"};
+const HUDL_MAKES = ["fgm", "tpm", "ftm"];
+// Only well-formed rows: a jersey of 1-3 digits and whole numbers 0-199. From a file, a paste or a synced game alike.
+function hudlRows(h){ const out = {}; if(!h || typeof h !== "object" || Array.isArray(h)) return out; let n = 0;
+  for(const [num, r] of Object.entries(h)){ if(!/^\d{1,3}$/.test(num) || !r || typeof r !== "object" || ++n > 40) continue; const o = {};
+    for(const k of HUDL_K){ const v = r[k]; o[k] = Number.isInteger(v) && v >= 0 && v < 200 ? v : 0; }
+    o.fgm = Math.min(o.fgm, o.fga); o.tpm = Math.min(o.tpm, o.tpa); o.ftm = Math.min(o.ftm, o.fta); o.tpa = Math.min(o.tpa, o.fga); o.tpm = Math.min(o.tpm, o.fgm);
+    out[num] = o; }
+  return out; }
+// Hudl's box score export: a GUID line, then Jersey|Points|TwoPointsMade|TwoPointAttempts|... one row a player.
+function hudlParse(text){
+  const L = String(text || "").replace(/\r/g, "").split("\n").map(s => s.trim()), i = L.findIndex(s => /^jersey\s*\|/i.test(s));
+  if(i < 0) return null;
+  const H = L[i].split("|").map(s => s.trim().toLowerCase()), col = n => H.indexOf(n);
+  if(["twopointsmade", "twopointattempts", "threepointsmade", "threepointattempts", "freethrowsmade", "freethrowattempts"].some(n => col(n) < 0)) return null;
+  const rows = {};
+  for(const s of L.slice(i + 1)){ if(!s || !s.includes("|")) continue; const c = s.split("|").map(x => x.trim());
+    const v = n => { const j = col(n); if(j < 0) return 0; const x = /^\d{1,3}$/.test(c[j] || "") ? parseInt(c[j], 10) : 0; return x < 200 ? x : 0; };
+    const num = c[0]; if(!/^\d{1,3}$/.test(num)) continue;
+    const m2 = v("twopointsmade"), a2 = v("twopointattempts"), m3 = v("threepointsmade"), a3 = v("threepointattempts");
+    rows[num] = {fgm:m2 + m3, fga:a2 + a3, tpm:m3, tpa:a3, ftm:v("freethrowsmade"), fta:v("freethrowattempts"), oreb:v("offensiverebounds"), dreb:v("defensiverebounds"),
+      ast:v("assists"), stl:v("steals"), blk:v("blockedshots"), to:v("turnovers"), pf:v("personalfouls")}; }
+  const out = hudlRows(rows); return Object.keys(out).length ? out : null;
+}
+// The fills that stand, cleaned: our kids on this game's list, a stat that can be filled, a whole number.
+function fillAdj(g){ const f = g && g.fill; if(!f || typeof f !== "object" || !Array.isArray(f.adj) || !f.adj.length) return [];
+  const ids = new Set(roster(g, "us").map(p => p && p.pid)), out = [];
+  for(const a of f.adj.slice(0, 400)) if(a && typeof a === "object" && typeof a.pid === "string" && ids.has(a.pid) && ADJ_K.includes(a.k) && Number.isInteger(a.n) && a.n && Math.abs(a.n) <= 60) out.push({pid:a.pid, k:a.k, n:a.n});
+  return out; }
+function fillApply(g, R){ const adj = fillAdj(g); if(!adj.length) return; const hit = new Set();
+  for(const a of adj){ const l = R.box.us[a.pid] || (R.box.us[a.pid] = LINE()); l[a.k] = Math.max(0, l[a.k] + a.n); l.gp = 1; hit.add(l);
+    if(a.k === "fga" || a.k === "tpa" || a.k === "fta") l.po = 0; }
+  for(const l of hit){ l.fga = Math.max(l.fga, l.fgm, l.tpa); l.tpa = Math.max(l.tpa, l.tpm); l.fta = Math.max(l.fta, l.ftm); }
+  R.filled = adj.length; }
+const hudlKey = (pid, k) => pid + "|" + k;
+// Hudl next to the book (the plays only, no fills), from period q0 on when Hudl has only part of the game (camera out).
+function hudlCmp(g, h, q0){
+  const B = replay({...g, fill:null}), us = roster(g, "us"), out = {items:[], unk:[], nob:[], who:{}};
+  const book = pid => { if(q0 <= 1) return B.box.us[pid] || LINE(); const s = LINE();
+    for(const [q, b] of Object.entries(B.byQ)) if(+q >= q0 && b && b.us && b.us[pid]) for(const k of HUDL_K) s[k] += b.us[pid][k] || 0;
+    return s; };
+  const byNum = num => { const a = us.filter(p => String(p.num).trim() === num); if(a.length === 1) return a[0];
+    const b = us.filter(p => /^\d{1,3}$/.test(String(p.num).trim()) && parseInt(p.num, 10) === parseInt(num, 10)); return b.length === 1 ? b[0] : null; };
+  const seen = new Set();
+  for(const num of Object.keys(h).sort((a, b) => parseInt(a, 10) - parseInt(b, 10) || a.localeCompare(b))){ const x = h[num], p = byNum(num);
+    if(!p){ if(HUDL_K.some(k => x[k])) out.unk.push(num); continue; }
+    seen.add(p.pid); out.who[p.pid] = {p, num, h:x, b:book(p.pid)};
+    const b = out.who[p.pid].b;
+    for(const k of HUDL_K){
+      const miss = k === "fga" || k === "tpa" || k === "fta", mk = {fga:"fgm", tpa:"tpm", fta:"ftm"}[k];
+      const hv = miss ? x[k] - x[mk] : x[k], bv = miss ? b[k] - b[mk] : b[k], d = hv - bv; if(!d) continue;
+      const make = HUDL_MAKES.includes(k), fill = d > 0 && FILL_OK.includes(k);
+      out.items.push({key:hudlKey(p.pid, k), pid:p.pid, num, k, b:bv, h:hv, d, fill, make, can:!make && !fill}); } }
+  for(const p of us){ const l = B.box.us[p.pid]; if(!seen.has(p.pid) && l && l.gp && HUDL_K.some(k => book(p.pid)[k])) out.nob.push(p); }
+  return out;
+}
+function hudlState(g){ const s = ui.hudl && ui.hudl.gid === g.id ? ui.hudl : null; if(s) return s;
+  const f = g.fill && typeof g.fill === "object" ? g.fill : null, h = f ? hudlRows(f.h) : {};
+  return ui.hudl = {gid:g.id, h:Object.keys(h).length ? h : null, q0:f && [1, 2, 3, 4].includes(f.q0) ? f.q0 : 1, file:f ? String(f.file || "").slice(0, 80) : "", keep:f ? hudlKeep(f.keep) : {}, ok:!!(f && f.ok)}; }
+function hudlKeep(k){ const o = {}; if(k && typeof k === "object" && !Array.isArray(k)) for(const [x, v] of Object.entries(k).slice(0, 400)) if(/^[^|]{1,80}\|[a-z]{2,4}$/.test(x) && ["book", "hudl", "plays"].includes(v)) o[x] = v; return o; }
+const hudlWho = (C, pid) => { const w = C.who[pid]; return w ? `#${w.p.num} ${pShort(w.p)}` : ""; };
+function hudlReport(g, st, C){
+  const fills = C.items.filter(x => x.fill), cons = C.items.filter(x => !x.fill), dec = {book:"kept the book", hudl:"went with Hudl", plays:"fixed in the plays"};
+  const L = [`Hudl check: ${usName(g)} ${g.ha === "Away" ? "at" : "vs"} ${g.opp} (${g.date}). Hudl had ${st.q0 > 1 ? `${perLabel(g, st.q0)} on` : "the whole game"}.`];
+  L.push(`Hudl had more (fills): ${fills.length}${fills.length ? (st.ok ? ", filled" : ", not filled yet") : ""}.`);
+  for(const x of fills) L.push(`  ${hudlWho(C, x.pid)}: ${x.d > 0 ? "+" : ""}${x.d} ${HK_LBL[x.k]} (book ${x.b}, Hudl ${x.h})${st.keep[x.key] === "book" ? ", left out" : ""}`);
+  L.push(`Conflicts: ${cons.length}.`);
+  for(const x of cons) L.push(`  ${hudlWho(C, x.pid)}, ${HK_LBL[x.k]}: book ${x.b}, Hudl ${x.h}. ${st.keep[x.key] ? "Decision: " + dec[st.keep[x.key]] + "." : "Not decided."}`);
+  if(C.unk.length) L.push(`In Hudl, not on this game's list: ${C.unk.map(n => "#" + n).join(", ")}.`);
+  if(C.nob.length) L.push(`In the book, not in Hudl: ${C.nob.map(p => `#${p.num} ${pShort(p)}`).join(", ")}.`);
+  return L.join("\n");
+}
+function hudlHtml(g){
+  const st = hudlState(g), ed = canCoach() && canEdit(g), lk = locked(g), cap = `${esc(usName(g))} ${gameTitle(g)}`;
+  const load = `<div class="row" style="margin:6px 0"><button class="btn${st.h ? "" : " primary"}" data-act="hudlload">${st.h ? "Load another Hudl file" : "Load the Hudl file"}</button><input type="file" id="hudl-file" accept=".txt,text/plain" hidden></div>
+    <details${st.h ? "" : " open"}><summary class="small">Or paste it</summary><textarea class="mono" name="hudlpaste" rows="4" style="width:100%" placeholder="Jersey|Points|TwoPointsMade|..."></textarea><div class="row"><button class="btn sm" data-act="hudlpaste">Read it</button></div></details>`;
+  const head = `<h3>Hudl check: ${cap}</h3><p class="small" style="margin:0 0 6px">In Hudl: the game, Box Score, Export (the MaxPreps file). Hudl fills what the book is missing; every place they disagree is listed for you to decide. Nothing changes until you tap.</p>`;
+  if(!st.h) return head + load + `<div class="row" style="margin-top:8px"><button class="btn" data-close>Close</button></div>`;
+  const C = hudlCmp(g, st.h, st.q0), fills = C.items.filter(x => x.fill), cons = C.items.filter(x => !x.fill), stood = fillAdj(g).length;
+  const qsel = `<label class="small">Hudl has <select data-hudlq style="width:auto">${[1, 2, 3, 4].map(q => `<option value="${q}" ${q === st.q0 ? "selected" : ""}>${q === 1 ? "the whole game" : esc(perLabel(g, q)) + " on (camera out before)"}</option>`).join("")}</select></label>`;
+  const dec = (x, opts) => st.keep[x.key] ? `<span class="tag">${esc({book:"Kept the book", hudl:"Went with Hudl", plays:"Fixed in the plays"}[st.keep[x.key]])}</span>${ed ? ` <button class="btn sm" data-act="hudlkeep" data-key="${esc(x.key)}" data-v="">Undo</button>` : ""}`
+    : ed ? opts.map(([v, l]) => `<button class="btn sm" data-act="hudlkeep" data-key="${esc(x.key)}" data-v="${v}">${l}</button>`).join("") : "";
+  const R = replay(g), qOf = new Map(R.plays.map(p => [p.e, p.q]));
+  const plays = pid => { const l = g.ev.filter(e => !e.v && e.tm === "us" && e.pid === pid && (e.t === "FG" || e.t === "FT") && (qOf.get(e) || 1) >= st.q0);
+    return l.length ? `<ul class="closel" style="margin:4px 0 0">${l.slice(0, 14).map(e => `<li><span>${esc(perLabel(g, qOf.get(e) || 1))} · ${playText(g, e)}</span>${canEdit(g) ? `<button class="btn sm" data-act="fix" data-id="${esc(e.id)}">Fix</button>` : ""}</li>`).join("")}</ul>${l.length > 14 ? `<p class="small">And ${l.length - 14} more under Plays.</p>` : ""}` : `<p class="small" style="margin:4px 0 0">No shots of his in the book${st.q0 > 1 ? " then" : ""}.</p>`; };
+  const fillT = fills.length ? `<table class="glance"><tr><th class="l">Player</th><th class="l">Stat</th><th>Book</th><th>Hudl</th><th>Fill</th><th></th></tr>${fills.map(x => { const out = st.keep[x.key] === "book";
+      return `<tr${out ? ' style="opacity:.55"' : ""}><td class="l">${esc(hudlWho(C, x.pid))}</td><td class="l">${esc(HK_LBL[x.k])}</td><td>${x.b}</td><td>${x.h}</td><td><b>+${x.d}</b></td><td>${ed ? `<button class="btn sm" data-act="hudlkeep" data-key="${esc(x.key)}" data-v="${out ? "" : "book"}">${out ? "Put back" : "Leave out"}</button>` : ""}</td></tr>`; }).join("")}</table>` : `<p class="small">Hudl has nothing the book is missing.</p>`;
+  const conL = cons.length ? `<ul class="stack" style="list-style:none;padding:0;margin:0">${cons.map(x => `<li class="flag${st.keep[x.key] ? " ok" : ""}" style="margin:0;display:block"><b>${esc(hudlWho(C, x.pid))}, ${esc(HK_LBL[x.k])}</b>: book ${x.b}, Hudl ${x.h}.
+      <div class="row" style="margin-top:4px">${x.make ? dec(x, [["book", "Keep the book"], ["plays", "I fixed the plays"]]) : dec(x, [["book", "Keep the book"], ["hudl", "Use Hudl"]])}</div>${x.make && !st.keep[x.key] ? plays(x.pid) : ""}</li>`).join("")}</ul>` : `<p class="small">No conflicts.</p>`;
+  return head + `<div class="row between" style="margin:4px 0">${qsel}<span class="small">${esc(st.file || "Pasted")} · ${Object.keys(st.h).length} players</span></div>
+    ${lk ? `<div class="flag bad"><b>This final is locked.</b> Unlock it with a reason to put Hudl's numbers in. You can still look and copy the report.${canCoach() ? ` <button class="btn sm" data-act="unlock">Unlock to fix</button>` : ""}</div>` : ""}
+    ${!lk && !ed ? `<div class="flag">Only a coach can put Hudl's numbers in.</div>` : ""}
+    ${stood ? `<div class="flag ok">${stood} Hudl number${stood === 1 ? " is" : "s are"} in the box score now.${ed ? ` <button class="btn sm" data-act="hudlundo">Take them out</button>` : ""}</div>` : ""}
+    <h4 style="margin:10px 0 4px">Hudl has more: ${fills.length} fill${fills.length === 1 ? "" : "s"}</h4>${fillT}
+    ${fills.length && ed ? `<div class="row" style="margin-top:6px">${st.ok ? `<span class="tag">Filled</span>` : `<button class="btn primary" data-act="hudlfill">Approve all ${fills.filter(x => st.keep[x.key] !== "book").length} fills</button>`}</div>` : ""}
+    <h4 style="margin:12px 0 4px">Conflicts: ${cons.length}${cons.length ? ` (${cons.filter(x => st.keep[x.key]).length} of ${cons.length} decided)` : ""}</h4>
+    <p class="small" style="margin:0 0 6px">Makes and points only change by fixing the play: tap Fix, then come back here. Fouls, and anything the book has more of, can go either way.</p>${conL}
+    ${C.unk.length ? `<div class="flag" style="margin-top:8px">In Hudl, not on this game's list: ${C.unk.map(n => "#" + esc(n)).join(", ")}. Check the uniform numbers in the game's Edit sheet.</div>` : ""}
+    ${C.nob.length ? `<div class="flag" style="margin-top:8px">In the book, not in Hudl: ${C.nob.map(p => `#${esc(p.num)} ${esc(pShort(p))}`).join(", ")}.</div>` : ""}
+    <h4 style="margin:12px 0 4px">Report</h4><textarea class="mono" id="hudltxt" rows="6" readonly style="width:100%">${esc(hudlReport(g, st, C))}</textarea>
+    <div class="row" style="margin-top:8px"><button class="btn" data-act="hudlcopy">Copy report</button><button class="btn" data-close>Close</button></div>${load}`;
+}
+// Saves what's decided: the fills (unless left out) once approved, and every Use Hudl. adj is worked out against the book
+// right now; the change log keeps who did what.
+function hudlSave(g, what){ const st = hudlState(g); if(!st.h || !canCoach() || !canEdit(g)) return;
+  const C = hudlCmp(g, st.h, st.q0), adj = [];
+  for(const x of C.items) if(x.fill ? st.ok && st.keep[x.key] !== "book" : x.can && st.keep[x.key] === "hudl") adj.push({pid:x.pid, k:x.k, n:x.d});
+  const old = g.fill && typeof g.fill === "object" && Array.isArray(g.fill.log) ? g.fill.log.filter(x => x && typeof x.at === "number") : [], at = Date.now();
+  g.fill = {src:"hudl", at, by:Sync.who(), file:st.file, q0:st.q0, h:st.h, ok:st.ok, keep:st.keep, adj, log:old.concat([{at, by:Sync.who(), what:String(what).slice(0, 140)}]).slice(-40)};
+  edField(g, ["fill"]); touch(g); renderSheet(); }
+function hudlLoad(g, text, file){ const h = hudlParse(text); if(!h){ toast("That isn't Hudl's box score export. In Hudl: the game, Box Score, Export.", 5000); return; }
+  const st = hudlState(g), q0 = /2h|2nd.?half|second.?half/i.test(file || "") ? 3 : st.q0;
+  ui.hudl = {gid:g.id, h, q0, file:String(file || "").slice(0, 80), keep:{}, ok:false}; renderSheet();
+  toast(`Read ${Object.keys(h).length} Hudl players.${q0 > 1 ? ` The file name says second half: set to ${perLabel(g, q0)} on.` : ""}`, 4000); }
 function mpParse(text){
   const w = String(text || "").replace(/ /g, " ").split(/\s+/).filter(Boolean), rows = {};
   const isNum = x => /^-?(\d+\.?\d*|\.\d+)%?$/.test(x) || /^[-–—]$/.test(x), val = x => /^[-–—]$/.test(x) ? null : parseFloat(x);
@@ -8124,6 +8251,18 @@ document.addEventListener("click", async ev => {
         gg.unl = unlOf(gg).concat([{at:Date.now(), by:Sync.who(), u:Sync.uid() || "", why}]).slice(-30); edField(gg, ["unl"]); touch(gg); toast("Unlocked for 24 hours. It's in the change log."); }, 2, "Paper book had #24 with 3 fouls, not 4"); break; }
     case "relock": { if(!g || !canCoach() || !lockOpen(g)) break; g.unl = unlOf(g).concat([{at:Date.now(), by:Sync.who(), u:Sync.uid() || "", lock:1}]).slice(-30); edField(g, ["unl"]); touch(g); toast("Locked again."); break; }
     case "chglog": if(g) chgLog(g); break;
+    case "hudlopen": if(g && canCoach()){ if(ui.hudl && ui.hudl.gid !== g.id) ui.hudl = null; const gid = g.id; openSheet({wide:true, html:() => S.games[gid] ? hudlHtml(S.games[gid]) : ""}); } break;
+    case "hudlload": { const f = $("#hudl-file"); if(f) f.click(); break; }
+    case "hudlpaste": { const hg = ui.hudl && S.games[ui.hudl.gid], ta = $('#sheet [name="hudlpaste"]'); if(hg && ta) hudlLoad(hg, ta.value, ""); break; }
+    case "hudlfill": { const hg = ui.hudl && S.games[ui.hudl.gid]; if(!hg || !canCoach() || !canEdit(hg)) break; ui.hudl.ok = true; hudlSave(hg, "Approved Hudl's fills" + (ui.hudl.file ? " from " + ui.hudl.file : ""));
+      const n = fillAdj(hg).length; toast(`${n} Hudl number${n === 1 ? "" : "s"} in the box score.`, 3000); break; }
+    case "hudlkeep": { const hg = ui.hudl && S.games[ui.hudl.gid], k = String(a.dataset.key || ""), v = a.dataset.v; if(!hg || !canCoach() || !canEdit(hg) || !ui.hudl.h) break;
+      const C = hudlCmp(hg, ui.hudl.h, ui.hudl.q0), x = C.items.find(i => i.key === k); if(!x) break;
+      if(v === "book" || (v === "hudl" && x.can) || (v === "plays" && x.make)) ui.hudl.keep = {...ui.hudl.keep, [k]:v}; else if(!v){ const o = {...ui.hudl.keep}; delete o[k]; ui.hudl.keep = o; } else break;
+      hudlSave(hg, `${hudlWho(C, x.pid)}, ${HK_LBL[x.k]}: ${v ? {book:"kept the book", hudl:"went with Hudl", plays:"fixed in the plays"}[v] : x.fill ? "put the fill back" : "decision undone"}`); break; }
+    case "hudlundo": { const hg = ui.hudl && S.games[ui.hudl.gid]; if(!hg || !canCoach() || !canEdit(hg)) break; ui.hudl.ok = false;
+      ui.hudl.keep = Object.fromEntries(Object.entries(ui.hudl.keep).filter(([, v]) => v !== "hudl")); hudlSave(hg, "Took Hudl's numbers out"); toast("Hudl's numbers are out of the box score."); break; }
+    case "hudlcopy": { const ta = $("#hudltxt"); if(ta) copyText(ta.value, ta).then(ok => toast(ok ? "Report copied." : "Select the report and copy it.")); break; }
     case "flagtog": { if(!g || !canEdit(g)) break; const e = g.ev.find(x => x.id === a.dataset.id); if(e && flagTog(g, e) && ui.sheet && ui.sheet.bk) renderSheet(); break; }
     case "boardinfo": Board.sheet(); break;
     case "recon": if(g && canEdit(g)) reconSheet(g); break;
@@ -8394,6 +8533,8 @@ document.addEventListener("change", ev => {
   if(t.dataset.set && (t.dataset.set === "pubSec" ? canAdmin() : canCoach())){ const v = parseInt(t.value, 10); if(!isNaN(v)){ S.settings[t.dataset.set] = v; S.teamsRev++; save(); Sync.dirtyTeams(); render(); } }
   if(t.id === "script-file" && t.files[0]){ const r = new FileReader(); r.onload = () => { let segs = null; try{ segs = scriptFileSegs(JSON.parse(r.result)); }catch(e){}
       if(segs) scriptLoad(segs, "the file"); else toast("That file isn't a Brier Stats script."); }; r.readAsText(t.files[0]); t.value = ""; }
+  if(t.id === "hudl-file" && t.files[0] && ui.hudl){ const hg = S.games[ui.hudl.gid], nm = t.files[0].name; if(hg && t.files[0].size < 200000){ const r = new FileReader(); r.onload = () => hudlLoad(hg, r.result, nm); r.readAsText(t.files[0]); } t.value = ""; }
+  if(t.dataset.hudlq !== undefined && ui.hudl){ const q = parseInt(t.value, 10); if([1, 2, 3, 4].includes(q)){ ui.hudl.q0 = q; renderSheet(); } }
   if(t.id === "restore-file" && t.files[0]){ const r = new FileReader(); r.onload = () => restore(r.result); r.readAsText(t.files[0]); t.value = ""; }
 });
 // The reconcile sheet's "off by" follows the official final as it's typed.
@@ -8620,7 +8761,7 @@ const rzNet = () => !(S.sync || S.teamsBase != null) || Sync.ready(), rzNoNet = 
 // past anything a copy from before could reach, so the cloud refuses that copy's late or queued writes (rev never decreases)
 // and Restore never puts an older backup over it. Undo of a reset is a reset too, back to the plays; it names the resets
 // whose copies hold the same game (rzOf), so plays such a copy has that the Undo lacks fold back in (Sync's rzJoin).
-const RZ_REV = 1e6, RZ_F = ["status", "forfeit", "off", "offWas", "writer", "writerAt", "takeover"];
+const RZ_REV = 1e6, RZ_F = ["status", "forfeit", "off", "offWas", "writer", "writerAt", "takeover", "fill"];
 function rzNew(g){ g.rz = Math.max(Date.now(), (g.rz || 0) + 1); g.rev = (g.rev || 0) + RZ_REV; }
 // A game reset before its day was scored by mistake. The visitors the scorer typed into its book on the day it was scored
 // (each one the saved roster got from that typing, under his own id), played or not, go with its plays: out of the book
@@ -8636,7 +8777,7 @@ const rzReal = (g, k, day) => { const e = S.lib.e[k] || {}; return Object.values
   && ((x.them || []).some(q => q.pid === k || (paNum(q.num) === e.num && !!nameKey(q.name) && !!nameKey(e.name) && sameKid(q.name, e.name))) || paVis(x).some(v => v.pid === k))); };
 function resetGame(g, vis){
   const was = JSON.parse(JSON.stringify(g)), f0 = GFIELDS.map(k => JSON.stringify(g[k] ?? null));
-  rzNew(g); delete g.rzOf; g.ev = []; g.status = "pre"; if(g.offWas) g.off = g.offWas; delete g.offWas; delete g.forfeit; g.writer = null; delete g.writerAt; g.takeover = null;
+  rzNew(g); delete g.rzOf; g.ev = []; delete g.fill; g.status = "pre"; if(g.offWas) g.off = g.offWas; delete g.offWas; delete g.forfeit; g.writer = null; delete g.writerAt; g.takeover = null;
   // Whether tonight's visitors' list had anyone (1 or 0): only a list the reset found is kept (rzHold). Said for this
   // reset (rzVisAt), so one made later on a device still on 0.4.2, which doesn't say, never reads as this one's. Its Undo
   // carries it over, and a Redo keeps what the first reset found (vis).
