@@ -5,7 +5,7 @@
 <!-- The page's lock: the only script that may run is the one in this file (named by the SHA-256 of its text) and files
      from this folder (fb.js). Text that turns up in the page from a roster, a game or the cloud can never run as code.
      After ANY edit to the script, run "python3 hoops/stamp.py hoops": with a stale hash the browser runs nothing. -->
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-PbFkB/4eweGWl+oM7QtI9U6mt86Rod9w2VuS2dhuixU='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-Jsx3BVrCSQfliYKIw/ujgrCBT/+niQZfoBfe1e3BCus='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#094A28">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -866,7 +866,7 @@ td .face{width:24px;height:24px;margin:-5px 7px -4px 0}
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
 { const n = document.getElementById("nostart"); if(n) n.remove(); }   // the script is running: see #nostart
-const BS_VERSION = "0.32.0";
+const BS_VERSION = "0.33.0";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -1521,20 +1521,42 @@ function cur(){ const g = ui.gid && S.games[ui.gid]; return g && !g.deleted ? g 
 // Who can do what with live sync on. Sync.role(): "owner" is an Admin (Coach, Mound Book's owner and Admins, and anyone made
 // an Admin here), then "coach", "scorer" and "viewer". Admins: deleting and resetting games, the fan page switch, the Drive
 // backup, Restore and the rules. Coaches and up: rosters, the schedule, opponents, game rules, letting people in, the
-// Stats tab (with the player page's extras and the Player PDF) and the PA and broadcast pages (Kevin, Nov 2026: staff only;
-// a Scorer with a PA pass gets those two pages too). Scorers
+// Stats tab (with the player page's extras and the Player PDF). The PA and broadcast pages: Admins only (Kevin, 0.33.0; a
+// Scorer with a PA pass gets those two pages too). Scorers
 // and up: scoring, the table, notes, name notes and the PA's prep. Viewers watch. Not sharing, this device can do it all.
 function canScore(){ return !Sync.live() || ["owner", "coach", "scorer"].includes(Sync.role()); }
 // Coach and Admin: with sync on but no answer from the cloud yet, the role this device had last time stands.
 function roleIs(...rs){ if(Sync.live()) return rs.includes(Sync.role()); return !S.sync || S.role == null || rs.includes(S.role); }
 function canCoach(){ return roleIs("owner", "coach"); }
 function canAdmin(){ return roleIs("owner"); }
-// The PA page and Jim's broadcast page: Coaches and Admins only, like Stats (Kevin, Nov 2026), plus a Scorer an Admin or
-// Coach gave a PA pass (a fill-in PA; Setup, Let in). Everyone else follows a game on Box score. It hides the pages; it
-// doesn't change who can read the games. The passes ride the settings (settings.paPass {uid: when}), so no new rules.
+// The PA page and Jim's broadcast page: Admins only (Kevin, 0.33.0: Coaches have no use for them; before that Coaches had
+// them too), plus a Scorer an Admin or Coach gave a PA pass (a fill-in PA; Setup, Let in). Everyone else follows a game on
+// Box score. It hides the pages; it doesn't change who can read the games. The passes ride the settings
+// (settings.paPass {uid: when}), so no new rules. The keys and win chance on Box score stay Coaches, Admins and the pass.
 const paPass = uid => !!uid && !!(S.settings.paPass || {})[uid];
-function paOk(){ return canCoach() || (roleIs("scorer") && paPass(Sync.uid())); }
-function paLock(){ return `<div class="card stack" style="max-width:640px"><h2>Coaches and Admins only</h2><p style="margin:0">The PA page and the broadcast page are for Coaches and Admins. This sign-in can follow the game on Box score and Plays.</p><div class="row"><a class="btn primary" href="./">Open Brier Stats</a></div></div>`; }
+function paOk(){ return canAdmin() || (roleIs("scorer") && paPass(Sync.uid())); }
+function keysOk(){ return canCoach() || paOk(); }
+// Which tabs a login gets (Kevin, 0.33.0): only what it can use. Signed out, waiting to be let in, the scoreboard relay's
+// sign-in, or a device that never signed in: Live stats (the fans' page) and Setup (to sign in). With sync on and no answer
+// from the cloud yet (no signal, the school's Wi-Fi, still connecting), the role this device had last time stands, so a
+// scorer at the table is never locked out of the Scorer screen. Viewers: no Scorer screen. Stats, the PA page and the
+// broadcast page as before. Social: Admins only.
+function tabRole(){
+  if(Sync.live()) return Sync.role();
+  return S.sync && ["owner", "coach", "scorer", "viewer"].includes(S.role) && !["signedout", "waiting", "board"].includes(Sync.phase()) ? S.role : null;
+}
+function tabOk(k){
+  if(k === "live" || k === "setup") return true;
+  const r = tabRole(); if(!r) return false;
+  if(k === "ann" || k === "bc") return paOk();
+  if(k === "stats") return canCoach();
+  if(k === "social") return canAdmin();
+  if(k === "desk") return r !== "viewer";
+  return true;
+}
+const tabHome = () => ["desk", "box", "live"].find(tabOk);
+function paLock(){ if(!tabRole()) return `<div class="card stack" style="max-width:640px"><h2>Sign in first</h2><p style="margin:0">The PA page and the broadcast page are for Admins. Sign in above with the email you were let in with.</p></div>`;
+  return `<div class="card stack" style="max-width:640px"><h2>Admins only</h2><p style="margin:0">The PA page and the broadcast page are for Admins (and a Scorer with a PA pass). This sign-in can follow the game on Box score and Plays.</p><div class="row"><a class="btn primary" href="./">Open Brier Stats</a></div></div>`; }
 function viewOnly(){ return !PUB && !OBS && Sync.live() && !canScore(); }
 function mine(g){ return !g.writer || g.writer === S.dev; }
 // A game that's over is nobody's to score any more, so every scorer can fix it, edit it and make it final without taking it
@@ -2187,9 +2209,10 @@ function draw(){
   pendingRender = false; Board.check();
   if(PUB){ $("#view").innerHTML = viewPublic(); return; }
   if(OBS){ $("#view").innerHTML = viewBug(); return; }
-  if(ui.tab === "stats" && !canCoach()) ui.tab = "games";   // Stats, the PA page and the broadcast page: Coaches and Admins only
+  if(ui.tab === "stats" && !canCoach()) ui.tab = "games";   // Stats: Coaches and Admins only; the PA and broadcast pages: Admins (and the PA pass)
   if((ui.tab === "ann" && !ANN_ONLY || ui.tab === "bc" && !BC_ONLY) && !paOk()) ui.tab = "box";
-  $("#tabs").innerHTML = TABS.filter(([k]) => k === "stats" ? canCoach() : k === "ann" || k === "bc" ? paOk() : true).map(([k, l]) => `<button role="tab" data-tab="${k}" aria-selected="${ui.tab === k}">${l}</button>`).join("");
+  if(!tabOk(ui.tab) && !(ui.tab === "ann" && ANN_ONLY) && !(ui.tab === "bc" && BC_ONLY)) ui.tab = tabHome();   // only what this login can use
+  $("#tabs").innerHTML = TABS.filter(([k]) => tabOk(k)).map(([k, l]) => `<button role="tab" data-tab="${k}" aria-selected="${ui.tab === k}">${l}</button>`).join("");
   const pill = $("#syncpill"), ph = Sync.phase();
   pill.className = "pill" + (ph === "live" && !Sync.stale() ? " live" : ph === "error" || Sync.stale() ? " bad" : "");
   pill.querySelector("span").textContent = ph === "live" ? Sync.label() : ph === "loading" ? "Connecting…" : ph === "signedout" ? "Not signed in" : ph === "waiting" ? "Waiting to be let in" : ph === "board" ? "Scoreboard only" : ph === "nosignal" ? "No signal" : ph === "error" ? "Sync problem" : "This device";
@@ -2789,7 +2812,7 @@ document.addEventListener("pointermove", ev => { const d = layDrag; if(!d || ev.
 const layDrop = ev => { const d = layDrag; if(!d || ev.pointerId !== d.id) return; layDrag = null; $$(".lydrag").forEach(el => el.classList.remove("lydrag")); render(); };
 document.addEventListener("pointerup", layDrop); document.addEventListener("pointercancel", layDrop);
 function viewAnn(){
-  if(!paOk()) return (Sync.live() ? "" : Sync.panel()) + paLock();
+  if(!paOk() || !tabRole()) return (Sync.live() ? "" : Sync.panel()) + paLock();
   micDefault();
   if(ANN_ONLY || !canScore()) followLive();
   if(ui.annMode === "script") return viewScript();
@@ -3004,7 +3027,7 @@ function drawLive(pre){ const view = $("#view"), head = `<div class="row between
   const fr = $("#livefr", view); if(fr){ const b = $("#livepre", view); if(b && b.innerHTML !== pre) b.innerHTML = pre; return; }
   view.innerHTML = `<div id="livepre">${pre}</div>${head}<iframe id="livefr" src="./?live" title="Live stats, the fans' page" style="width:100%;height:max(520px, calc(100vh - 170px));border:1px solid var(--grey);border-radius:8px;background:var(--white)"></iframe>`; }
 function drawBroadcast(pre){
-  if(!paOk()){ $("#view").innerHTML = pre + (Sync.live() ? "" : Sync.panel()) + paLock(); return; }
+  if(!paOk() || !tabRole()){ $("#view").innerHTML = pre + (Sync.live() ? "" : Sync.panel()) + paLock(); return; }
   followLive();
   const g = cur(), view = $("#view"), k = (g ? g.id : "-") + "|" + (S.settings.flip ? 1 : 0);
   const root = $(".bc", view);
@@ -5438,7 +5461,7 @@ function wpBlock(g, R, ball, chart){
 // Stops in a row and trips (PA and broadcast), the win chance (all three) and the keys (Box score). Coaches, Admins and
 // the PA pass only, never on the fan page, and never printed.
 function edgeCard(g, R, where){
-  if(PUB || !g || !paOk() || !R.plays.some(p => !p.void && STAT_T.has(p.e.t))) return "";
+  if(PUB || !g || !keysOk() || !R.plays.some(p => !p.void && STAT_T.has(p.e.t))) return "";
   const d = dig(g, false), full = !d.T.us.po && !d.T.them.po && R.plays.some(p => !p.void && p.e.t === "REB"), T = full ? tripsOf(d) : null, parts = [];
   if(T && where !== "box"){ const st = stopsOf(T.L), tr = {us:{n:0, pts:0}, them:{n:0, pts:0}}; for(const t of T.L){ tr[t.tm].n++; tr[t.tm].pts += t.pts; }
     const runs = ["us", "them"].filter(tm => st.run[tm] >= 3).map(tm => `<div class="edgerun">${esc(tmName(g, tm))}: ${st.run[tm]} straight stops</div>`).join("");
@@ -6241,6 +6264,8 @@ function viewOpps(){
 const FAN_URL = "https://votclive.com/hoops/livestats/";
 function pubLink(){ return FAN_URL; }
 function viewSetup(){
+  // Signed out (0.33.0): signing in, and the About card.
+  if(!tabRole()) return `<div class="stack" style="max-width:880px">${Sync.panel()}${aboutCard()}</div>`;
   const st = S.settings, edit = canCoach(), dis = edit ? "" : "disabled", adis = canAdmin() ? "" : "disabled";
   const num = (k, lbl, max) => `<label class="fld" style="width:130px"><span>${lbl}</span><input type="number" min="0" max="${max}" data-set="${k}" value="${esc(st[k])}" ${dis}></label>`;
   return `<div class="stack" style="max-width:880px">${Sync.panel()}
@@ -6265,8 +6290,9 @@ function viewSetup(){
         return `<p class="small" style="margin:0">${full ? "<b>Getting full.</b> " : ""}Saved on this device: ${(b / 1e6).toFixed(1)} MB of about 5 MB (${pct}%, shared with Mound Book)${full ? ". Make a full backup now, and keep JV games and practice scoring off this iPad." : "."}</p>`; })()}
       ${/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) ? (navigator.standalone || matchMedia("(display-mode: standalone)").matches ? (emptyBook() ? `<div class="flag"><span><b>New book on this Home Screen app.</b> Bringing one over from Safari? Restore a Full backup here, or turn on live sync and sign in.</span></div>` : "") : `<div class="flag"><span><b>Add Brier Stats to the Home Screen</b> (Share › Add to Home Screen) and score from there: in a Safari tab, Safari can clear a site's saved book after a week or so without a visit. <b>The Home Screen app starts with an empty book of its own.</b> ${Sync.live() ? "Open it, turn on live sync and sign in: the games, rosters, script and name notes come back from the cloud." : "First tap Full backup above, then open Brier Stats from the Home Screen, tap Setup › Restore from a backup and pick that file."} After that, score only from the Home Screen.</span></div>`) : ""}</div>
     <div class="card stack"><h3 style="font-size:22px">Google Drive backup</h3>${Drive.card()}</div>
-    <div class="card"><h3 style="font-size:22px">About</h3><p class="small" style="margin:6px 0 0">Brier Stats ${BS_VERSION}. Built on Jim's ChatGPT draft and Mound Book's sync. The announcer page also opens on its own at <a href="?announcer">this address with ?announcer</a>, and Jim's broadcast page at <a href="?broadcast">?broadcast</a>. This device: ${esc(S.dev)}.</p></div></div>`;
+    ${aboutCard()}</div>`;
 }
+const aboutCard = () => `<div class="card"><h3 style="font-size:22px">About</h3><p class="small" style="margin:6px 0 0">Brier Stats ${BS_VERSION}. Built on Jim's ChatGPT draft and Mound Book's sync. The announcer page also opens on its own at <a href="?announcer">this address with ?announcer</a>, and Jim's broadcast page at <a href="?broadcast">?broadcast</a>. This device: ${esc(S.dev)}.</p></div>`;
 
 /* ---------- sheets (rendered when opened, so a live update never wipes what's being typed) ---------- */
 // The card's first box gets the cursor, unless the user is already in the card (a quick click or a Tab beat the timer:
@@ -10437,8 +10463,8 @@ const Sync = (() => {
   const dupOf = r => { const em = String(r.email || "").trim().toLowerCase(); return em ? st.mems.find(m => m.uid !== r.uid && String(m.email || "").trim().toLowerCase() === em) || null : null; };
   const ASK = {viewer:"Make them a Viewer? Viewers see the rosters, the notes, the table and every game, and change nothing.",
     scorer:"Make them a scorer? Scorers score games, keep the table, the notes and the PA's prep, and can take over scoring from another device. A fill-in PA needs Scorer plus a PA pass (the button on their row); parents and the AD only need Viewer.",
-    coach:"Make them a coach? Coaches change rosters, the schedule, opponents and game rules, let people in, and see Stats and the PA and broadcast pages. Only Admins delete or reset games.",
-    admin:"Make them an Admin? Admins can do everything: delete and reset games, the fan page switch, the Drive backup, and make or remove other Admins.",
+    coach:"Make them a coach? Coaches change rosters, the schedule, opponents and game rules, let people in, and see Stats. Only Admins get the PA and broadcast pages and delete or reset games.",
+    admin:"Make them an Admin? Admins can do everything: the PA and broadcast pages, delete and reset games, the fan page switch, the Drive backup, and make or remove other Admins.",
     board:"Make this the scoreboard relay's sign-in? It can send the scoreboard's score and clock and nothing else: no games, rosters, notes or people, and it can't open Brier Stats. It's for the account the relay Mac signs in with, never for a person."};
   async function approve(uid, lvl){ const {fb, db} = st; const r = st.reqs.find(x => x.uid === uid) || st.mems.find(x => x.uid === uid) || {};
     const b = fb.writeBatch(db); b.set(fb.doc(db, "hoopsMembers", uid), {...LVL[lvl], email:String(r.email || "").slice(0, 120), name:String(r.name || "").slice(0, 80), at:Date.now()}); b.delete(fb.doc(db, "hoopsRequests", uid)); await b.commit(); }
@@ -10483,7 +10509,7 @@ const Sync = (() => {
   function panel(){
     let h = `<div class="card stack"><h3 style="font-size:22px">Live sync</h3>`;
     if(st.err) h += `<div class="flag bad">${esc(st.err)}</div>`;
-    if(st.phase === "off") h += `<p style="margin:0">One device scores; everyone the coaches let in follows it live on the Announcer and Broadcast pages. Same sign-in as Mound Book.</p><div class="row"><button class="btn primary" data-act="sy-start">Turn on live sync</button></div>`;
+    if(st.phase === "off") h += `<p style="margin:0">Sign in to score, follow games and see the book: same sign-in as Mound Book. Fans don't need one: Live stats is open to everyone.</p><div class="row"><button class="btn primary" data-act="sy-start">Sign in</button></div>`;
     else if(st.phase === "loading") h += `<p style="margin:0">Connecting…</p>`;
     else if(st.phase === "error") h += `<div class="row"><button class="btn" data-act="sy-retry">Try again</button>${st.fb && st.uid ? `<button class="btn" data-act="sy-out">Sign out</button>` : ""}</div>`;
     else if(st.phase === "signedout") h += (st.inv ? `<div class="flag"><span><b>You've been invited to Brier Stats.</b> Tap New account (or Sign in if you already have one, like Mound Book's) and use the email address the invite was sent to. You'll be in as soon as you're signed in.</span></div>` : "") + `<form id="sy-auth" class="stack" style="max-width:420px">
