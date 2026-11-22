@@ -5,7 +5,7 @@
 <!-- The page's lock: the only script that may run is the one in this file (named by the SHA-256 of its text) and files
      from this folder (fb.js). Text that turns up in the page from a roster, a game or the cloud can never run as code.
      After ANY edit to the script, run "python3 hoops/stamp.py hoops": with a stale hash the browser runs nothing. -->
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-18WQq1vXqM9Qe9ItEGf4PYyheou867QJ1ksmkuWfDu0='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-/cdpY8T1ZVkfpYIw66d/51xXw8++YxoUofDRvPANw1Y='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#094A28">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -866,7 +866,7 @@ td .face{width:24px;height:24px;margin:-5px 7px -4px 0}
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
 { const n = document.getElementById("nostart"); if(n) n.remove(); }   // the script is running: see #nostart
-const BS_VERSION = "0.34.0";
+const BS_VERSION = "0.35.0";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -2106,7 +2106,7 @@ const arrowNow = R => !R.poss ? null : R.flip ? OTHER(R.poss) : R.poss;
 
 /* ---------- render ---------- */
 // Kevin (0.16.11): Jim's broadcast page and the fans' live page are tabs too, to swap between them in one window.
-const TABS = [["desk","Scorer"],["ann","Announcer"],["bc","Broadcast"],["box","Box score"],["live","Live stats"],["plays","Plays"],["shots","Shots"],["games","Games"],["stats","Stats"],["teams","Rosters"],["setup","Setup"]];
+const TABS = [["desk","Scorer"],["ann","Announcer"],["bc","Broadcast"],["box","Box score"],["live","Live stats"],["plays","Plays"],["shots","Shots"],["games","Games"],["stats","Stats"],["teams","Rosters"],["social","Social"],["setup","Setup"]];
 let pendingRender = false;
 // Sync calls this: it waits while someone is typing in the page so a live update doesn't eat their words.
 function softRender(){
@@ -2222,6 +2222,7 @@ function draw(){
   libSeed(); { const lg = ["desk", "ann", "bc"].includes(ui.tab) && cur(); if(lg){ libTie(lg); if(ui.tab === "desk" && (S.booth[lg.id] || {}).lib && deskFold(lg)) paFoldAll(); } }
   if(ui.tab === "bc"){ drawBroadcast(banners.join("")); renderFu(); return; }
   if(ui.tab === "live"){ drawLive(banners.join("")); renderFu(); return; }
+  if(ui.tab === "social"){ drawSocial(banners.join("")); renderFu(); return; }
   const body = ({rw:viewRewatch, desk:viewDesk, ann:viewAnn, box:viewBox, plays:viewPlays, shots:viewShots, games:viewGames, stats:viewSeason, teams:viewTeams, setup:viewSetup}[ui.tab] || viewDesk)();
   if(!setView(banners.join("") + body)) pendingRender = true;
   renderFu();
@@ -3026,6 +3027,12 @@ function bcBar(g){
 function drawLive(pre){ const view = $("#view"), head = `<div class="row between" style="margin-bottom:6px"><p class="small" style="margin:0">What fans see on the live stats page right now. It updates every 15 to 30 seconds.</p><a class="btn sm" href="live/" target="_blank" rel="noopener">Open on its own</a></div>`;
   const fr = $("#livefr", view); if(fr){ const b = $("#livepre", view); if(b && b.innerHTML !== pre) b.innerHTML = pre; return; }
   view.innerHTML = `<div id="livepre">${pre}</div>${head}<iframe id="livefr" src="./?live" title="Live stats, the fans' page" style="width:100%;height:max(520px, calc(100vh - 170px));border:1px solid var(--grey);border-radius:8px;background:var(--white)"></iframe>`; }
+// Social (Admins, 0.35.0): the post generator in social/, drawn once and kept while the tab is open; a redraw here only
+// tells it the book may have changed. It comes back to the view it was on (Gameday, Starters, Scores or Library).
+function drawSocial(pre){ const view = $("#view"), fr = $("#socialfr", view);
+  if(fr){ const b = $("#socialpre", view); if(b && b.innerHTML !== pre) b.innerHTML = pre; Social.ping(); return; }
+  const h = Social.hash();
+  view.innerHTML = `<div id="socialpre">${pre}</div><iframe id="socialfr" src="social/index.html${h ? "#" + h : ""}" title="Social posts" allow="web-share; clipboard-write" style="width:100%;height:max(640px, calc(100vh - 170px));border:0;display:block"></iframe>`; }
 function drawBroadcast(pre){
   if(!paOk() || !tabRole()){ $("#view").innerHTML = pre + (Sync.live() ? "" : Sync.panel()) + paLock(); return; }
   followLive();
@@ -6558,7 +6565,7 @@ function sbId(g){
 // has changed it: a Monday correction would otherwise leave the Scorebook's final and top scorers wrong.
 function sbSent(g){ const s = (S.booth[g.id] || {}).sb; return s && s.at ? {at:s.at, changed:s.txt !== JSON.stringify(scorebookPayload(g))} : null; }
 function sbWhen(at){ return new Date(at).toLocaleString([], {weekday:"short", month:"short", day:"numeric", hour:"numeric", minute:"2-digit"}); }
-function scorebookPayload(g){
+function scorebookPayload(g, pub){
   // A forfeit goes over with no final: Bobcats Scorebook has no forfeit result, and a played score would post the wrong
   // winner. forfeit says which way the ruling went. A game that ended with nobody tapping Final is final here.
   const R = replay(g), Q = g.quarters || 4, ff = g.forfeit === "W" || g.forfeit === "L" ? g.forfeit : "", final = !ff && gameOver(g), periods = {};
@@ -6571,7 +6578,8 @@ function scorebookPayload(g){
     cu = {gb: cu.gb + (R.qs.us[q-1] || 0), opp: cu.opp + (R.qs.them[q-1] || 0)};
     periods[q <= Q ? "q" + q : "ot" + (q - Q)] = {...cu};
   }
-  const named = roster(g, "us").filter(p => /^[A-Za-z]/.test(pShort(p)));
+  // pub (the Social tab): a kid whose family chose number only is never named.
+  const named = roster(g, "us").filter(p => /^[A-Za-z]/.test(pShort(p)) && !(pub && noPub(g, "us", p)));
   const top = named.map(p => ({p, pts:(R.box.us[p.pid] || LINE()).pts})).filter(x => x.pts > 0).sort((a, b) => b.pts - a.pts);
   const keep = top.filter((x, i) => i < 3 || x.pts >= 10).slice(0, 5);
   const sid = g.practice ? "practice" : sbId(g);
@@ -7059,6 +7067,183 @@ const Logos = (() => {
     // For the tests: logos straight in, as if the cloud had sent them.
     set:o => { st.heard = true; return apply(o); }};
 })();
+
+/* ---------- Social (Admins, 0.35.0): Kevin's social post generator, folded in ----------
+   Kevin (2026-11-22): the basketball social post creator inside Brier Stats, for Admins only (the tab isn't drawn for
+   anyone else). The generator runs in social/ (its own page in a frame, with its own look and its own lock) and reaches the
+   book only through socialApi(), which asks canAdmin() on every call.
+   Games, scores, top scorers, starters and rosters come from the book; a game nobody scored here can have its scores typed
+   in. What Social adds lives in hoopsBook/social: {v, cfg (caption and graphic settings), games {gid: starters, posted
+   marks, graphic picks, theme, notes and typed-in scores}, photos {id: meta, or null once deleted}, sponsors {same}, upd}.
+   Each picture is hoopsBook/simg-<id> {d (a data URL, or its first 900 KB), n (how many parts), at}, the rest in
+   simg-<id>-1 to -5 (a photographer's cut-out runs 2 to 3 MB, and it's kept whole). No new rules: Admins write any hoopsBook document. Kids marked number only are numbers only. */
+const SOC_IMG = /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/, SOC_CHUNK = 900000, SOC_PARTS = 6, SOC_ID = /^[a-f0-9]{32}$/;
+const Social = (() => {
+  const st = {doc:null, heard:false, imgs:new Map(), hash:"", later:null};
+  const KS = KEY + ".social";
+  const plain = o => o && typeof o === "object" && !Array.isArray(o);
+  const str = (v, n = 300) => typeof v === "string" ? v.slice(0, n) : "";
+  const num = v => typeof v === "number" && isFinite(v) && v >= 0 && v < 1000 ? Math.round(v) : null;
+  const flags = o => { const r = {}; if(plain(o)) for(const k of ["fb", "ig", "x", "tt"]) if(k in o) r[k] = !!o[k]; return r; };
+  const who = p => plain(p) ? {n:str(p.n, 3).replace(/\D/g, ""), name:str(p.name, 60), gr:str(p.gr, 4), pos:str(p.pos, 12)} : null;
+  // Only what the generator writes on a game, each the shape it should be.
+  function cleanGame(o){
+    const r = {}; if(!plain(o)) return r;
+    if(Array.isArray(o.starters)) r.starters = o.starters.slice(0, 5).map(who).filter(Boolean);
+    for(const k of ["posted", "posted_gd", "posted_lu"]) if(k in o) r[k] = flags(o[k]);
+    if(plain(o.gfx)){ r.gfx = {}; for(const k of ["gd", "lu", "q", "fin"]) if(plain(o.gfx[k])){ const x = {}; for(const f of ["side", "hero", "sponsor", "style"]) if(f in o.gfx[k]) x[f] = str(o.gfx[k][f], 40); r.gfx[k] = x; } }
+    for(const k of ["theme", "note", "live_note", "top"]) if(k in o) r[k] = str(o[k], 500);
+    for(const k of ["gb", "opp"]) if(k in o) r[k] = num(o[k]);
+    if(plain(o.periods)){ r.periods = {}; for(const k of ["q1", "q2", "q3", "q4", "ot1", "ot2"]) if(plain(o.periods[k])) r.periods[k] = {gb:num(o.periods[k].gb), opp:num(o.periods[k].opp)}; }
+    return r;
+  }
+  const CFG = ["girls_name", "boys_name", "hashtags", "rivals", "gym", "admission", "tickets", "stream", "strip_tag", "strip_tag2"];
+  function cleanCfg(o){ const r = {}; if(!plain(o)) return r; for(const k of CFG) if(k in o) r[k] = str(o[k], 400);
+    if(plain(o.sponsor_def)){ r.sponsor_def = {}; for(const k of ["gd", "lu", "q", "fin"]) if(k in o.sponsor_def) r.sponsor_def[k] = str(o.sponsor_def[k], 40); } return r; }
+  function cleanMeta(coll, o){ if(!plain(o)) return {}; const r = {};
+    if(coll === "photos"){ if("team" in o) r.team = o.team === "Girls" ? "Girls" : "Boys"; if("kind" in o) r.kind = o.kind === "head" ? "head" : "body"; if("n" in o) r.n = str(o.n, 3).replace(/\D/g, ""); }
+    for(const k of ["name", "file", "added"]) if(k in o) r[k] = str(o[k], 120); return r; }
+  // A game Social can post about: on the schedule, not a scrimmage, not postponed or cancelled.
+  const postable = g => g && !g.deleted && !g.practice && !g.scrim && !g.off;
+  const grade = p => p && p.grade ? String(p.grade).replace(/\.$/, "") + "." : "";
+  const kid = (g, p) => ({n:String(p.num || ""), name:noPub(g, "us", p) ? "" : pShort(p), gr:grade(p), pos:String(p.pos || "")});
+  // Everything the generator reads, in its own shapes: {games, rosters, photos, sponsors, settings}.
+  function snap(){
+    const d = st.doc || {}, over = plain(d.games) ? d.games : {}, games = {};
+    for(const g of Object.values(S.games || {})){
+      if(!postable(g)) continue;
+      const o = cleanGame(over[g.id]), played = !g.forfeit && (g.ev || []).some(e => !e.v && !PREGAME(e));
+      const x = {date:g.date, time:g.time || "", team:g.team === "girls" ? "Girls" : "Boys", level:"Varsity", opponent:g.opp || "Opponent", home_away:g.ha === "Away" ? "Away" : "Home",
+        district:!!g.district, event:g.event || "", gb:null, opp:null, top:"", note:"", live_note:"", periods:{}, posted:{}, ...o, _book:played};
+      if(played){ const p = scorebookPayload(g, true); x.periods = p.periods; x.gb = p.final ? p.gb : null; x.opp = p.final ? p.opp : null; x.top = p.top; if(!o.live_note) x.live_note = p.live_note; }
+      // The starting five: the book's once the scorer has them, else the PA's picks (startersOf), unless Social saved its own.
+      if(!o.starters){ const r = roster(g, "us"), five = S.booth[g.id] ? startersOf(g, "us").map(pid => paPlayer(g, "us", pid)) : bookFive(g, "us").map(pid => r.find(p => p.pid === pid));
+        x.starters = five.filter(Boolean).slice(0, 5).map(p => kid(g, p)); }
+      games[g.id] = x;
+    }
+    const rosters = {};   // the generator's roster documents: {players:[{n, name, gr, pos}]}
+    for(const [k, T] of [["Girls", (S.teams || {}).girls], ["Boys", (S.teams || {}).boys]]) rosters[k] = {players:((T && T.roster) || []).map(p => ({n:String(p.num || ""), name:p.nopub ? "" : pShort(p), gr:grade(p), pos:String(p.pos || "")}))};
+    const list = c => { const o = {}; if(plain(d[c])) for(const id of Object.keys(d[c])) if(SOC_ID.test(id) && plain(d[c][id])) o[id] = cleanMeta(c, d[c][id]); return o; };
+    const t = S.teams || {}, settings = {girls_name:(t.girls || {}).name || "Lady Cats", boys_name:(t.boys || {}).name || "Bobcats", hashtags:"#GreenbrierBasketball #GoBobcats",
+      strip_tag:"VOTClive.com", strip_tag2:"#CatchTheseCats #GreenbrierBasketball", ...cleanCfg(d.cfg), _imported:typeof d.imported === "number" ? d.imported : 0};
+    return {games, rosters, photos:list("photos"), sponsors:list("sponsors"), settings, heard:st.heard, live:Sync.live()};
+  }
+  const deep = (a, b) => { for(const k of Object.keys(b)){ if(plain(b[k]) && plain(a[k])) deep(a[k], b[k]); else a[k] = b[k]; } return a; };
+  function keep(){ try{ localStorage.setItem(KS, JSON.stringify(st.doc || {})); }catch(e){} }
+  const no = code => Object.assign(new Error(code), {code});
+  async function write(path, op, data){
+    const c = Sync.cloud(); if(!c || !canAdmin()) throw no("not_granted");
+    const [coll, id] = String(path).split("/"), patch = {};
+    if(coll === "games"){ if(!S.games[id] || op === "delete") throw no("invalid_argument"); patch.games = {[id]:cleanGame(data)}; }
+    else if(coll === "settings") patch.cfg = cleanCfg(data);
+    else if(coll === "photos" || coll === "sponsors"){ if(!SOC_ID.test(id || "")) throw no("invalid_argument"); patch[coll] = {[id]:op === "delete" ? null : cleanMeta(coll, data)}; }
+    else return;   // rosters belong to Rosters
+    patch.upd = Date.now();
+    st.doc = deep(st.doc || {}, JSON.parse(JSON.stringify(patch))); keep(); ping();
+    await c.fb.setDoc(c.fb.doc(c.db, "hoopsBook", "social"), patch, {merge:true});
+  }
+  // Pictures: read once a session, kept in memory.
+  function img(id){
+    if(!SOC_ID.test(String(id)) || !canAdmin()) return Promise.reject(no("invalid_argument"));
+    if(st.imgs.has(id)) return st.imgs.get(id);
+    const p = (async () => {
+      const c = Sync.cloud(); if(!c) throw no("offline");
+      const first = await c.fb.getDoc(c.fb.doc(c.db, "hoopsBook", "simg-" + id)); if(!first.exists()) throw no("gone");
+      const x = first.data(), n = Math.max(1, Math.min(SOC_PARTS, x.n | 0)); let s = String(x.d || "");
+      for(let i = 1; i < n; i++){ const di = await c.fb.getDoc(c.fb.doc(c.db, "hoopsBook", "simg-" + id + "-" + i)); s += di.exists() ? String(di.data().d || "") : ""; }
+      if(!SOC_IMG.test(s)) throw no("bad"); return s;
+    })();
+    st.imgs.set(id, p); p.catch(() => st.imgs.delete(id)); return p;
+  }
+  async function putImg(d, same){
+    const c = Sync.cloud(); if(!c || !canAdmin()) throw no("not_granted");
+    if(typeof d !== "string" || !SOC_IMG.test(d)) throw no("unsupported_type"); if(d.length > SOC_CHUNK * SOC_PARTS) throw no("too_large");
+    const id = SOC_ID.test(String(same)) ? same : Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, "0")).join(""), parts = [];
+    for(let i = 0; i < d.length; i += SOC_CHUNK) parts.push(d.slice(i, i + SOC_CHUNK));
+    const b = c.fb.writeBatch(c.db); parts.forEach((s, i) => b.set(c.fb.doc(c.db, "hoopsBook", "simg-" + id + (i ? "-" + i : "")), i ? {d:s} : {d:s, n:parts.length, at:Date.now()}));
+    await b.commit(); st.imgs.set(id, Promise.resolve(d)); return {id};
+  }
+  async function delImg(id){
+    const c = Sync.cloud(); if(!c || !canAdmin() || !SOC_ID.test(String(id))) throw no("not_granted");
+    const b = c.fb.writeBatch(c.db); for(let i = 0; i < SOC_PARTS; i++) b.delete(c.fb.doc(c.db, "hoopsBook", "simg-" + id + (i ? "-" + i : ""))); await b.commit(); st.imgs.delete(id);
+  }
+  // A graphic or a TikTok video: the share sheet on the iPad (Save Image, Save Video), a download on a laptop. A video takes
+  // a few seconds to make, and the iPad only opens the share sheet right after a tap, so then a Save button waits for one.
+  async function save(name, blob){
+    if(!canAdmin()) throw no("not_granted");
+    const file = typeof File === "function" ? new File([blob], String(name).replace(/[^\w.-]+/g, "-"), {type:blob.type}) : null;
+    if(file && navigator.maxTouchPoints && navigator.canShare && navigator.canShare({files:[file]})){
+      try{ await navigator.share({files:[file]}); return; }
+      catch(e){ if(e && e.name === "AbortError") throw no("declined"); if(e && e.name === "NotAllowedError") return later(file); }
+    }
+    download(file ? file.name : name, blob, blob.type);
+  }
+  function later(file){
+    return new Promise((res, rej) => {
+      if(st.later) st.later.remove();
+      const box = document.createElement("div"); box.className = "flag ok"; box.setAttribute("role", "alert");
+      box.style.cssText = "position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom, 0px));z-index:60;max-width:560px;margin:0 auto";
+      const t = document.createElement("span"), go = document.createElement("button"), x = document.createElement("button");
+      t.textContent = "Ready: " + file.name; go.className = "btn sm primary"; go.textContent = "Save it"; x.className = "btn sm"; x.textContent = "Not now";
+      box.append(t, go, x); document.body.appendChild(box); st.later = box;
+      go.addEventListener("click", () => { navigator.share({files:[file]}).then(() => { box.remove(); res(); }, e => { if(e && e.name === "AbortError") return; box.remove(); download(file.name, file, file.type); res(); }); });
+      x.addEventListener("click", () => { box.remove(); rej(no("declined")); });
+    });
+  }
+  // One time (Kevin, 2026-11-22: "any way to auto pull all that shit the same as it was"): the old generator page's
+  // data, from the file Claude made of it: settings, each game's starters, Posted marks, graphic picks, theme and notes, typed
+  // scores, and every photo under its old id (so a game's photo picks still point at it). Games match by the Scorebook id
+  // (sbId: date-team). Nothing already set here is overwritten, so running it twice only adds what's missing.
+  async function importOld(o, say){
+    const c = Sync.cloud(); if(!c || !canAdmin()) throw no("not_granted");
+    if(!plain(o) || o.source !== "bobcats-scorebook" || !plain(o.games)) throw no("invalid_argument");
+    const tell = m => { try{ if(typeof say === "function") say(m); }catch(e){} };
+    const d = st.doc || {}, have = plain(d.games) ? d.games : {}, byOld = {}, games = {}, cfg = {}, nowCfg = plain(d.cfg) ? d.cfg : {};
+    for(const g of Object.values(S.games || {})) if(postable(g)) byOld[sbId(g)] = g.id;
+    let ng = 0, miss = 0;
+    for(const [old, x] of Object.entries(o.games)){
+      const gid = byOld[old]; if(!gid){ miss++; continue; }
+      const cg = cleanGame(x), now = plain(have[gid]) ? have[gid] : {}, put = {}; delete cg.live_note;
+      if(cg.starters && !cg.starters.length) delete cg.starters;
+      for(const k of Object.keys(cg)) if(!(k in now)) put[k] = cg[k];
+      if(Object.keys(put).length){ games[gid] = put; ng++; }
+    }
+    const oc = cleanCfg(o.settings); for(const k of Object.keys(oc)) if(!(k in nowCfg)) cfg[k] = oc[k];
+    const first = {games, cfg, upd:Date.now()};
+    st.doc = deep(st.doc || {}, JSON.parse(JSON.stringify(first))); keep(); ping();
+    await c.fb.setDoc(c.fb.doc(c.db, "hoopsBook", "social"), first, {merge:true});
+    const todo = [];
+    for(const coll of ["photos", "sponsors"]) if(plain(o[coll])) for(const [id, m] of Object.entries(o[coll])) if(SOC_ID.test(id) && plain(m) && !(plain(d[coll]) && plain(d[coll][id]))) todo.push([coll, id, m]);
+    let np = 0, skip = 0;
+    for(const [coll, id, m] of todo){
+      tell(`Photo ${np + skip + 1} of ${todo.length}…`);
+      if(typeof m.d !== "string" || !SOC_IMG.test(m.d) || m.d.length > SOC_CHUNK * SOC_PARTS){ skip++; continue; }
+      await putImg(m.d, id);
+      const one = {[coll]:{[id]:cleanMeta(coll, m)}, upd:Date.now()};
+      st.doc = deep(st.doc || {}, JSON.parse(JSON.stringify(one))); keep(); ping();
+      await c.fb.setDoc(c.fb.doc(c.db, "hoopsBook", "social"), one, {merge:true}); np++;
+    }
+    const done = {imported:Date.now(), upd:Date.now()}; st.doc = deep(st.doc || {}, done); keep(); ping();
+    await c.fb.setDoc(c.fb.doc(c.db, "hoopsBook", "social"), done, {merge:true});
+    return {games:ng, photos:np, skipped:skip, missed:miss};
+  }
+  function ping(){ const f = document.getElementById("socialfr"); try{ if(f && f.contentWindow && typeof f.contentWindow.__socPing === "function") f.contentWindow.__socPing(); }catch(e){} }
+  function heard(snap){
+    if(!snap.exists() && snap.metadata && snap.metadata.fromCache) return;   // no signal: nothing heard yet
+    st.doc = snap.exists() ? snap.data() : {}; st.heard = true; keep(); ping();
+  }
+  function boot(){ try{ const o = JSON.parse(localStorage.getItem(KS) || "null"); if(plain(o)) st.doc = o; }catch(e){} }
+  function reset(){ st.doc = null; st.heard = false; st.imgs.clear(); try{ localStorage.removeItem(KS); }catch(e){} }
+  // The frame sizes itself to its page, so Brier Stats scrolls as one page.
+  function size(h){ const f = document.getElementById("socialfr"); if(f && h > 200) f.style.height = Math.min(60000, Math.ceil(h)) + "px"; }
+  const gate = f => (...a) => canAdmin() ? f(...a) : Promise.reject(no("not_granted"));
+  const api = Object.freeze({snap:() => canAdmin() ? snap() : null, write:gate(write), img, putImg:gate(d => putImg(d)), delImg:gate(delImg), save:gate(save), importOld:gate(importOld),
+    hash:h => { st.hash = String(h || "").replace(/[^a-z]/g, "").slice(0, 12); }, size,
+    top:() => { const f = document.getElementById("socialfr"); if(!f) return; const y = f.getBoundingClientRect().top + window.scrollY - 70; if(window.scrollY > y) window.scrollTo(0, Math.max(0, y)); }, go:t => { if(t === "rosters" || t === "games"){ ui.tab = t === "rosters" ? "teams" : "games"; saveUi(); render(); } }});
+  return {api, heard, boot, reset, ping, hash:() => st.hash};
+})();
+// The Social page's way in: nothing at all unless this login is an Admin.
+function socialApi(){ return tabOk("social") ? Social.api : null; }
 
 /* ---------- the public copy of a game (hoopsPublic/{gid}) ----------
    Small on purpose: every fan's phone downloads it on every update. One JSON string, because Firestore can't hold lists
@@ -10182,8 +10367,9 @@ const Sync = (() => {
         // Moved down to scoreboard-only while signed in: every listener goes (the rules would stop each one anyway).
         if(was){ clear(); onUser(st.auth.currentUser); return; } paint(); }
       else if(snap.exists()){ const r = roleOf(snap.data()); if(st.phase !== "live"){ st.role = r; st.phase = "live"; goLive(); }
-        else if(r !== st.role){ const people = boss(r) !== boss(st.role); st.role = r; S.role = r; S.roleUid = u.uid; save();
-          // Made a Coach or an Admin, or no longer one: the people list comes or goes, so the listeners start over.
+        else if(r !== st.role){ const people = boss(r) !== boss(st.role) || (r === "owner") !== (st.role === "owner"); st.role = r; S.role = r; S.roleUid = u.uid; save();
+          // Made a Coach or an Admin, or no longer one: the people list (and for an Admin, Social) comes or goes, so the
+          // listeners start over.
           if(people){ clear(); st.phase = "loading"; onUser(st.auth.currentUser); return; }
           paint(); softRender(); } }
       else if(snap.metadata && snap.metadata.fromCache){ if(st.phase === "live") return;
@@ -10379,6 +10565,8 @@ const Sync = (() => {
     // Player photos: everyone let in hears them. A hiccup here never marks the scores as stale.
     st.unsub.push(fb.onSnapshot(fb.doc(db, "hoopsBook", "faces"), snap => Faces.heard(snap), () => {}));
     st.unsub.push(fb.onSnapshot(fb.doc(db, "hoopsBook", "logos"), snap => Logos.heard(snap), () => {}));
+    // Social (Admins only): what the post generator adds to the games.
+    if(st.role === "owner") st.unsub.push(fb.onSnapshot(fb.doc(db, "hoopsBook", "social"), snap => Social.heard(snap), () => {}));
     if(S.role !== st.role || S.roleUid !== st.uid){ S.role = st.role; S.roleUid = st.uid; save(); }
     if(boss(st.role)){
       st.unsub.push(fb.onSnapshot(fb.collection(db, "hoopsRequests"), snap => { st.reqs = snap.docs.map(d => ({uid:d.id, ...d.data()})); paint(); }, fail));
@@ -10756,7 +10944,7 @@ const Sync = (() => {
       if(act === "sy-start") await start();
       else if(act === "sy-retry"){ st.err = ""; if(st.fb) onUser(st.auth.currentUser); else { st.phase = "off"; await start(); } }
       else if(act === "sy-mode"){ st.mode = a.dataset.m; render(); }
-      else if(act === "sy-out"){ clear(); await fb.signOut(st.auth); S.sync = false; S.role = null; delete S.roleUid; st.askName = ""; save(); }
+      else if(act === "sy-out"){ clear(); await fb.signOut(st.auth); Social.reset(); S.sync = false; S.role = null; delete S.roleUid; st.askName = ""; save(); }
       else if(act === "sy-reset"){ const e = ($("#sy-auth [name=email]") || {}).value; if(!e){ toast("Type your email first."); return; } const em = e.trim();
         try{ await fb.sendPasswordResetEmail(st.auth, em); }
         catch(x){ if(String((x && x.code) || "").includes("user-not-found")){ toast(`No account uses ${clipTo(em, 80)}. Try the other email you use, or tap New account.`, 9000); return; } throw x; }
@@ -11087,6 +11275,7 @@ if(!ui.gid || !S.games[ui.gid]){
 render();
 Faces.boot();
 Logos.boot();
+Social.boot();
 if(INV_URL && !PUB){ ui.tab = "setup"; render(); }
 if(S.sync || (invCode() && !PUB)) Sync.start();
 setInterval(() => Drive.tick(), 10000); window.addEventListener("online", () => setTimeout(() => Drive.tick(), 3000));
