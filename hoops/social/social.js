@@ -1,4 +1,4 @@
-/* Brier Stats, Social tab (Admins only, 0.34.0): Kevin's social post generator, running inside the app.
+/* Brier Stats, Social tab (Admins only, 0.35.0): Kevin's social post generator, running inside the app.
    This first part stands in for the runtime the generator was written for (its db, its file store and its downloads), on
    top of the app's socialApi(): games, scores and rosters from the book, what Social adds in hoopsBook/social, pictures in
    hoopsBook/simg-<id>, and files through the iPad's share sheet. The generator below is Kevin's, changed only where marked. */
@@ -1649,7 +1649,7 @@
   function photoLabel(p) { return (p.n ? "#" + p.n + " " : "") + (p.name || "Player") + (p.kind === "head" ? " (headshot)" : ""); }
   function lastWord(s) { return String(s || "").trim().split(/\s+/).slice(-1)[0].toLowerCase(); }
   // 24-Smith.png -> #24 Smith, full body. 24-Smith-head.png -> headshot. Anything else keeps its filename as the name.
-  // Kevin's own names work too (Brier Stats, 0.34.0): B_ is the Bobcats, LC_ the Lady Cats, a jersey color on the end
+  // Kevin's own names work too (Brier Stats, 0.35.0): B_ is the Bobcats, LC_ the Lady Cats, a jersey color on the end
   // (White, Black, Green) is dropped, and _StepRepeat marks a headshot.
   function parseFile(name) {
     var b = String(name).replace(/\.[a-z0-9]+$/i, ""), team = "", pre = b.match(/^(B|LC|boys|girls)[-_ ]+(?=#?\d)/i);
