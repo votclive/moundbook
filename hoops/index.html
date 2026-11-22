@@ -5,7 +5,7 @@
 <!-- The page's lock: the only script that may run is the one in this file (named by the SHA-256 of its text) and files
      from this folder (fb.js). Text that turns up in the page from a roster, a game or the cloud can never run as code.
      After ANY edit to the script, run "python3 hoops/stamp.py hoops": with a stale hash the browser runs nothing. -->
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-Jsx3BVrCSQfliYKIw/ujgrCBT/+niQZfoBfe1e3BCus='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-18WQq1vXqM9Qe9ItEGf4PYyheou867QJ1ksmkuWfDu0='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#094A28">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -866,7 +866,7 @@ td .face{width:24px;height:24px;margin:-5px 7px -4px 0}
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
 { const n = document.getElementById("nostart"); if(n) n.remove(); }   // the script is running: see #nostart
-const BS_VERSION = "0.33.0";
+const BS_VERSION = "0.34.0";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -895,7 +895,7 @@ const OBS = !PUB && /[?&#]bug\b/.test(location.search + location.hash);
 const BC_ONLY = !PUB && !ANN_ONLY && /[?&#]broadcast\b/.test(location.search + location.hash);   // Jim's broadcast page
 
 /* ---------- schedule (from the 2026-27 master sheet in the social kit) ---------- */
-const SEASON = "2026-27";
+const SEASON = seasonOf(pubToday()) || "2026-27";   // Aug 1 to Jul 31, from the date (0.34.0)
 const SCHEDULE = [
  ["2026-11-16","19:30","boys","Watertown","Away",0,"Hall of Fame (preseason)"],["2026-11-17","18:00","girls","White House Heritage","Away",0,"Hall of Fame (preseason)"],
  ["2026-11-17","19:30","boys","White House Heritage","Away",0,"Hall of Fame (preseason)"],["2026-11-19","18:00","girls","Wilson Central","Away",0,"Hall of Fame (preseason)"],
@@ -2705,7 +2705,7 @@ function recordOf(g){
   const over = gameOver(g) || g.forfeit;
   const typed = (infoOf(g).record || "").match(/(\d+)\s*-\s*(\d+)/);
   if(typed){ let w = +typed[1], l = +typed[2]; if(over) wlNow(g) === "W" ? w++ : l++; return w + "-" + l; }
-  const before = Object.values(S.games).filter(x => !x.deleted && !x.practice && !x.scrim && !x.off && x.team === g.team && x.id !== g.id && (x.date + (x.time || "")) < (g.date + (g.time || "")));
+  const before = Object.values(S.games).filter(x => !x.deleted && !x.practice && !x.scrim && !x.off && x.team === g.team && x.id !== g.id && seasonOf(x.date) === seasonOf(g.date) && (x.date + (x.time || "")) < (g.date + (g.time || "")));
   if(before.some(x => !gameOver(x) && !x.forfeit)) return "";
   let w = 0, l = 0; for(const x of over ? before.concat([g]) : before) wlNow(x) === "W" ? w++ : l++;
   return w + l ? w + "-" + l : "";
@@ -3905,7 +3905,7 @@ function recordWords(g){
   if(!gameOver(g) || g.practice || g.scrim) return "";
   const won = wlNow(g) === "W", typed = (infoOf(g).record || "").match(/(\d+)\s*-\s*(\d+)(?:\D+(\d+)\s*-\s*(\d+))?/);
   let w = 0, l = 0, dw = 0, dl = 0;
-  const before = Object.values(S.games).filter(x => !x.deleted && !x.practice && !x.scrim && !x.off && x.team === g.team && x.id !== g.id && (x.date + x.time) < (g.date + g.time));
+  const before = Object.values(S.games).filter(x => !x.deleted && !x.practice && !x.scrim && !x.off && x.team === g.team && x.id !== g.id && seasonOf(x.date) === seasonOf(g.date) && (x.date + x.time) < (g.date + g.time));
   if(typed){ [w, l, dw, dl] = [1, 2, 3, 4].map(i => +typed[i] || 0); won ? w++ : l++;
     // No district record typed: count it from the book when every earlier district game is in it, else leave it out.
     if(g.district){ if(typed[3] != null) won ? dw++ : dl++;
@@ -4649,8 +4649,8 @@ function viewGames(){
 // The games a season counts, for the Rosters table, the game log, the team line and both CSVs alike, oldest first: this
 // team's games that were played and are over (a game that ended counts, Final tapped or not). No practice, deleted,
 // postponed or cancelled games, and no forfeit that was never played.
-function seasonGames(team){
-  return Object.values(S.games).filter(g => !g.deleted && !g.practice && !g.scrim && !g.off && g.team === team && gameOver(g) && g.ev.some(e => !e.v && !PREGAME(e)))
+function seasonGames(team, sn = SEASON){
+  return Object.values(S.games).filter(g => !g.deleted && !g.practice && !g.scrim && !g.off && g.team === team && seasonOf(g.date) === sn && gameOver(g) && g.ev.some(e => !e.v && !PREGAME(e)))
     .sort((a, b) => (a.date + (a.time || "")).localeCompare(b.date + (b.time || "")) || a.id.localeCompare(b.id));
 }
 function seasonLines(team, gs = seasonGames(team)){
@@ -4666,7 +4666,7 @@ function seasonLines(team, gs = seasonGames(team)){
 // "Record 12-5 · District 3-1 · Home 7-2 · Away 5-3 · Neutral 0-1", from final games in the book (Neutral once there's one).
 function teamRecord(team){
   const r = {all:[0, 0], district:[0, 0], Home:[0, 0], Away:[0, 0], Neutral:[0, 0]};
-  for(const g of Object.values(S.games)){ if(g.team !== team) continue; const res = result(g); if(!res) continue; const i = res === "W" ? 0 : 1;
+  for(const g of Object.values(S.games)){ if(g.team !== team || seasonOf(g.date) !== SEASON) continue; const res = result(g); if(!res) continue; const i = res === "W" ? 0 : 1;
     r.all[i]++; if(g.district) r.district[i]++; if(r[g.ha]) r[g.ha][i]++; }
   if(!r.all[0] && !r.all[1]) return "";
   return `<div class="small" style="margin-top:6px;font-weight:600">Record ${r.all.join("-")}${r.district[0] + r.district[1] ? " · District " + r.district.join("-") : ""} · Home ${r.Home.join("-")} · Away ${r.Away.join("-")}${r.Neutral[0] + r.Neutral[1] ? " · Neutral " + r.Neutral.join("-") : ""}</div>`;
@@ -4734,7 +4734,7 @@ function gameLogHtml(team, p, sh){
   return `${fhead(p, `<div class="kicker">${team === "girls" ? "Girls" : "Boys"} varsity · game log${on ? " · vs " + esc(on.name) : ""}</div><h3>#${esc(p.num)} ${esc(p.name || "")}</h3>`, undefined, true)}
     <p class="small" style="margin:0 0 8px">${[desc, n ? `${n} game${n === 1 ? "" : "s"} · ${pg(t.pts)} ppg · ${pg(t.oreb + t.dreb)} rpg · ${pg(t.ast)} apg` : ""].filter(Boolean).map(esc).join(" · ")}${on ? ` <button class="btn sm" data-act="glopp" data-opp="">Whole season</button>` : ""}</p>
     ${n ? (canCoach() ? playerMore(team, p, rows) : "") + table + vs + chart + `<p class="small" style="margin:8px 0 0">Newest first. Tap a game for its box score, an opponent for just those games, or a shot to see when it was. Shooting leaves out points-only games.</p>` : `<p style="margin:0">No games yet this season. A game counts here once it's over.</p>`}
-    <div class="row" style="margin-top:10px">${n && canCoach() ? `<button class="btn" data-act="plpdf" data-team="${team}" data-pid="${esc(pid)}" data-opp="${esc(sh.opp || "")}">Player PDF</button>` : ""}<button class="btn" data-close>Close</button></div>`;
+    <div class="row" style="margin-top:10px">${n && canCoach() ? `<button class="btn" data-act="plpdf" data-team="${team}" data-pid="${esc(pid)}" data-opp="${esc(sh.opp || "")}">Player PDF</button>` : ""}${canCoach() ? `<button class="btn" data-act="carsheet" data-team="${team}" data-pid="${esc(pid)}">Career</button>` : ""}<button class="btn" data-close>Close</button></div>`;
 }
 /* ---------- school records and milestones (0.15.0) ----------
    The record boards in the gym (Kevin and Jim checked the typed copy, Nov 2026) come built in, and a Coach can fix or add
@@ -4764,7 +4764,6 @@ const CLUB_SEED = {boys:[["Butch Savage", "1968"], ["Gary Bedwell", "1969"], ["M
   girls:[["Ronda Hall", "1990"], ["Kara Hodge", "2000"], ["Nina Dever", "2010"], ["Rylee Butler", "2011"], ["Kayla Jarrell", "2016"], ["Amanda Bennett", "2018"]].map(([who, yr]) => ({who, yr}))};
 const recsOf = team => ((S.teams[team] || {}).records || REC_SEED[team] || []);
 const clubOf = team => ((S.teams[team] || {}).club || CLUB_SEED[team] || []);
-const priorOf = (team, pid) => (((S.teams[team] || {}).prior || {})[pid] || {});
 function recSave(team, f){ if(!canCoach()) return; const T = S.teams[team]; if(!T.records) T.records = JSON.parse(JSON.stringify(REC_SEED[team])); if(!T.club) T.club = JSON.parse(JSON.stringify(CLUB_SEED[team])); f(T); S.teamsRev++; save(); Sync.dirtyTeams(); render(); }
 // The counting stats a milestone follows, how big a season and a career step is, and how close counts as "coming up".
 const MS_STAT = [["pts", "points", l => l.pts], ["reb", "rebounds", l => l.oreb + l.dreb], ["ast", "assists", l => l.ast], ["tpm", "threes", l => l.tpm], ["stl", "steals", l => l.stl], ["blk", "blocks", l => l.blk]];
@@ -4840,7 +4839,7 @@ function recordsView(S0){
   const wr = recs.find(r => r.k === "season" && r.s === "wins"), wins = S0.all.filter(g => result(g) === "W").length, losses = S0.all.filter(g => result(g) === "L").length;
   const watch = [...sea, ...car, wr && S0.all.length ? wrow("Team wins", esc(usName({team})), `${wins}-${losses}`, wr, pace(wins, wr.v)) : ""].filter(Boolean).join("");
   const next = msOf(team, null, null, true).filter(m => m.need), cpre = (pid, k) => { const v = priorOf(team, pid)[k]; return v == null ? "" : v; };
-  const pt = ros.map(p => `<tr><td class="l">#${esc(p.num)} ${esc(p.name || "")}</td>${MS_STAT.map(([k]) => `<td><input type="number" min="0" inputmode="numeric" class="prin" data-prior="${team}|${esc(p.pid)}|${k}" value="${esc(cpre(p.pid, k))}" ${edit ? "" : "disabled"} aria-label="${esc(p.name || "#" + p.num)} career ${k} before this season"></td>`).join("")}<td>${(() => { const v = cpre(p.pid, "pts"); return v === "" ? "–" : (+v + ((L[p.pid] || {}).pts || 0)).toLocaleString(); })()}</td></tr>`).join("");
+  const pt = ros.map(p => { const byC = carPrior(team, p.pid).lines; return `<tr><td class="l">${byC && edit ? `<button class="lnk" data-act="carsheet" data-team="${team}" data-pid="${esc(p.pid)}">#${esc(p.num)} ${esc(p.name || "")}</button>` : `#${esc(p.num)} ${esc(p.name || "")}`}</td>${MS_STAT.map(([k]) => byC ? `<td>${cpre(p.pid, k) === "" ? "–" : (+cpre(p.pid, k)).toLocaleString()}</td>` : `<td><input type="number" min="0" inputmode="numeric" class="prin" data-prior="${team}|${esc(p.pid)}|${k}" value="${esc(cpre(p.pid, k))}" ${edit ? "" : "disabled"} aria-label="${esc(p.name || "#" + p.num)} career ${k} before this season"></td>`).join("")}<td>${(() => { const v = cpre(p.pid, "pts"); return v === "" ? "–" : (+v + ((L[p.pid] || {}).pts || 0)).toLocaleString(); })()}</td></tr>`; }).join("");
   return `<div class="card"><div class="stblk"><div class="kicker">Record watch</div>${watch ? `<div class="scroll-x"><table class="pin stt"><tr><th class="l">Record</th><th class="l">Our leader</th><th>Now</th><th>School record</th><th class="l"></th></tr>${watch}</table></div>` : noData("Once games are played, our leader in each record's stat shows here.")}
       ${next.length ? `<div class="kicker" style="margin-top:12px">Within reach next game</div><ul class="msl">${next.map(m => `<li>${esc(m.txt)}</li>`).join("")}</ul>` : ""}
       <p class="small" style="margin:4px 0 0">During a game the PA page and the broadcast page show what's coming up and pop up the moment a record or milestone falls. Season steps: every ${MS_STEP.pts} points and rebounds, ${MS_STEP.ast} assists, ${MS_STEP.tpm} threes, steals and blocks. "Coming up": within ${MS_NEAR.pts} points, ${MS_NEAR.reb} rebounds, ${MS_NEAR.ast} assists or ${MS_NEAR.tpm} of the rest. Averages and percentages are shown here only.</p></div>
@@ -4851,7 +4850,7 @@ function recordsView(S0){
       <div class="clubl">${club.map((c, i) => `<span class="chip">${esc(c.who)} <b>${esc(c.yr)}</b>${edit ? ` <button class="lnk" data-act="clubdel" data-team="${team}" data-i="${i}" aria-label="Take ${esc(c.who)} off" title="Take off">✕</button>` : ""}</span>`).join("")}</div></div>
     <div class="stblk"><div class="kicker">Career totals before this season</div>
       <div class="scroll-x"><table class="pin stt"><tr><th class="l">Player</th><th>PTS</th><th>REB</th><th>AST</th><th>3PM</th><th>STL</th><th>BLK</th><th>Career PTS now</th></tr>${pt || `<tr><td class="l" colspan="8">No players on the roster yet.</td></tr>`}</table></div>
-      <p class="small" style="margin:4px 0 0">Varsity totals from earlier seasons. Career milestones (the 1,000-point club too) and career records count a player once that box has a number, even 0. ${edit ? "Saves as you type, on every device." : "A Coach or Admin fills these in."}</p></div></div>`;
+      <p class="small" style="margin:4px 0 0">Varsity totals from earlier seasons. Career milestones (the 1,000-point club too) and career records count a player once that box has a number, even 0. A player with earlier seasons on Stats, Career gets those seasons added up here instead${edit ? " (tap the name to change them)" : ""}. ${edit ? "Saves as you type, on every device." : "A Coach or Admin fills these in."}</p></div></div>`;
 }
 function recSheet(team, id){
   const r = recsOf(team).find(x => x.id === id) || {k:"season", s:"pts", t:"", who:"", yr:"", opp:""}, o = (v, l, cur) => `<option value="${v}" ${v === cur ? "selected" : ""}>${esc(l)}</option>`;
@@ -4865,13 +4864,217 @@ function recSheet(team, id){
     <div class="row"><button class="btn primary" type="submit">Save</button><button class="btn" type="button" data-close>Cancel</button>${id ? `<button class="btn dark" type="button" data-act="recdel">Remove</button>` : ""}</div></form>`});
 }
 
+/* ---------- career stats (Kevin, 0.34.0) ----------
+   Seasons run Aug 1 to Jul 31 ("2026-27"), taken from a game's date. Season numbers (Stats, the records, the record
+   going in, the district) count only this season's games, so next year's book never mixes two years.
+   A kid's career is one row per season. A season the book scored comes from its games; a season from before Brier Stats
+   is typed in by a Coach or loaded from a career file, at S.teams[team].career {pid: {nm, num, s:{"2025-26": line}}}.
+   It rides with the rosters (no rules change) and stays on the staff side: nothing of it goes in the public copies.
+   A line holds only what's known (blank means unknown, never 0): gp, pts, fgm, fga, tpm, tpa, ftm, fta, reb, ast, stl,
+   blk, to, pf; est lists the numbers that are estimates (shown with *) and src says where it came from. Career
+   milestones and career records add up every season before this one (priorOf). A kid with no season lines still uses
+   the totals typed on Stats > Records the old way. */
+function seasonOf(d){ const m = /^(\d{4})-(\d{2})/.exec(String(d || "")); if(!m) return ""; const y = +m[1] - (+m[2] < 8 ? 1 : 0); return y + "-" + String((y + 1) % 100).padStart(2, "0"); }
+const CAR_T = ["boys", "girls"], CAR_F = ["gp", "pts", "fgm", "fga", "tpm", "tpa", "ftm", "fta", "reb", "ast", "stl", "blk", "to", "pf"];
+const CAR_L = {gp:"Games", pts:"Points", fgm:"FG made", fga:"FG tried", tpm:"3s made", tpa:"3s tried", ftm:"FT made", fta:"FT tried", reb:"Rebounds", ast:"Assists", stl:"Steals", blk:"Blocks", to:"Turnovers", pf:"Fouls"};
+const carSeasonOk = s => typeof s === "string" && /^\d{4}-\d{2}$/.test(s) && +s.slice(0, 4) >= 1950 && (+s.slice(0, 4) + 1) % 100 === +s.slice(5);
+const carSeasons = () => { const y = +SEASON.slice(0, 4), out = []; for(let i = 1; i <= 8; i++) out.push(seasonOf((y - i) + "-09-01")); return out; };
+// One season's line from the cloud or a file: whole numbers from 0 to 99,999; anything else is unknown.
+function carLine(o){
+  const out = {}; if(!o || typeof o !== "object") return out;
+  for(const k of CAR_F){ const v = o[k]; if(typeof v === "number" && isFinite(v) && v >= 0 && v < 1e5) out[k] = Math.round(v); }
+  if(Array.isArray(o.est)){ const e = [...new Set(o.est.filter(k => CAR_F.includes(k) && Object.hasOwn(out, k)))]; if(e.length) out.est = e; }
+  if(typeof o.src === "string" && o.src.trim()) out.src = o.src.trim().slice(0, 200);
+  return out;
+}
+// The typed and loaded seasons, cleaned: {pid: {nm, num, s:{season: line}}}. Only seasons before this one.
+function careerOf(team){
+  const c = (S.teams[team] || {}).career, out = {}; if(!c || typeof c !== "object" || Array.isArray(c)) return out;
+  for(const [pid, x] of Object.entries(c)){ if(!pid || idBad(pid) || !x || typeof x !== "object" || !x.s || typeof x.s !== "object") continue;
+    const s = {}; for(const [k, l] of Object.entries(x.s)) if(carSeasonOk(k) && k < SEASON){ const ln = carLine(l); if(CAR_F.some(f => f in ln)) s[k] = ln; }
+    if(Object.keys(s).length) out[pid] = {nm:typeof x.nm === "string" ? x.nm.slice(0, 80) : "", num:typeof x.num === "string" ? x.num.slice(0, 4) : "", s}; }
+  return out;
+}
+// Earlier seasons the book scored: {season: seasonLines}. Worked out again only when one of those games changes.
+const CAR_C = {};
+function bookPast(team){
+  const cut = SEASON.slice(0, 4) + "-08-01", ss = [...new Set(Object.values(S.games).filter(g => g.team === team && !g.deleted && String(g.date || "") < cut).map(g => seasonOf(g.date)).filter(Boolean))].sort();
+  const gs = {}; ss.forEach(s => { gs[s] = seasonGames(team, s); });
+  const sig = ss.map(s => s + ":" + gs[s].map(g => g.id + "~" + gSig(g)).join()).join("|");
+  if(CAR_C[team] && CAR_C[team].sig === sig) return CAR_C[team].by;
+  const by = {}; for(const s of ss) if(gs[s].length) by[s] = seasonLines(team, gs[s]);
+  CAR_C[team] = {sig, by}; return by;
+}
+// A season's row in the career table. From the book: every counted game, attempts only when misses were kept all season
+// (percentages always leave out points-only games). Typed: what the line has.
+function carRow(s, ln, book){
+  if(book) return {s, book:true, gp:ln.g, pts:ln.pts, fgm:ln.fgm, fga:ln.po ? null : ln.fga, tpm:ln.tpm, tpa:ln.po ? null : ln.tpa, ftm:ln.ftm, fta:ln.po ? null : ln.fta, reb:ln.oreb + ln.dreb, ast:ln.ast, stl:ln.stl, blk:ln.blk, to:ln.to, pf:ln.pf, sh:{...ln.x}, est:{}, src:""};
+  const r = {s, book:false, est:{}, src:ln.src || "", sh:{}}; for(const k of CAR_F) r[k] = k in ln ? ln[k] : null;
+  (ln.est || []).forEach(k => { r.est[k] = 1; });
+  [["fgm", "fga"], ["tpm", "tpa"], ["ftm", "fta"]].forEach(([m, a]) => { if(r[m] != null && r[a] != null){ r.sh[m] = r[m]; r.sh[a] = r[a]; } });
+  return r;
+}
+// Every season for one kid, oldest first. The book wins a season it scored. cur: this season's lines (seasonLines).
+function careerRows(team, pid, cur, C){
+  const typed = ((C || careerOf(team))[pid] || {}).s || {}, book = bookPast(team), rows = {};
+  for(const [s, ln] of Object.entries(typed)) rows[s] = carRow(s, ln, false);
+  for(const [s, by] of Object.entries(book)) if(by[pid]) rows[s] = carRow(s, by[pid], true);
+  const now = (cur || seasonLines(team))[pid]; if(now) rows[SEASON] = carRow(SEASON, now, true);
+  return Object.values(rows).sort((a, b) => a.s.localeCompare(b.s));
+}
+// Career totals: a stat missing from a season still adds up the rest and says so (+); an estimate anywhere carries its *.
+function careerTot(rows){
+  const t = {s:"Career", est:{}, miss:{}, sh:{fgm:0, fga:0, tpm:0, tpa:0, ftm:0, fta:0}};
+  for(const k of CAR_F){ let v = null; for(const r of rows){ if(r[k] == null){ t.miss[k] = 1; continue; } v = (v || 0) + r[k]; if(r.est[k]) t.est[k] = 1; } t[k] = v; }
+  for(const r of rows) for(const k in t.sh) t.sh[k] += r.sh[k] || 0;
+  return t;
+}
+// Career totals before this season, for the milestones and the records: the seasons' lines when a kid has any, else
+// the totals typed on Stats > Records. {o: {pts, reb, ...}, lines: true when they came from season lines}.
+function carPrior(team, pid){
+  const typed = (careerOf(team)[pid] || {}).s || {}, book = bookPast(team), ss = [...new Set([...Object.keys(typed), ...Object.keys(book).filter(s => book[s][pid])])];
+  if(!ss.length) return {o:(((S.teams[team] || {}).prior || {})[pid] || {}), lines:false};
+  const o = {};
+  for(const [k, , f] of MS_STAT){ let t = null; for(const s of ss){ const v = book[s] && book[s][pid] ? f(book[s][pid]) : typed[s][k]; if(v != null) t = (t || 0) + v; } if(t != null) o[k] = t; }
+  return {o, lines:true};
+}
+function priorOf(team, pid){ return carPrior(team, pid).o; }
+const carV = (o, k) => o[k] == null ? "–" : o[k].toLocaleString() + (o.est[k] ? "*" : "") + (o.miss && o.miss[k] ? "+" : "");
+const carSh = (o, m, a) => o[m] == null ? "–" : carV(o, m) + (o[a] != null && !(o.miss && o.miss[a]) ? "-" + carV(o, a) : "");
+const carPg = (o, k) => o[k] != null && o.gp ? fx1(o[k] / o.gp) : "–";
+// The next career step for each stat, closest first (in "coming up" steps): {k, w, need, at}.
+function carNext(t){
+  return MS_STAT.map(([k, w]) => { const c = t[k]; if(c == null) return null; const st = MS_CSTEP[k], at = (Math.floor(c / st) + 1) * st; return {k, w, need:at - c, at, r:(at - c) / MS_NEAR[k]}; }).filter(Boolean).sort((a, b) => a.r - b.r);
+}
+// Who a pid is: on the roster, else the name the career entry keeps, else the last game they played in.
+function carWho(team, pid, C){
+  const p = ((S.teams[team] || {}).roster || []).find(x => x.pid === pid); if(p) return {p, on:true};
+  const c = (C || careerOf(team))[pid]; if(c && (c.nm || c.num)) return {p:{pid, num:c.num, name:c.nm}, on:false};
+  const g = Object.values(S.games).filter(x => x.team === team && !x.deleted && (x.us || []).some(q => q.pid === pid)).sort((a, b) => b.date.localeCompare(a.date))[0];
+  const q = g ? g.us.find(x => x.pid === pid) : null; return {p:{pid, num:q ? q.num : "?", name:q ? q.name || "" : ""}, on:false};
+}
+function careerSave(team, f){ if(!canCoach()) return; const T = S.teams[team]; if(!T) return; if(!T.career || typeof T.career !== "object" || Array.isArray(T.career)) T.career = {}; f(T.career); S.teamsRev++; save(); Sync.dirtyTeams(); render(); }
+function carEntry(C, p){ let e = Object.hasOwn(C, p.pid) ? C[p.pid] : null; if(!e || typeof e !== "object" || Array.isArray(e)) e = C[p.pid] = {}; if(!e.s || typeof e.s !== "object" || Array.isArray(e.s)) e.s = {};
+  if(p.name) e.nm = String(p.name).slice(0, 80); if(p.num != null && p.num !== "") e.num = String(p.num).slice(0, 4); return e; }
+const CAR_COLS = `<th class="l">Season</th><th>GP</th><th>PTS</th><th>PPG</th><th>FG</th><th>FG%</th><th>3PT</th><th>3P%</th><th>FT</th><th>FT%</th><th>REB</th><th>RPG</th><th>AST</th><th>APG</th><th>STL</th><th>BLK</th><th>TO</th><th>PF</th>`;
+const carCells = o => `<td>${carV(o, "gp")}</td><td><b>${carV(o, "pts")}</b></td><td>${carPg(o, "pts")}</td><td>${carSh(o, "fgm", "fga")}</td><td>${pc(o.sh.fgm, o.sh.fga)}</td><td>${carSh(o, "tpm", "tpa")}</td><td>${pc(o.sh.tpm, o.sh.tpa)}</td><td>${carSh(o, "ftm", "fta")}</td><td>${pc(o.sh.ftm, o.sh.fta)}</td><td>${carV(o, "reb")}</td><td>${carPg(o, "reb")}</td><td>${carV(o, "ast")}</td><td>${carPg(o, "ast")}</td><td>${carV(o, "stl")}</td><td>${carV(o, "blk")}</td><td>${carV(o, "to")}</td><td>${carV(o, "pf")}</td>`;
+const carFoot = (rows, t) => [Object.keys(t.est).length ? "* An estimate (worked back from per-game averages): the real number could be 1 higher." : "", rows.length > 1 && Object.keys(t.miss).length ? "+ At least this many: a season is missing this stat." : "",
+  rows.some(r => r.book) ? "Brier Stats seasons count games that are over; FG, 3PT and FT attempts and every percentage leave out points-only games." : ""].filter(Boolean).join(" ");
+/* ---- Stats > Career ---- */
+// Every kid on the roster: career totals (earlier seasons plus this one so far) and the next career milestone. A row
+// opens the kid's season-by-season table. Kids no longer on the roster with a career still show, below.
+function careerView(team){
+  const edit = canCoach(), C = careerOf(team), cur = seasonLines(team), ros = sortRoster((S.teams[team] || {}).roster || []), book = bookPast(team);
+  const gone = [...new Set([...Object.keys(C), ...Object.values(book).flatMap(by => Object.keys(by))])].filter(pid => !idBad(pid) && !ros.some(p => p.pid === pid));
+  const row = p => { const rows = careerRows(team, p.pid, cur, C), t = careerTot(rows), nx = carNext(t)[0], past = rows.filter(r => r.s < SEASON).map(r => r.s);
+    return `<tr><td class="l"><button class="lnk" data-act="carsheet" data-team="${team}" data-pid="${esc(p.pid)}">#${esc(p.num)} ${esc(p.name || "")}</button></td><td class="l">${past.length ? esc(past.map(s => s.slice(2)).join(", ")) : "this season"}</td><td>${carV(t, "gp")}</td><td><b>${carV(t, "pts")}</b></td><td>${carPg(t, "pts")}</td><td>${carV(t, "reb")}</td><td>${carV(t, "ast")}</td><td>${carV(t, "tpm")}</td><td>${carV(t, "stl")}</td><td>${carV(t, "blk")}</td><td class="l">${nx && rows.length ? `${nx.need.toLocaleString()} to ${nx.at.toLocaleString()} ${esc(nx.w)}` : "–"}</td></tr>`; };
+  const head = `<tr><th class="l">Player</th><th class="l">Earlier seasons</th><th>GP</th><th>PTS</th><th>PPG</th><th>REB</th><th>AST</th><th>3PM</th><th>STL</th><th>BLK</th><th class="l">Next career milestone</th></tr>`;
+  const any = ros.some(p => careerRows(team, p.pid, cur, C).length);
+  return `<div class="card"><div class="stblk"><div class="row between"><div class="kicker">Career · ${team === "girls" ? "Girls" : "Boys"} varsity</div>${edit ? `<div class="row"><button class="btn sm" data-act="carload" data-team="${team}">Load a career file</button><input type="file" id="career-file" data-team="${team}" accept=".json,application/json" hidden></div>` : ""}</div>
+      ${ros.length ? `<div class="scroll-x"><table class="pin stt">${head}${ros.map(row).join("")}</table></div>` : noData("No players on the roster yet.")}
+      ${!any && ros.length ? noData("No career numbers yet. Tap a player to type in an earlier season, or load a career file.") : ""}
+      <p class="small" style="margin:4px 0 0">Varsity games only. Earlier seasons are typed in or loaded from a file; this season comes from the book. Tap a player for every season. * is an estimate (could be 1 higher); + means at least that many (a season is missing it). Career milestones and career records on the PA and broadcast pages add these up. Staff only: none of this goes on the fan page.</p></div>
+    ${gone.length ? `<div class="stblk"><div class="kicker">Not on the roster now</div><div class="scroll-x"><table class="pin stt">${head}${gone.map(pid => row(carWho(team, pid, C).p)).join("")}</table></div></div>` : ""}</div>`;
+}
+// One kid, season by season, with the career line under it. A Coach adds, fixes or removes an earlier season here.
+function careerSheet(team, pid){
+  if(!canCoach() || !CAR_T.includes(team) || idBad(pid)) return;
+  openSheet({wide:true, car:{team, pid}, html(){
+    const C = careerOf(team), {p} = carWho(team, pid, C), rows = careerRows(team, pid, undefined, C), t = careerTot(rows), nx = carNext(t).filter(n => n.need <= MS_NEAR[n.k] * 4);
+    const line = r => `<tr><td class="l"><b>${esc(r.s)}</b><span class="small" style="display:block">${r.s === SEASON ? "so far, from the book" : r.book ? "from the book" : esc(r.src || "typed in")}</span></td>${carCells(r)}<td>${!r.book ? `<button class="btn sm" data-act="caredit" data-team="${team}" data-pid="${esc(pid)}" data-s="${esc(r.s)}">Edit</button>` : ""}</td></tr>`;
+    return `${fhead(p, `<div class="kicker">${team === "girls" ? "Girls" : "Boys"} varsity · career</div><h3>#${esc(p.num)} ${esc(p.name || "")}</h3>`, undefined, true)}
+      ${rows.length ? `<div class="scroll-x"><table class="pin glog stt"><tr>${CAR_COLS}<th></th></tr>${rows.map(line).join("")}${rows.length > 1 ? `<tr class="tot"><td class="l">Career</td>${carCells(t)}<td></td></tr>` : ""}</table></div>
+        <p class="small" style="margin:6px 0 0">${nx.length ? "Next up: " + nx.map(n => `<b>${n.need.toLocaleString()}</b> to ${n.at.toLocaleString()} career ${esc(n.w)}`).join(" · ") + ". " : ""}${esc(carFoot(rows, t))}</p>`
+        : `<p style="margin:0">No seasons yet. Add an earlier season, or it starts with this season's first game.</p>`}
+      <div class="row" style="margin-top:10px"><button class="btn" data-act="caredit" data-team="${team}" data-pid="${esc(pid)}" data-s="">Add an earlier season</button><button class="btn" data-close>Close</button></div>`; }});
+}
+// Type in (or fix) one earlier season. Blank is unknown. Changing a number takes its * (estimate) off.
+function carEdit(team, pid, s){
+  if(!canCoach() || !CAR_T.includes(team) || idBad(pid) || (s && !carSeasonOk(s))) return;
+  const C = careerOf(team), {p} = carWho(team, pid, C), ln = s ? ((C[pid] || {}).s || {})[s] || {} : {}, book = bookPast(team);
+  const opts = [...new Set([...(s ? [s] : []), ...carSeasons()])].filter(x => x === s || !(book[x] && book[x][pid])).sort().reverse();
+  const used = Object.keys((C[pid] || {}).s || {}).filter(x => x !== s);
+  openSheet({carEd:{team, pid, s}, html:() => `<h3>${s ? "Fix" : "Add"} an earlier season · #${esc(p.num)} ${esc(p.name || "")}</h3><form id="carform" class="stack">
+    <label class="fld" style="max-width:220px"><span>Season</span><select name="season">${opts.map(x => `<option value="${x}" ${x === s ? "selected" : ""}>${x}${used.includes(x) ? " (replaces the one there)" : ""}</option>`).join("")}</select></label>
+    <div class="row" style="flex-wrap:wrap;gap:8px">${CAR_F.map(k => `<label class="fld" style="width:104px"><span>${CAR_L[k]}${(ln.est || []).includes(k) ? " *" : ""}</span><input type="number" min="0" max="99999" step="1" inputmode="numeric" name="${k}" value="${k in ln ? ln[k] : ""}"></label>`).join("")}</div>
+    <label class="fld"><span>Where it's from</span><input type="text" name="src" maxlength="200" value="${esc(ln.src || "")}" placeholder="2025-26 stats report"></label>
+    <p class="small" style="margin:0">Varsity only. Leave a box blank if you don't know it (blank is not 0).${(ln.est || []).length ? " * marks an estimate; typing a different number takes the * off." : ""}</p>
+    <div class="row"><button class="btn primary" type="submit">Save</button><button class="btn" type="button" data-act="carsheet" data-team="${team}" data-pid="${esc(pid)}">Back</button>${s ? `<button class="btn dark" type="button" data-act="cardel">Remove this season</button>` : ""}</div></form>`});
+}
+// The Save on carEdit. Returns false (and says why) when the numbers can't be right.
+function carSubmit(f, c){
+  const d = new FormData(f), s = String(d.get("season") || ""), ln = {}, C = careerOf(c.team), old = c.s ? ((C[c.pid] || {}).s || {})[c.s] || {} : {};
+  if(!carSeasonOk(s) || s >= SEASON){ toast("Pick an earlier season."); return false; }
+  for(const k of CAR_F){ const v = String(d.get(k) ?? "").trim(); if(v === "") continue; if(!/^\d{1,5}$/.test(v)){ toast(`${CAR_L[k]}: a whole number, or leave it blank.`); return false; } ln[k] = +v; }
+  if(!CAR_F.some(k => k in ln)){ toast("Type at least one number."); return false; }
+  for(const [m, a, w] of [["fgm", "fga", "field goals"], ["tpm", "tpa", "threes"], ["ftm", "fta", "free throws"], ["tpm", "fgm", "threes (more than field goals made)"], ["tpa", "fga", "threes tried (more than field goals tried)"]])
+    if(m in ln && a in ln && ln[m] > ln[a]){ toast(`Those ${w} don't add up: more made than tried.`); return false; }
+  const est = (old.est || []).filter(k => k in ln && ln[k] === old[k]); if(est.length) ln.est = est;
+  const src = String(d.get("src") || "").trim().slice(0, 200); if(src) ln.src = src;
+  const {p} = carWho(c.team, c.pid, C);
+  careerSave(c.team, CC => { const e = carEntry(CC, p); if(c.s && c.s !== s) delete e.s[c.s]; e.s[s] = ln; });
+  if(["fgm", "tpm", "ftm", "pts"].every(k => k in ln) && ln.pts !== 2 * ln.fgm + ln.tpm + ln.ftm) toast(`Saved, but the points don't add up: 2 × FG + 3s + FT = ${2 * ln.fgm + ln.tpm + ln.ftm}, not ${ln.pts}.`, 5000);
+  else toast("Saved. Every device gets it.");
+  return true;
+}
+function carDel(){ const c = ui.sheet && ui.sheet.carEd; if(!c || !c.s || !canCoach() || !confirm(`Remove ${c.s} from this player's career?`)) return;
+  careerSave(c.team, CC => { const e = Object.hasOwn(CC, c.pid) ? CC[c.pid] : null; if(e && e.s && typeof e.s === "object"){ delete e.s[c.s]; if(!Object.keys(e.s).length) delete CC[c.pid]; } }); careerSheet(c.team, c.pid); }
+/* ---- Career files ----
+   {kind:"brier-career", v:1, team:"girls"|"boys", season:"2025-26", src, players:[{num, name, gp, pts, ..., est:[...]}]}.
+   Each player is matched to the roster by name (numbers change between seasons), or by number when the file has no name.
+   Load shows every match first; Load puts each season in (a season already there is replaced). */
+function carParse(text){
+  let f; try { f = JSON.parse(String(text || "")); } catch(e){ return null; }
+  if(!f || typeof f !== "object" || f.kind !== "brier-career" || f.v !== 1 || !["boys", "girls"].includes(f.team) || !carSeasonOk(f.season) || !Array.isArray(f.players) || !f.players.length || f.players.length > 60) return null;
+  const src = typeof f.src === "string" ? f.src.trim().slice(0, 200) : "", players = [];
+  for(const x of f.players){ if(!x || typeof x !== "object") return null; const ln = carLine({...x, src:undefined});
+    const num = typeof x.num === "string" && /^\d{1,3}$/.test(x.num.trim()) ? x.num.trim() : "", name = typeof x.name === "string" ? x.name.trim().slice(0, 80) : "";
+    if((!num && !name) || !CAR_F.some(k => k in ln)) return null; if(src) ln.src = src; players.push({num, name, ln}); }
+  return {team:f.team, season:f.season, src, players};
+}
+function carMatch(F){
+  const ros = (S.teams[F.team] || {}).roster || [];
+  return F.players.map(x => { const byName = x.name ? ros.filter(p => nameKey(p.name) && nameKey(p.name) === nameKey(x.name)) : [], byNum = !x.name && x.num ? ros.filter(p => String(p.num).trim() === x.num) : [];
+    const p = byName.length === 1 ? byName[0] : byNum.length === 1 ? byNum[0] : null; return {x, p}; });
+}
+function carRead(text){
+  if(!canCoach()) return; const F = carParse(text); if(!F){ toast("That isn't a Brier Stats career file."); return; }
+  if(F.season >= SEASON){ toast(`That file is for ${F.season}. This season comes from the book; a career file is for earlier seasons.`, 5000); return; }
+  const M = carMatch(F), C = careerOf(F.team), book = bookPast(F.team), T = F.team === "girls" ? "girls" : "boys";
+  const sum = ln => ["gp", "pts", "reb", "ast", "tpm", "stl", "blk"].filter(k => k in ln).map(k => `${ln[k]}${(ln.est || []).includes(k) ? "*" : ""} ${{gp:"GP", pts:"PTS", reb:"REB", ast:"AST", tpm:"3PM", stl:"STL", blk:"BLK"}[k]}`).join(", ");
+  const li = m => { const had = m.p && C[m.p.pid] && C[m.p.pid].s[F.season], bk = m.p && book[F.season] && book[F.season][m.p.pid];
+    return `<li>${m.p ? `<b>#${esc(m.p.num)} ${esc(m.p.name || "")}</b>` : `<b>${esc(m.x.name || "#" + m.x.num)}</b>`}: ${esc(sum(m.x.ln))}${!m.p ? ` <span class="small">· no one on the ${T} roster by that ${m.x.name ? "name" : "number"}: skipped</span>` : bk ? ` <span class="small">· the book already has ${esc(F.season)} for this player: skipped</span>` : had ? ` <span class="small">· replaces the ${esc(F.season)} line there</span>` : ""}</li>`; };
+  const n = M.filter(m => m.p && !(book[F.season] && book[F.season][m.p.pid])).length;
+  openSheet({carFile:{F}, html:() => `<h3>Career file · ${T === "girls" ? "Girls" : "Boys"} ${esc(F.season)}</h3>${F.src ? `<p class="small" style="margin:0 0 6px">${esc(F.src)}</p>` : ""}<ul class="msl">${M.map(li).join("")}</ul>
+    <p class="small" style="margin:6px 0 0">* An estimate (could be 1 higher).</p>
+    <div class="row" style="margin-top:10px">${n ? `<button class="btn primary" data-act="carok">Load ${n} player${n === 1 ? "" : "s"}</button>` : ""}<button class="btn" data-close>Cancel</button></div>`});
+}
+function carApply(F){
+  if(!canCoach()) return; const book = bookPast(F.team), M = carMatch(F).filter(m => m.p && !(book[F.season] && book[F.season][m.p.pid])); if(!M.length) return;
+  closeSheet(); careerSave(F.team, CC => { for(const m of M) carEntry(CC, m.p).s[F.season] = JSON.parse(JSON.stringify(m.x.ln)); });
+  ui.tab = "stats"; ui.stTeam = F.team; ui.stSec = "career"; saveUi(); render(); toast(`${F.season} loaded for ${M.length} player${M.length === 1 ? "" : "s"}. Every device gets it.`);
+}
+// The career table on the Player PDF (the seasons before this one plus this one), when there's more than this season.
+function carPdf(D, team, pid, y, Lx, RT){
+  const rows = careerRows(team, pid); if(!rows.some(r => r.s < SEASON)) return y;
+  const need = h => { if(y + h > 756){ D.page(); y = 40; } };
+  const t = careerTot(rows), cols = [["GP", o => carV(o, "gp")], ["PTS", o => carV(o, "pts")], ["PPG", o => carPg(o, "pts")], ["FG", o => carSh(o, "fgm", "fga")], ["3PT", o => carSh(o, "tpm", "tpa")], ["FT", o => carSh(o, "ftm", "fta")],
+    ["REB", o => carV(o, "reb")], ["RPG", o => carPg(o, "reb")], ["AST", o => carV(o, "ast")], ["STL", o => carV(o, "stl")], ["BLK", o => carV(o, "blk")], ["TO", o => carV(o, "to")]];
+  const sx = 130, cw = (RT - sx) / cols.length, ccx = i => sx + cw * i + cw / 2;
+  y += 24; need(30 + 13 * (rows.length + 2)); D.text(Lx, y, "CAREER", {sz:10.5, b:true}); y += 5; D.line(Lx, y, RT, y, 1); y += 11; cols.forEach(([c], i) => D.text(ccx(i), y, c, {sz:7.5, b:true, al:"c", g:.35})); y += 3;
+  for(const r of rows){ y += 12.5; D.text(Lx, y, r.s + (r.s === SEASON ? " (so far)" : ""), {sz:8.5, fit:sx - Lx - 4}); cols.forEach(([, f], i) => D.text(ccx(i), y, f(r), {sz:8.5, al:"c", fit:cw - 2})); }
+  y += 12.5; D.fill(Lx, y - 9, RT - Lx, 12, .92); D.text(Lx, y, "Career", {sz:8.5, b:true}); cols.forEach(([, f], i) => D.text(ccx(i), y, f(t), {sz:8.5, al:"c", b:true, fit:cw - 2}));
+  const ft = carFoot(rows, t); if(ft){ y += 12; D.text(Lx, y, ft, {sz:7, g:.45, fit:RT - Lx}); }
+  return y;
+}
+
 /* ---------- Stats in depth (0.14.0) ----------
    Every number here comes from plays the book already has: no new taps. A season view is a list of games (the season's
    counted games through the picks at the top of Stats), each taken apart once (dig) and kept until the game changes.
    Anything that needs the game clock counts only clock games: games where the board's (or a typed) clock is on at least
    9 plays in 10, so a game with no clock never waters down a per-minute number, and those numbers say how many games
    they come from. Anything that needs who was on the floor counts only plays with five of ours on it (subs tapped). */
-const ST_SECS = [["team", "Team"], ["players", "Players"], ["shooting", "Shooting"], ["flow", "Game flow"], ["lineups", "Lineups"], ["scout", "Scouting"], ["leaks", "Leaks"], ["records", "Records"]];
+const ST_SECS = [["team", "Team"], ["players", "Players"], ["shooting", "Shooting"], ["flow", "Game flow"], ["lineups", "Lineups"], ["scout", "Scouting"], ["leaks", "Leaks"], ["career", "Career"], ["records", "Records"]];
 const STAT_T = new Set(["FG", "FT", "REB", "AST", "STL", "BLK", "TO", "PF", "TF"]);
 const DIG = new WeakMap();
 const gSig = g => [g.ev.length, g.rev || 0, g.upd || 0, g.status, g.scrim ? 1 : 0, g.qlen || 0].join(":");
@@ -5541,7 +5744,7 @@ function groupTable(S0, L){
 }
 // The district: our record, each district opponent head to head, and the district games left on the schedule.
 function districtCard(team){
-  const gs = Object.values(S.games).filter(g => g.team === team && g.district && !g.deleted && !g.practice && !g.scrim).sort((a, b) => (a.date + (a.time || "")).localeCompare(b.date + (b.time || "")));
+  const gs = Object.values(S.games).filter(g => g.team === team && g.district && seasonOf(g.date) === SEASON && !g.deleted && !g.practice && !g.scrim).sort((a, b) => (a.date + (a.time || "")).localeCompare(b.date + (b.time || "")));
   if(!gs.length) return "";
   const by = new Map(); let w = 0, l = 0;
   for(const g of gs){ const k = okey(g.opp), o = by.get(k) || {name:g.opp, res:[], left:[]}; by.set(k, o); const r = result(g);
@@ -6153,7 +6356,7 @@ function viewSeason(){
   const sum = any || ui.stComp ? `<div class="small" style="margin-top:6px;font-weight:600">${n} of ${S0.all.length} game${S0.all.length === 1 ? "" : "s"} · ${w}-${l}${n ? ` · ${fx1(S0.ds.reduce((s, d) => s + d.sc.us, 0) / n)}-${fx1(S0.ds.reduce((s, d) => s + d.sc.them, 0) / n)} a game` : ""}${ui.stComp ? " · competitive minutes only" : ""}</div>` : teamRecord(team);
   const csv = `<div class="row" style="margin-top:10px"><p class="small" style="margin:0;flex:1 1 260px">Season numbers count games that are over. Shooting percentages leave out points-only games. ⏱ needs the game clock, 🔁 needs subs tapped.</p><button class="btn sm" data-act="seasoncsv" data-team="${team}">Season CSV</button><button class="btn sm" data-act="allcsv" data-team="${team}">All games CSV</button></div>`;
   const empty = `<div class="card"><p style="margin:0">${S0.all.length ? "No games match these picks." : "No games over yet. A game counts here once it's over."}</p></div>`;
-  const body = sec === "records" ? recordsView(S0) : sec === "scout" ? scoutCard(S0) + mpScout(team) : sec === "leaks" ? leaksView(team) : !n ? empty : `<div class="card">${{
+  const body = sec === "career" ? careerView(team) : sec === "records" ? recordsView(S0) : sec === "scout" ? scoutCard(S0) + mpScout(team) : sec === "leaks" ? leaksView(team) : !n ? empty : `<div class="card">${{
     team:() => stLeaders(S0, L) + `<div class="stblk">${teamLineOf(S0)}</div>` + resultsChart(S0) + trendCard(S0) + keysCard(S0) + ffTable(S0) + tripCard(S0) + restTable(S0) + groupTable(S0, L) + teamHighs(S0) + oppTable(S0) + districtCard(team) + bookCard(S0) + csv,
     players:() => playersTable(S0, L) + rangeChart(S0, L) + scatterChart(S0, L) + compareCard(S0, L) + assistNet(S0) + csv,
     shooting:() => shotChartCard(S0, L) + shotQualCard(S0, L) + howTeam(S0) + ftTeam(S0) + rebMissCard(S0) + rimCard(S0),
@@ -6161,7 +6364,7 @@ function viewSeason(){
     lineups:() => unitsCard(S0) + tripUnitsCard(S0) + rotationCard(S0) + minutesCard(S0, L) + fatigueCard(S0, L) + benchCard(S0) + foulCard(S0, L) + foulCostCard(S0, L) + bigCard(S0) + roadCard(S0) + `<p class="small" style="margin:12px 0 0">Each player on and off the floor (+/-, shares, rebounding, defense): Players, On the floor.</p>`}[sec]()}</div>`;
   return `<div class="stack stv"><div class="card rcard"><div class="row between"><div class="tc-head" style="margin:0"><img src="bobcat-head.png" alt=""><div><div class="kicker">${SEASON} · Season stats</div><h2>${esc(T.name)}</h2></div></div>
       <div class="row">${["boys", "girls"].map(t => `<button class="btn sm" data-act="stteam" data-v="${t}" aria-pressed="${t === team}">${t === "girls" ? "Girls" : "Boys"}</button>`).join("")}</div></div>
-      ${sec === "records" || sec === "leaks" ? "" : filterBar(S0) + sum}
+      ${sec === "records" || sec === "leaks" || sec === "career" ? "" : filterBar(S0) + sum}
       <div class="stnav" role="group" aria-label="Stats section">${ST_SECS.map(([k, lb]) => `<button data-act="stsec" data-v="${k}" aria-pressed="${k === sec}">${lb}</button>`).join("")}</div></div>${body}</div>`;
 }
 /* ---- The player page: more on top of the game log ---- */
@@ -6226,6 +6429,7 @@ function playerPdf(team, pid, opp){
   if(!opp && sub.groups.length > 1){ headRow("AGAINST EACH OPPONENT");
     for(const o of sub.groups){ const gl = a.games.filter(g => okey(g.d.g.opp) === o.k); if(!gl.length) continue; const l = sumLines(gl.map(g => g.ln)); need(13); y += 12.5;
       D.text(Lx, y, `${o.name} (${gl.length})`, {sz:8.5, fit:240}); cols.forEach(([c, f], i) => D.text(ccx(i), y, c === "GMSC" ? fx1(gl.reduce((s, g) => s + gmSc(g.ln), 0) / gl.length) : String(f(l)), {sz:8.5, al:"c", fit:cw - 2})); } }
+  if(!opp) y = carPdf(D, team, pid, y, Lx, RT);
   y += 22; need(14); D.text(Lx, y, `Brier Stats ${BS_VERSION} · ${new Date().toLocaleDateString()} · Shooting percentages leave out points-only games. Game Score (Hollinger): 10 is a solid night.`, {sz:7, g:.45, fit:RT - Lx});
   const name = `brier-stats-${(p.name || "player-" + p.num).toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${SEASON}.pdf`;
   shareFile(name, new Blob([D.bytes()], {type:"application/pdf"}), title);
@@ -8615,6 +8819,11 @@ document.addEventListener("click", async ev => {
     case "msok": msMark(a.dataset.id); render(); break;
     case "gorec": if(canCoach()){ ui.tab = "stats"; ui.stSec = "records"; saveUi(); render(); window.scrollTo(0, 0); } break;
     case "plpdf": if(canCoach()) playerPdf(a.dataset.team, a.dataset.pid, a.dataset.opp || ""); break;
+    case "carsheet": if(canCoach()) careerSheet(a.dataset.team, a.dataset.pid); break;
+    case "caredit": if(canCoach()) carEdit(a.dataset.team, a.dataset.pid, a.dataset.s || ""); break;
+    case "cardel": carDel(); break;
+    case "carload": { const f = $("#career-file"); if(f && canCoach()) f.click(); break; }
+    case "carok": { const c = ui.sheet && ui.sheet.carFile; if(c && canCoach()) carApply(c.F); break; }
     case "glopp": if(ui.sheet){ ui.sheet.opp = a.dataset.opp; ui.glSel = null; const top = ($("#sheet .sheet") || {}).scrollTop || 0; renderSheet(); const nb = $("#sheet .sheet"); if(nb) nb.scrollTop = top; } break;
     case "logbox": { const x = S.games[a.dataset.gid]; if(!x) break; closeSheet(); ui.gid = x.id; ui.follow = false; ui.tab = "box"; saveUi(); render(); window.scrollTo(0, 0); break; }
     case "csv": if(g) download(`${g.id}-box.csv`, csvOf(g), "text/csv"); break;
@@ -8839,6 +9048,7 @@ document.addEventListener("change", ev => {
   if(t.dataset.set && (t.dataset.set === "pubSec" ? canAdmin() : canCoach())){ const v = parseInt(t.value, 10); if(!isNaN(v)){ S.settings[t.dataset.set] = v; S.teamsRev++; save(); Sync.dirtyTeams(); render(); } }
   if(t.id === "script-file" && t.files[0]){ const r = new FileReader(); r.onload = () => { let segs = null; try{ segs = scriptFileSegs(JSON.parse(r.result)); }catch(e){}
       if(segs) scriptLoad(segs, "the file"); else toast("That file isn't a Brier Stats script."); }; r.readAsText(t.files[0]); t.value = ""; }
+  if(t.id === "career-file" && t.files[0] && canCoach()){ if(t.files[0].size < 200000){ const r = new FileReader(); r.onload = () => carRead(r.result); r.readAsText(t.files[0]); } else toast("That file is too big to be a career file."); t.value = ""; }
   if(t.id === "fix-file" && t.files[0] && ui.hudl){ const fg = S.games[ui.hudl.gid], nm = t.files[0].name; if(fg && t.files[0].size < 300000){ const r = new FileReader(); r.onload = () => fxRead(fg, r.result, nm); r.readAsText(t.files[0]); } t.value = ""; }
   if(t.id === "hudl-file" && t.files[0] && ui.hudl){ const hg = S.games[ui.hudl.gid], nm = t.files[0].name; if(hg && t.files[0].size < 200000){ const r = new FileReader(); r.onload = () => hudlLoad(hg, r.result, nm); r.readAsText(t.files[0]); } t.value = ""; }
   if(t.dataset.hudlq !== undefined && ui.hudl){ const q = parseInt(t.value, 10); if([1, 2, 3, 4].includes(q)){ ui.hudl.q0 = q; renderSheet(); } }
@@ -8877,6 +9087,7 @@ document.addEventListener("submit", ev => {
     const mpKeep = (S.opps[okey(name)] || {}).mp;
     S.opps[okey(name)] = {...(mpKeep ? {mp:mpKeep} : {}), name, mascot:String(d.get("mascot") || "").trim(), girls:String(d.get("girls") || "").trim(), abbr:String(d.get("abbr") || "").trim().toUpperCase().slice(0, 4), c1:hx("c1"), c2:hx("c2"), upd:Date.now()};
     S.teamsRev++; save(); Sync.dirtyTeams(); closeSheet(); render(); toast(name + " saved."); return; }
+  if(f.id === "carform" && s && s.carEd){ if(!canCoach()) return; if(carSubmit(f, s.carEd)) careerSheet(s.carEd.team, s.carEd.pid); return; }
   if(f.id === "rform" && s && s.rec){ if(!canCoach()) return; const d = new FormData(f), k = String(d.get("k")), st = String(d.get("s")), t = String(d.get("t") || "").trim(), v = parseFloat(t.replace(/,/g, ""));
     if(!RK[k] || !RS[st] || isNaN(v)){ toast("Type the record as a number, like 689, 23.4, 62% or 26-10."); return; }
     const r = {id:k + "-" + st, k, s:st, v, t, who:String(d.get("who") || "").trim(), yr:String(d.get("yr") || "").trim(), opp:String(d.get("opp") || "").trim()}, O = s.rec.id || r.id;
