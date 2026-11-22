@@ -5,7 +5,7 @@
 <!-- The page's lock: the only script that may run is the one in this file (named by the SHA-256 of its text) and files
      from this folder (fb.js). Text that turns up in the page from a roster, a game or the cloud can never run as code.
      After ANY edit to the script, run "python3 hoops/stamp.py hoops": with a stale hash the browser runs nothing. -->
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-PbFkB/4eweGWl+oM7QtI9U6mt86Rod9w2VuS2dhuixU='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-ciIp8/tXI9eMD85wADkGcytbrAg4MdQZ+0WiCnXdle0='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#094A28">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -866,7 +866,7 @@ td .face{width:24px;height:24px;margin:-5px 7px -4px 0}
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
 { const n = document.getElementById("nostart"); if(n) n.remove(); }   // the script is running: see #nostart
-const BS_VERSION = "0.32.0";
+const BS_VERSION = "0.33.0";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -1534,7 +1534,27 @@ function canAdmin(){ return roleIs("owner"); }
 // doesn't change who can read the games. The passes ride the settings (settings.paPass {uid: when}), so no new rules.
 const paPass = uid => !!uid && !!(S.settings.paPass || {})[uid];
 function paOk(){ return canCoach() || (roleIs("scorer") && paPass(Sync.uid())); }
-function paLock(){ return `<div class="card stack" style="max-width:640px"><h2>Coaches and Admins only</h2><p style="margin:0">The PA page and the broadcast page are for Coaches and Admins. This sign-in can follow the game on Box score and Plays.</p><div class="row"><a class="btn primary" href="./">Open Brier Stats</a></div></div>`; }
+// Which tabs a login gets (Kevin, 0.33.0): only what it can use. Signed out, waiting to be let in, the scoreboard relay's
+// sign-in, or a device that never signed in: Live stats (the fans' page) and Setup (to sign in). With sync on and no answer
+// from the cloud yet (no signal, the school's Wi-Fi, still connecting), the role this device had last time stands, so a
+// scorer at the table is never locked out of the Scorer screen. Viewers: no Scorer screen. Stats, the PA page and the
+// broadcast page as before. Social: Admins only.
+function tabRole(){
+  if(Sync.live()) return Sync.role();
+  return S.sync && ["owner", "coach", "scorer", "viewer"].includes(S.role) && !["signedout", "waiting", "board"].includes(Sync.phase()) ? S.role : null;
+}
+function tabOk(k){
+  if(k === "live" || k === "setup") return true;
+  const r = tabRole(); if(!r) return false;
+  if(k === "ann" || k === "bc") return paOk();
+  if(k === "stats") return canCoach();
+  if(k === "social") return canAdmin();
+  if(k === "desk") return r !== "viewer";
+  return true;
+}
+const tabHome = () => ["desk", "box", "live"].find(tabOk);
+function paLock(){ if(!tabRole()) return `<div class="card stack" style="max-width:640px"><h2>Sign in first</h2><p style="margin:0">The PA page and the broadcast page are for Coaches and Admins. Sign in above with the email you were let in with.</p></div>`;
+  return `<div class="card stack" style="max-width:640px"><h2>Coaches and Admins only</h2><p style="margin:0">The PA page and the broadcast page are for Coaches and Admins. This sign-in can follow the game on Box score and Plays.</p><div class="row"><a class="btn primary" href="./">Open Brier Stats</a></div></div>`; }
 function viewOnly(){ return !PUB && !OBS && Sync.live() && !canScore(); }
 function mine(g){ return !g.writer || g.writer === S.dev; }
 // A game that's over is nobody's to score any more, so every scorer can fix it, edit it and make it final without taking it
@@ -2189,7 +2209,8 @@ function draw(){
   if(OBS){ $("#view").innerHTML = viewBug(); return; }
   if(ui.tab === "stats" && !canCoach()) ui.tab = "games";   // Stats, the PA page and the broadcast page: Coaches and Admins only
   if((ui.tab === "ann" && !ANN_ONLY || ui.tab === "bc" && !BC_ONLY) && !paOk()) ui.tab = "box";
-  $("#tabs").innerHTML = TABS.filter(([k]) => k === "stats" ? canCoach() : k === "ann" || k === "bc" ? paOk() : true).map(([k, l]) => `<button role="tab" data-tab="${k}" aria-selected="${ui.tab === k}">${l}</button>`).join("");
+  if(!tabOk(ui.tab) && !(ui.tab === "ann" && ANN_ONLY) && !(ui.tab === "bc" && BC_ONLY)) ui.tab = tabHome();   // only what this login can use
+  $("#tabs").innerHTML = TABS.filter(([k]) => tabOk(k)).map(([k, l]) => `<button role="tab" data-tab="${k}" aria-selected="${ui.tab === k}">${l}</button>`).join("");
   const pill = $("#syncpill"), ph = Sync.phase();
   pill.className = "pill" + (ph === "live" && !Sync.stale() ? " live" : ph === "error" || Sync.stale() ? " bad" : "");
   pill.querySelector("span").textContent = ph === "live" ? Sync.label() : ph === "loading" ? "Connecting…" : ph === "signedout" ? "Not signed in" : ph === "waiting" ? "Waiting to be let in" : ph === "board" ? "Scoreboard only" : ph === "nosignal" ? "No signal" : ph === "error" ? "Sync problem" : "This device";
@@ -2789,7 +2810,7 @@ document.addEventListener("pointermove", ev => { const d = layDrag; if(!d || ev.
 const layDrop = ev => { const d = layDrag; if(!d || ev.pointerId !== d.id) return; layDrag = null; $$(".lydrag").forEach(el => el.classList.remove("lydrag")); render(); };
 document.addEventListener("pointerup", layDrop); document.addEventListener("pointercancel", layDrop);
 function viewAnn(){
-  if(!paOk()) return (Sync.live() ? "" : Sync.panel()) + paLock();
+  if(!paOk() || !tabRole()) return (Sync.live() ? "" : Sync.panel()) + paLock();
   micDefault();
   if(ANN_ONLY || !canScore()) followLive();
   if(ui.annMode === "script") return viewScript();
@@ -3004,7 +3025,7 @@ function drawLive(pre){ const view = $("#view"), head = `<div class="row between
   const fr = $("#livefr", view); if(fr){ const b = $("#livepre", view); if(b && b.innerHTML !== pre) b.innerHTML = pre; return; }
   view.innerHTML = `<div id="livepre">${pre}</div>${head}<iframe id="livefr" src="./?live" title="Live stats, the fans' page" style="width:100%;height:max(520px, calc(100vh - 170px));border:1px solid var(--grey);border-radius:8px;background:var(--white)"></iframe>`; }
 function drawBroadcast(pre){
-  if(!paOk()){ $("#view").innerHTML = pre + (Sync.live() ? "" : Sync.panel()) + paLock(); return; }
+  if(!paOk() || !tabRole()){ $("#view").innerHTML = pre + (Sync.live() ? "" : Sync.panel()) + paLock(); return; }
   followLive();
   const g = cur(), view = $("#view"), k = (g ? g.id : "-") + "|" + (S.settings.flip ? 1 : 0);
   const root = $(".bc", view);
@@ -6241,6 +6262,8 @@ function viewOpps(){
 const FAN_URL = "https://votclive.com/hoops/livestats/";
 function pubLink(){ return FAN_URL; }
 function viewSetup(){
+  // Signed out (0.33.0): signing in, and the About card.
+  if(!tabRole()) return `<div class="stack" style="max-width:880px">${Sync.panel()}${aboutCard()}</div>`;
   const st = S.settings, edit = canCoach(), dis = edit ? "" : "disabled", adis = canAdmin() ? "" : "disabled";
   const num = (k, lbl, max) => `<label class="fld" style="width:130px"><span>${lbl}</span><input type="number" min="0" max="${max}" data-set="${k}" value="${esc(st[k])}" ${dis}></label>`;
   return `<div class="stack" style="max-width:880px">${Sync.panel()}
@@ -6265,8 +6288,9 @@ function viewSetup(){
         return `<p class="small" style="margin:0">${full ? "<b>Getting full.</b> " : ""}Saved on this device: ${(b / 1e6).toFixed(1)} MB of about 5 MB (${pct}%, shared with Mound Book)${full ? ". Make a full backup now, and keep JV games and practice scoring off this iPad." : "."}</p>`; })()}
       ${/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) ? (navigator.standalone || matchMedia("(display-mode: standalone)").matches ? (emptyBook() ? `<div class="flag"><span><b>New book on this Home Screen app.</b> Bringing one over from Safari? Restore a Full backup here, or turn on live sync and sign in.</span></div>` : "") : `<div class="flag"><span><b>Add Brier Stats to the Home Screen</b> (Share › Add to Home Screen) and score from there: in a Safari tab, Safari can clear a site's saved book after a week or so without a visit. <b>The Home Screen app starts with an empty book of its own.</b> ${Sync.live() ? "Open it, turn on live sync and sign in: the games, rosters, script and name notes come back from the cloud." : "First tap Full backup above, then open Brier Stats from the Home Screen, tap Setup › Restore from a backup and pick that file."} After that, score only from the Home Screen.</span></div>`) : ""}</div>
     <div class="card stack"><h3 style="font-size:22px">Google Drive backup</h3>${Drive.card()}</div>
-    <div class="card"><h3 style="font-size:22px">About</h3><p class="small" style="margin:6px 0 0">Brier Stats ${BS_VERSION}. Built on Jim's ChatGPT draft and Mound Book's sync. The announcer page also opens on its own at <a href="?announcer">this address with ?announcer</a>, and Jim's broadcast page at <a href="?broadcast">?broadcast</a>. This device: ${esc(S.dev)}.</p></div></div>`;
+    ${aboutCard()}</div>`;
 }
+const aboutCard = () => `<div class="card"><h3 style="font-size:22px">About</h3><p class="small" style="margin:6px 0 0">Brier Stats ${BS_VERSION}. Built on Jim's ChatGPT draft and Mound Book's sync. The announcer page also opens on its own at <a href="?announcer">this address with ?announcer</a>, and Jim's broadcast page at <a href="?broadcast">?broadcast</a>. This device: ${esc(S.dev)}.</p></div>`;
 
 /* ---------- sheets (rendered when opened, so a live update never wipes what's being typed) ---------- */
 // The card's first box gets the cursor, unless the user is already in the card (a quick click or a Tab beat the timer:
@@ -10483,7 +10507,7 @@ const Sync = (() => {
   function panel(){
     let h = `<div class="card stack"><h3 style="font-size:22px">Live sync</h3>`;
     if(st.err) h += `<div class="flag bad">${esc(st.err)}</div>`;
-    if(st.phase === "off") h += `<p style="margin:0">One device scores; everyone the coaches let in follows it live on the Announcer and Broadcast pages. Same sign-in as Mound Book.</p><div class="row"><button class="btn primary" data-act="sy-start">Turn on live sync</button></div>`;
+    if(st.phase === "off") h += `<p style="margin:0">Sign in to score, follow games and see the book: same sign-in as Mound Book. Fans don't need one: Live stats is open to everyone.</p><div class="row"><button class="btn primary" data-act="sy-start">Sign in</button></div>`;
     else if(st.phase === "loading") h += `<p style="margin:0">Connecting…</p>`;
     else if(st.phase === "error") h += `<div class="row"><button class="btn" data-act="sy-retry">Try again</button>${st.fb && st.uid ? `<button class="btn" data-act="sy-out">Sign out</button>` : ""}</div>`;
     else if(st.phase === "signedout") h += (st.inv ? `<div class="flag"><span><b>You've been invited to Brier Stats.</b> Tap New account (or Sign in if you already have one, like Mound Book's) and use the email address the invite was sent to. You'll be in as soon as you're signed in.</span></div>` : "") + `<form id="sy-auth" class="stack" style="max-width:420px">
