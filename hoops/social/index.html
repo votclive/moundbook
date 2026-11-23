@@ -137,14 +137,17 @@ section h2 .count { font-family: var(--font-body); font-weight: 500; letter-spac
 .swap h4 { margin: 0; font-size: 14px; }
 .swap-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
 .swap .num { width: 4em; }
-.nums { display: grid; gap: 8px; margin: 4px 0 14px; padding: 10px 12px; border: 1px solid var(--line, #d9dfdb); border-radius: 10px; }
+.nums { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; margin: 4px 0 14px; padding: 10px 12px; border: 1px solid var(--line, #d9dfdb); border-radius: 10px; }
 .nums h4 { margin: 0; font-size: 14px; }
 .nums-list { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
 .nums-list .btn { margin-left: 6px; }
 .nums-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.nums-row .sel { flex: 1 1 180px; max-width: 320px; }
+.nums-row .sel { flex: 1 1 180px; max-width: min(320px, 100%); min-width: 0; }
 .nums .num { width: 4em; }
-.nums-ask { border-left: 4px solid #c8102e; padding: 4px 0 4px 10px; display: grid; gap: 6px; }
+.nums-ask { border-left: 4px solid #c8102e; padding: 4px 0 4px 10px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+/* Never wider than the screen (0.37.0): controls and pictures stop at their box, a long word or link breaks. */
+select, input, textarea, img, svg, canvas, video { max-width: 100%; }
+h1, h2, h3, h4, .nums-list li, .nums-ask p { overflow-wrap: anywhere; }
 .nums-ask p { margin: 0; }
 .nums-warn { color: #b00020; font-weight: 600; }
 .nums .hint { color: var(--muted); font-weight: 400; }

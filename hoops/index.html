@@ -5,7 +5,7 @@
 <!-- The page's lock: the only script that may run is the one in this file (named by the SHA-256 of its text) and files
      from this folder (fb.js). Text that turns up in the page from a roster, a game or the cloud can never run as code.
      After ANY edit to the script, run "python3 hoops/stamp.py hoops": with a stale hash the browser runs nothing. -->
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-lX00SC2EE/r8p7y3wFrzQ1N5zvoSQfe2QDYbUgf/Nac='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-yCco/eutoC5M6zNz6zrS07/ozNbxrRSNafatTio2y6Q='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#094A28">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -99,6 +99,12 @@ th:first-child,td:first-child,th.l,td.l{text-align:left}
 th{font-family:var(--f-display);font-size:13px;letter-spacing:.08em;text-transform:uppercase;font-weight:700}
 tr.tot td{font-weight:700;border-top:2px solid var(--black)}
 .scroll-x{overflow-x:auto}
+/* Never wider than the screen (0.37.0): a grid track or flex item may shrink below its content's width (the content
+   wraps, or a .scroll-x box scrolls it), and form controls, pictures and charts stop at their box. */
+.stack{grid-template-columns:minmax(0,1fr)}
+.row > *,.card,.stack > *{min-width:0}
+select,input,textarea,img,svg,canvas,video,iframe{max-width:100%}
+h1,h2,h3,.kicker{overflow-wrap:anywhere}
 .toast{position:fixed;left:50%;top:calc(60px + env(safe-area-inset-top));transform:translateX(-50%);background:var(--black);color:var(--white);padding:9px 16px;border-radius:4px;z-index:60;font-weight:600;max-width:92vw;text-align:center}
 .tag{display:inline-block;font-family:var(--f-display);font-weight:700;font-size:12px;letter-spacing:.06em;text-transform:uppercase;border-radius:4px;padding:1px 6px;border:1px solid var(--black)}
 .tag.solid{background:var(--black);color:var(--white)}
@@ -341,8 +347,8 @@ th.tn{white-space:normal}
 .tbox{border:1px solid var(--grey);border-radius:8px;padding:5px 7px;margin-top:8px}
 .tbox .th{display:flex;justify-content:space-between;align-items:center;gap:6px}
 .tbox .th b{font-family:var(--f-display);font-weight:800;font-size:17px;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tbox .nums{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin:4px 0}
-.tbox .fouls,.tbox .tmo{display:flex;align-items:baseline;justify-content:center;gap:4px;min-height:36px;font-size:12.5px;font-weight:600;padding:2px 4px}
+.tbox .nums{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin:4px 0}
+.tbox .fouls,.tbox .tmo{display:flex;align-items:baseline;justify-content:center;gap:0 4px;flex-wrap:wrap;min-height:36px;font-size:12.5px;font-weight:600;padding:2px 4px;min-width:0}
 .tbox .tmo{border:1px solid var(--grey);border-radius:4px;background:var(--white)}
 /* In the bonus (the other team has reached the bonus foul): a thick orange ring and BONUS on a tab above the box. The ring
    is a shadow and the tab sits in the gap over the box, so nothing on the desk moves when it lights up. */
@@ -442,7 +448,7 @@ th.tn{white-space:normal}
 .plays .pq small{display:block;font-size:11px;font-weight:500;letter-spacing:0}
 .plays .ptm{display:inline-block;font-family:var(--f-display);font-weight:800;font-size:12px;letter-spacing:.05em;padding:0 4px;border-radius:3px;background:var(--tf,var(--green));color:var(--ti,var(--white))}
 .floor td{font-size:16px}
-.floor td.nm{font-family:var(--f-display);font-weight:800;font-size:20px;text-transform:uppercase;cursor:pointer}
+.floor td.nm{font-family:var(--f-display);font-weight:800;font-size:20px;text-transform:uppercase;cursor:pointer;white-space:normal;overflow-wrap:anywhere}
 .floor .say{font-family:var(--f-body);text-transform:none;font-weight:500;font-size:13px;font-style:italic;white-space:normal}
 /* The team-fouls bar under the PA's and Jim's scoreboard, pinned with it: each team's fouls this quarter, BONUS on a tab
    over the team shooting it (with the thick orange ring), and everyone with 3 or more fouls in the foul colors. */
@@ -478,7 +484,7 @@ th.tn{white-space:normal}
 .ann .lastplay .hl-out{background:var(--f5)}
 .subs{margin:6px 0 0;padding:0;list-style:none;font-size:14px}
 .subs li{padding:3px 0;border-bottom:1px solid var(--grey)}
-.lead{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.lead{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
 .lead .card{padding:10px}
 .lead .lr{display:flex;gap:8px;align-items:center;border-top:1px solid var(--grey);padding-top:4px;margin-top:4px;min-width:0}
 .lead .lr b{font-family:var(--f-display);font-weight:900;font-size:30px;line-height:1;color:var(--tl,var(--green));min-width:36px}
@@ -505,9 +511,10 @@ table.glance td,table.glance th{text-align:center}
 table.glance td.l,table.glance th.l{text-align:left}
 .annbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
 body.annfull .top .tabs{visibility:hidden}
-.annmode{display:inline-flex;border:2px solid var(--green);border-radius:4px;overflow:hidden;flex:none}
+.annmode{display:inline-flex;border:2px solid var(--green);border-radius:4px;overflow:hidden;flex:none;max-width:100%}
 .annmode button{border:0;background:var(--white);color:var(--green);font-family:var(--f-display);font-weight:800;font-size:17px;letter-spacing:.06em;text-transform:uppercase;padding:5px 16px;min-height:36px}
 .annmode button[aria-pressed="true"]{background:var(--green);color:var(--white)}
+@media (max-width:420px){ .annmode button{padding:5px 9px;font-size:15px;letter-spacing:.03em;min-width:0} }
 /* The PA and Jim pages on a laptop: a pointer on everything that clicks, a black ring where the keyboard is, no words
    selected by a double-click on a chip, and a hover only where there's a mouse (an iPad never sticks in hover). */
 :is(.ann,.livestrip,.prep,.vis) [data-act]:not(button),.seg[data-act],.annbar label,.prep summary{cursor:pointer}
@@ -607,10 +614,12 @@ body.bcfull .brand b small{font-size:.6em;letter-spacing:.12em;margin-left:6px}
 .bcbox .onf{display:inline-block;width:8px;height:8px;margin-right:5px;vertical-align:middle;background:var(--tf,var(--green));border:1px solid var(--ta,var(--tf,var(--green)))}
 
 /* ---------- PA script ---------- */
-.livestrip{position:sticky;top:0;z-index:20;background:var(--white);border-bottom:2px solid var(--black);padding:6px 0 8px;margin-bottom:10px;display:grid;gap:6px}
+.livestrip{position:sticky;top:0;z-index:20;background:var(--white);border-bottom:2px solid var(--black);padding:6px 0 8px;margin-bottom:10px;display:grid;grid-template-columns:minmax(0,1fr);gap:6px}
 .ls-game{display:flex;align-items:center;gap:6px 10px;flex-wrap:wrap;font-size:14px}
-.ls-game .ls-sc{display:inline-flex;align-items:center;gap:6px;font-family:var(--f-display);font-weight:800;font-size:20px;text-transform:uppercase}
-.ls-game .ls-sc .tm{border-radius:4px;padding:1px 8px;background:var(--tf,var(--green));color:var(--ti,var(--white))}
+.ls-game .ls-sc{display:inline-flex;align-items:center;gap:6px;font-family:var(--f-display);font-weight:800;font-size:20px;text-transform:uppercase;max-width:100%;min-width:0}
+.ls-game .ls-sc .tm{border-radius:4px;padding:1px 8px;background:var(--tf,var(--green));color:var(--ti,var(--white));display:flex;align-items:baseline;min-width:0}
+.ls-game .ls-sc .tm .nm{min-width:0}
+.ls-game .ls-sc .tm b{flex:none}
 .ls-game .ls-sc .tm b{font-weight:900;font-size:24px;margin-left:6px}
 /* The whole team name; only a very long one shrinks (fitNames) so the strip keeps to its line on a laptop. */
 .ls-game .ls-sc .tm .nm{display:inline-block;max-width:250px;vertical-align:bottom}
@@ -619,7 +628,7 @@ body.bcfull .brand b small{font-size:.6em;letter-spacing:.12em;margin-left:6px}
 .tfm i{width:10px;height:10px;background:var(--tf,var(--green));border:1px solid var(--ta,var(--tf,var(--green)))}
 .tfm.bonus{border-color:var(--f4);box-shadow:0 0 0 3px var(--f4)}
 .tfm b{background:var(--f4);color:var(--black);font-size:14px;font-weight:900;letter-spacing:.12em;padding:0 5px;border-radius:3px}
-.seg{border:1px solid var(--grey);border-radius:8px;padding:10px 12px;display:grid;gap:6px;margin-bottom:8px}
+.seg{border:1px solid var(--grey);border-radius:8px;padding:10px 12px;display:grid;grid-template-columns:minmax(0,1fr);gap:6px;margin-bottom:8px}
 .seg.next{border:3px solid var(--green);padding:8px 10px}
 .seg.done .read{opacity:.45}
 .seg.off{border-style:dashed}
@@ -702,6 +711,7 @@ button.srow{cursor:pointer}
 @container (max-width:340px){ .fanbox th,.fanbox td{padding:5px 3px;font-size:14px} .fanbox th{font-size:12px;letter-spacing:.03em} .fanbox .pn{max-width:7em} }
 /* The "At a glance" table on the narrowest phones: tighter cells so the team names and numbers stay on the screen. */
 @media (max-width:360px){ table.glance th,table.glance td{padding:5px 3px} table.glance th.tn{white-space:normal} }
+@media (max-width:480px){ table.glance td.l{white-space:normal} }
 /* On a phone a long player name takes two lines in the pinned column instead of pushing the numbers off the screen. */
 .onfl{display:inline-block;width:8px;height:8px;background:var(--green);margin-right:5px;vertical-align:middle}
 /* Coach's screen, any tab: someone asking to get in. Top left, over the game's title line, clear of the desk's buttons. */
@@ -774,22 +784,22 @@ table.rect tr.sub td{background:transparent;padding-top:10px}
 @media (max-width:1180px){ .bcgrid{grid-template-columns:minmax(0,1fr) 320px minmax(0,1fr)} .desk{grid-template-columns:minmax(0,1fr) 272px minmax(0,1fr)} .board .n{font-size:54px} .tabs button{font-size:16px;padding-left:7px;padding-right:7px} }
 /* iPad portrait: both teams side by side under a scoreboard strip */
 @media (max-width:900px){
-  .desk{grid-template-columns:1fr 1fr}
-  .desk .center{grid-column:1/-1;order:-1;display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:8px;align-items:start}
+  .desk{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .desk .center{grid-column:1/-1;order:-1;display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr);gap:8px;align-items:start}
   .desk .center .tbox,.desk .center .cact{margin-top:0}
   .desk .center .cact{grid-column:1/-1;grid-template-columns:repeat(4,minmax(0,1fr))}
   .desk .center .mini{display:none}
-  .lead{grid-template-columns:1fr 1fr}
+  .lead{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
   .bcgrid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)} .bcrail{grid-column:1/-1;order:2}
   .board.big .n{font-size:84px} .board.big .t{font-size:24px}
   .brand b{display:none}
 }
 /* phone: one team at a time */
 @media (max-width:700px){
-  .desk{grid-template-columns:1fr}
-  .desk .center{grid-template-columns:1fr 1fr}
+  .desk{grid-template-columns:minmax(0,1fr)}
+  .desk .center{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
   .desk .center .board{grid-column:1/-1}
-  .desk .center .cact{grid-template-columns:1fr 1fr}
+  .desk .center .cact{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
   .desk .teamcol.hide-narrow{display:none}
   .ann-cols{grid-template-columns:minmax(0,1fr)}
   .ann-cols > .hide-narrow{display:none}
@@ -822,7 +832,7 @@ td .face{width:24px;height:24px;margin:-5px 7px -4px 0}
 .floor td.nm .face{width:30px;height:30px;margin:-6px 8px -5px 0}
 .fu .chip .face{width:26px;height:26px;margin:-4px 4px -4px -4px}
 .ocard .face{width:1.5em;height:1.5em;margin:-.3em .3em -.25em 0}
-.fnw{white-space:nowrap}
+.fnw{white-space:nowrap}.fnw .fnm{white-space:normal}
 .fhead{display:flex;align-items:center;gap:14px;min-width:0}.fhead>div{min-width:0}
 .fgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;margin-top:12px}
 .fkid{display:grid;grid-template-columns:76px minmax(0,1fr);gap:12px;align-items:center;border:1px solid var(--grey);border-radius:8px;padding:8px}
@@ -866,7 +876,7 @@ td .face{width:24px;height:24px;margin:-5px 7px -4px 0}
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
 { const n = document.getElementById("nostart"); if(n) n.remove(); }   // the script is running: see #nostart
-const BS_VERSION = "0.36.0";
+const BS_VERSION = "0.37.0";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -2848,7 +2858,7 @@ function viewAnn(){
     // final, or anywhere else, it opens the card. The ⓘ next to each name always opens it.
     const send = ui.pa && !fin;
     const chipAct = pid => ui.pa ? `data-act="annsaid" data-tm="${tm}" data-pid="${pid}" title="Mark it called once you've announced it (click again to take it back)"` : `data-act="pinfo" data-tm="${tm}" data-pid="${pid}" title="Open the card"`;
-    return `<div class="card" style="${tvars(g, tm)}"><div class="tc-head">${badge(g, tm)}<h3>${esc(tmName(g, tm))}${tm === "them" && oppNick(g) ? ` <small>${esc(oppNick(g))}</small>` : ""}</h3>${shortFlag(g, R, tm) || `<span class="side">${tm === ha.home ? "Home" : "Away"}</span>`}</div>
+    return `<div class="card" style="${tvars(g, tm)}"><div class="tc-head">${badge(g, tm)}<h3 class="fit" data-min="14">${esc(tmName(g, tm))}${tm === "them" && oppNick(g) ? ` <small>${esc(oppNick(g))}</small>` : ""}</h3>${shortFlag(g, R, tm) || `<span class="side">${tm === ha.home ? "Home" : "Away"}</span>`}</div>
       ${table.length ? `<div class="table-bar"><span class="kicker">At the table</span>${ui.pa ? "" : `<span class="small">On the PA mic? Tick the box up top to mark subs called.</span>`}${shown.map(({pid, ids}) => { const p = paPlayer(g, tm, pid), done = ids.some(x => said.includes(x)), say = sayShow(g, tm, p); return `<button class="chip ${done ? "dark" : "at"}${fcls(R.box[tm][pid])}" ${chipAct(ids[0])}>${face(p, "", tm === "us")}<b>${esc(p.num)}</b>${esc(p.name || "")}${done ? " ✓ called" : ""}${say ? `<span class="say">${esc(say)}</span>` : ""}</button>`; }).join("")}</div>` : ""}
       ${subs.length ? `<ul class="subs">${subs.map(s => `<li><b>${perLabel(g, s.q)}</b> ${esc(s.txt)}</li>`).join("")}</ul>` : ""}
       ${floor.length ? `<table class="floor"><tr><th class="l">On the floor</th><th>PTS</th><th>Fouls</th></tr>${floor.map(p => { const ln = R.box[tm][p.pid] || LINE(); return `<tr class="${fcls(ln).trim()}"><td class="nm l" data-act="pinfo" data-tm="${tm}" data-pid="${p.pid}" tabindex="0" role="button" title="Open #${esc(p.num)}'s card">${face(p, "", tm === "us")}${esc(p.num)} ${esc(p.name || "")}${justIn.has(p.pid) ? ' <span class="tag green">Just in</span>' : ""}${sayShow(g, tm, p) ? `<div class="say">${esc(sayShow(g, tm, p))}</div>` : ""}</td><td>${ln.pts}</td><td>${foulPill(g, R, ln)}</td></tr>`; }).join("")}</table>` : `<p class="small" style="margin:6px 0">The scorer hasn't set a lineup yet.</p>`}
@@ -2905,7 +2915,7 @@ function liveNudge(g){
 }
 function gamePicker(){
   const all = Object.values(S.games).filter(x => !x.deleted).sort((a, b) => (b.status === "live") - (a.status === "live") || (!!a.practice - !!b.practice) || (a.date + a.time).localeCompare(b.date + b.time));
-  return `<select data-sel="gid" style="width:auto;max-width:380px">${all.map(x => `<option value="${x.id}" ${x.id === ui.gid ? "selected" : ""}>${x.status === "live" ? "LIVE · " : x.status === "final" ? "Final · " : ""}${x.practice ? "Practice game" : esc(usName(x)) + " " + (x.ha === "Away" ? "at" : "vs") + " " + esc(x.opp) + " · " + esc(fmtDate(x.date))}</option>`).join("")}</select>`;
+  return `<select data-sel="gid" style="width:auto;max-width:min(380px,100%)">${all.map(x => `<option value="${x.id}" ${x.id === ui.gid ? "selected" : ""}>${x.status === "live" ? "LIVE · " : x.status === "final" ? "Final · " : ""}${x.practice ? "Practice game" : esc(usName(x)) + " " + (x.ha === "Away" ? "at" : "vs") + " " + esc(x.opp) + " · " + esc(fmtDate(x.date))}</option>`).join("")}</select>`;
 }
 function bcRow(g, R, tm, p, on, sl, lm){
   const ln = R.box[tm][p.pid] || LINE(), note = bcNote(bcKey(g, tm, p)), say = ui.bcSay ? bcSayOf(g, tm, p) : {v:""}, s = sl[p.pid], ft = foulTrouble(g, R, ln), was = lm && lmOf(lm, p);
@@ -2928,7 +2938,7 @@ function bcBoard(g, R, tm){
   // The last time we played them: each of their kids' line from that game, by name and number (lmOf).
   const pm = tm === "them" && !g.practice ? Object.values(S.games).filter(x => x.id !== g.id && !x.deleted && !x.practice && x.team === g.team && okey(x.opp) === okey(g.opp) && x.date < g.date && x.ev.some(e => !e.v && !PREGAME(e))).sort((a, b) => b.date.localeCompare(a.date))[0] : null;
   let lm = null; if(pm){ const PR = replay(pm); lm = {date:pm.date, kids:[]}; for(const q of pm.them || []){ const l = PR.box.them[q.pid]; if(l && l.gp) lm.kids.push([q, l]); } }
-  let h = `<section class="card bcteam" style="${tvars(g, tm)}"><div class="tc-head">${badge(g, tm)}<h3>${esc(tmName(g, tm))}${tm === "them" && oppNick(g) ? ` <small>${esc(oppNick(g))}</small>` : ""}${rec ? ` <small>(${esc(rec)})</small>` : ""}</h3><span class="side">${tm === ha.home ? "Home" : "Away"}</span></div>
+  let h = `<section class="card bcteam" style="${tvars(g, tm)}"><div class="tc-head">${badge(g, tm)}<h3 class="fit" data-min="14">${esc(tmName(g, tm))}${tm === "them" && oppNick(g) ? ` <small>${esc(oppNick(g))}</small>` : ""}${rec ? ` <small>(${esc(rec)})</small>` : ""}</h3><span class="side">${tm === ha.home ? "Home" : "Away"}</span></div>
     ${coach ? `<div class="bcdesc">Coach ${esc(coach)}</div>` : ""}
     <button class="bcteamnote${tnote ? "" : " empty"}" data-act="bct" data-tm="${tm}">${tnote ? esc(tnote) : "+ Team note (stays all season)"}</button>
     ${subs.length ? `<ul class="subs">${subs.map(x => `<li><b>${perLabel(g, x.q)}</b> ${esc(x.txt)}</li>`).join("")}</ul>` : ""}`;
@@ -4072,7 +4082,7 @@ function viewScript(){
   const night = ui.night, games = nightGames(night);
   const dates = [...new Set(Object.values(S.games).filter(x => !x.deleted && !x.practice).map(x => x.date))].sort();
   let h = ANN_ONLY && !Sync.live() ? Sync.panel() : "";
-  h += `<div class="annbar no-print">${annModes()}<select data-night style="width:auto;max-width:340px">${dates.map(d => `<option value="${esc(d)}" ${d === night ? "selected" : ""}>${esc(fmtDate(d))} · ${esc([...new Set(nightGames(d).map(x => x.opp))].join(", "))}${nightGames(d).some(x => x.ha === "Away") ? " (away)" : ""}</option>`).join("")}<option value="practice" ${night === "practice" ? "selected" : ""}>Practice game</option></select>
+  h += `<div class="annbar no-print">${annModes()}<select data-night style="width:auto;max-width:min(340px,100%)">${dates.map(d => `<option value="${esc(d)}" ${d === night ? "selected" : ""}>${esc(fmtDate(d))} · ${esc([...new Set(nightGames(d).map(x => x.opp))].join(", "))}${nightGames(d).some(x => x.ha === "Away") ? " (away)" : ""}</option>`).join("")}<option value="practice" ${night === "practice" ? "selected" : ""}>Practice game</option></select>
     <button class="btn sm" data-act="scriptedit">Edit the script</button><button class="btn sm" data-act="scriptcaps" aria-pressed="${ui.caps !== false}" title="Show the script in capital letters, on this device">ALL CAPS${ui.caps !== false ? " ✓" : ""}</button><button class="btn sm dark" data-act="emerg">Emergency cards</button><button class="btn sm" data-act="scriptclear" ${games.some(x => (booth(x.id).done || []).length) ? "" : "disabled"} title="Every line for this night back to unread (Undo puts them back)">Uncheck everything</button>${saySwitch()}${undoBtn()}
     <span class="small">${Sync.live() ? "Shared with everyone signed in." : "Saved on this device."}</span></div>`;
   if(!games.length) return h + `<div class="card">No games that night.</div>`;
@@ -5921,15 +5931,24 @@ function playersTable(S0, L){
       return [pBtn(S0, p), `${a.ftm}-${a.fta}`, pc(a.x.ftm, a.x.fta), s(f.one), s(f.two), s(f.bon), s(f.nob), s(f.and1), s(f.tech)]; }); }
   return nav + stTable(head, rows) + (note ? `<p class="small" style="margin:4px 0 0">${note}</p>` : "");
 }
+// A chart's player names (0.37.0): the name column grows for a long name (up to max), then a name that still won't fit
+// goes to a first initial ("12 J. Richardson-Smith"), then squeezes. Whole names, never "…", never off the chart's edge.
+const LB_CH = 7, lbName = p => `${p.num} ${pShort(p)}`.trim();
+const lbRoom = (ps, x0, max) => Math.min(max, Math.max(x0, ...ps.map(p => lbName(p).length * LB_CH + 12)));
+function lbText(p, room){
+  let t = lbName(p); const w = pShort(p).split(" ");
+  if(t.length * LB_CH > room - 6 && w.length > 1) t = `${p.num} ${w[0][0]}. ${w.slice(1).join(" ")}`.trim();
+  return (t.length * LB_CH > room - 6 ? ` textLength="${room - 6}" lengthAdjust="spacingAndGlyphs"` : "") + `>${esc(t)}`;
+}
 // Each player's points game to game as a range: lowest to highest, the middle half darker, a tick at the median.
 function rangeChart(S0, L){
   const ps = plist(S0, L).filter(p => L[p.pid].g >= 3); if(!ps.length) return "";
-  const top = Math.max(10, ...ps.map(p => Math.max(...L[p.pid].games.map(x => x.ln.pts)))), W = 520, X0 = 120, sc = (W - X0 - 30) / top, rh = 24, H = ps.length * rh + 26;
+  const top = Math.max(10, ...ps.map(p => Math.max(...L[p.pid].games.map(x => x.ln.pts)))), W = 520, X0 = lbRoom(ps, 120, 200), sc = (W - X0 - 105) / top, rh = 24, H = ps.length * rh + 26;
   const q = (a, f) => { const i = (a.length - 1) * f, lo = Math.floor(i); return a[lo] + (a[Math.ceil(i)] - a[lo]) * (i - lo); };
   let s = svgOpen(W, H, "Scoring range by player");
   for(let v = 0; v <= top; v += top > 30 ? 10 : 5) s += `<line x1="${X0 + v * sc}" y1="4" x2="${X0 + v * sc}" y2="${H - 18}" stroke="#E2E2E2"/><text x="${X0 + v * sc}" y="${H - 4}" text-anchor="middle" class="ax">${v}</text>`;
   ps.forEach((p, i) => { const a = L[p.pid].games.map(x => x.ln.pts).sort((x, y) => x - y), y = 8 + i * rh, m = q(a, .5);
-    s += `<text x="${X0 - 6}" y="${y + 12}" text-anchor="end" class="lb">${pNm(p)}</text><line x1="${X0 + a[0] * sc}" y1="${y + 8}" x2="${X0 + a[a.length - 1] * sc}" y2="${y + 8}" stroke="#7A7A7A" stroke-width="2"/>
+    s += `<text x="${X0 - 6}" y="${y + 12}" text-anchor="end" class="lb"${lbText(p, X0)}</text><line x1="${X0 + a[0] * sc}" y1="${y + 8}" x2="${X0 + a[a.length - 1] * sc}" y2="${y + 8}" stroke="#7A7A7A" stroke-width="2"/>
       <rect x="${X0 + q(a, .25) * sc}" y="${y + 2}" width="${Math.max(2, (q(a, .75) - q(a, .25)) * sc)}" height="12" fill="#094A28" opacity=".35"/><line x1="${X0 + m * sc}" y1="${y}" x2="${X0 + m * sc}" y2="${y + 16}" stroke="#094A28" stroke-width="3"/>
       <text x="${X0 + a[a.length - 1] * sc + 5}" y="${y + 12}" class="ax">${a[0]}-${a[a.length - 1]} · mid ${fx1(m)}</text>`; });
   return `<div class="stblk"><div class="kicker">Scoring range</div>${s}</svg><p class="small" style="margin:2px 0 0">Points a game: the line runs from their low to their high, the shaded box is their middle half of games and the tick is the median. Players with 3 or more games.</p></div>`;
@@ -6212,11 +6231,11 @@ function rotationCard(S0){
   const ds = S0.mds; if(!ds.length) return `<div class="stblk"><div class="kicker">Rotation ⏱🔁</div>${noData("Needs a game with the game clock and subs tapped.")}</div>`;
   const d = ds.find(x => x.g.id === ui.stRot) || ds[ds.length - 1], st = stintsOf(d), five = new Set(d.five);
   const pids = Object.keys(st).sort((a, b) => (five.has(b) - five.has(a)) || ((st[a][0] || [])[0] ?? 1e9) - ((st[b][0] || [])[0] ?? 1e9));
-  const W = 560, X0 = 130, w = W - X0 - 44, rh = 22, H = pids.length * rh + 24, X = t => X0 + t / d.end * w;
+  const W = 560, X0 = lbRoom(pids.map(pid => stPlayer(S0.team, pid, S0.ds)), 130, 210), w = W - X0 - 44, rh = 22, H = pids.length * rh + 24, X = t => X0 + t / d.end * w;
   let s = svgOpen(W, H, "Rotation");
   for(let q = 1; q <= d.lq; q++){ const x = X(d.start(q)); s += `<line x1="${x}" y1="0" x2="${x}" y2="${H - 16}" stroke="#D0D0D0"/><text x="${(x + X(d.start(q + 1))) / 2}" y="${H - 4}" text-anchor="middle" class="ax">${perLabel(d.gv, q)}</text>`; }
   pids.forEach((pid, i) => { const y = 4 + i * rh, p = stPlayer(S0.team, pid, S0.ds), sec = (d.M.sec[pid] || 0);
-    s += `<text x="${X0 - 6}" y="${y + 14}" text-anchor="end" class="lb">${pNm(p)}</text>`;
+    s += `<text x="${X0 - 6}" y="${y + 14}" text-anchor="end" class="lb"${lbText(p, X0)}</text>`;
     for(const [a, b] of st[pid]) s += a == null || b == null ? "" : `<rect x="${X(a)}" y="${y + 3}" width="${Math.max(1.5, X(b) - X(a))}" height="14" rx="3" fill="#094A28"><title>Game time ${mss(a)} to ${mss(b)}</title></rect>`;
     s += `<text x="${X0 + w + 4}" y="${y + 14}" class="ax">${Math.round(sec / 60)}${d.M.short.has(pid) ? "*" : ""}</text>`; });
   return `<div class="stblk"><div class="kicker">Rotation ⏱🔁</div><select data-sel="stRot" aria-label="Game">${ds.slice().reverse().map(x => `<option value="${esc(x.g.id)}" ${x === d ? "selected" : ""}>${esc(fmtDate(x.g.date))} ${x.g.ha === "Away" ? "at" : "vs"} ${esc(x.g.opp)}</option>`).join("")}</select>
@@ -6650,7 +6669,7 @@ function face(p, cls, ours){
 // ours: one of our kids with no photo gets the bobcat circle, once any photos are loaded (so do face and faceNm).
 function fhead(p, html, attr, ours){ const f = face(p, "xl", ours); return f ? `<div class="fhead"${attr || ""}>${f}<div>${html}</div></div>` : attr == null ? html : `<div${attr}>${html}</div>`; }
 // A name with its photo, kept on one line together. With no photo: the name alone, as before.
-function faceNm(p, nm, ours){ const f = face(p, "", ours); return f ? `<span class="fnw">${f}${nm}</span>` : nm; }
+function faceNm(p, nm, ours){ const f = face(p, "", ours); return f ? `<span class="fnw">${f}<span class="fnm">${nm}</span></span>` : nm; }
 function faceFile(name){
   const tok = String(name).replace(/\.[a-z0-9]+$/i, "").split(/[\s_.,()-]+/).filter(Boolean), t0 = (tok[0] || "").toLowerCase(); let team = "";
   if(/^(b|bc|boys?|bobcats?)$/.test(t0)){ team = "boys"; tok.shift(); }
