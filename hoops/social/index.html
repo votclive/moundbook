@@ -137,6 +137,17 @@ section h2 .count { font-family: var(--font-body); font-weight: 500; letter-spac
 .swap h4 { margin: 0; font-size: 14px; }
 .swap-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
 .swap .num { width: 4em; }
+.nums { display: grid; gap: 8px; margin: 4px 0 14px; padding: 10px 12px; border: 1px solid var(--line, #d9dfdb); border-radius: 10px; }
+.nums h4 { margin: 0; font-size: 14px; }
+.nums-list { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+.nums-list .btn { margin-left: 6px; }
+.nums-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.nums-row .sel { flex: 1 1 180px; max-width: 320px; }
+.nums .num { width: 4em; }
+.nums-ask { border-left: 4px solid #c8102e; padding: 4px 0 4px 10px; display: grid; gap: 6px; }
+.nums-ask p { margin: 0; }
+.nums-warn { color: #b00020; font-weight: 600; }
+.nums .hint { color: var(--muted); font-weight: 400; }
 .take .tier { color: var(--ink); font-size: 14px; }
 .cap-meta .over { color: var(--loss); font-weight: 600; }
 .mood { margin: 0; font-size: 13px; color: var(--muted); }
@@ -157,11 +168,11 @@ details.panel .inner { padding: 0 14px 14px; display: grid; gap: 12px; }
 .views a small { display: block; font-family: var(--font-body); font-weight: 500; font-size: 11px; letter-spacing: 0; text-transform: none; }
 .views a[aria-current="page"] { background: var(--accent); color: var(--on-accent); }
 
-.gfx { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
+.gfx { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
 .gfx-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .gfx-ctl { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-end; }
 .gseg button { font: 600 13px var(--font-body); padding: 5px 11px; }
-.gsel { display: grid; gap: 3px; font-size: 12px; color: var(--muted); min-width: 0; }
+.gsel { display: grid; grid-template-columns: minmax(0, 1fr); gap: 3px; font-size: 12px; color: var(--muted); min-width: 0; max-width: 100%; }
 .gsel .sel { max-width: 100%; }
 .gfx-prev { position: relative; width: 100%; max-width: 340px; aspect-ratio: 4 / 5; border-radius: 8px; overflow: hidden; background: #062614; }
 .gfx-prev.story { aspect-ratio: 9 / 16; max-width: 300px; }
