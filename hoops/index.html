@@ -5,7 +5,7 @@
 <!-- The page's lock: the only script that may run is the one in this file (named by the SHA-256 of its text) and files
      from this folder (fb.js). Text that turns up in the page from a roster, a game or the cloud can never run as code.
      After ANY edit to the script, run "python3 hoops/stamp.py hoops": with a stale hash the browser runs nothing. -->
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-/cdpY8T1ZVkfpYIw66d/51xXw8++YxoUofDRvPANw1Y='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-lX00SC2EE/r8p7y3wFrzQ1N5zvoSQfe2QDYbUgf/Nac='; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-src 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#094A28">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -866,7 +866,7 @@ td .face{width:24px;height:24px;margin:-5px 7px -4px 0}
    truth and the cloud is only a pipe, so scoring never waits on signal. Mirrors Mound Book's design and shares its Firebase project.
    Every number on every screen is computed by replaying the game's play list, so a correction anywhere fixes everything. */
 { const n = document.getElementById("nostart"); if(n) n.remove(); }   // the script is running: see #nostart
-const BS_VERSION = "0.35.0";
+const BS_VERSION = "0.36.0";
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const rid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -7074,7 +7074,7 @@ const Logos = (() => {
    book only through socialApi(), which asks canAdmin() on every call.
    Games, scores, top scorers, starters and rosters come from the book; a game nobody scored here can have its scores typed
    in. What Social adds lives in hoopsBook/social: {v, cfg (caption and graphic settings), games {gid: starters, posted
-   marks, graphic picks, theme, notes and typed-in scores}, photos {id: meta, or null once deleted}, sponsors {same}, upd}.
+   marks, graphic picks, theme, notes, typed-in scores and alt, the numbers tonight}, photos {id: meta, or null once deleted}, sponsors {same}, upd}.
    Each picture is hoopsBook/simg-<id> {d (a data URL, or its first 900 KB), n (how many parts), at}, the rest in
    simg-<id>-1 to -5 (a photographer's cut-out runs 2 to 3 MB, and it's kept whole). No new rules: Admins write any hoopsBook document. Kids marked number only are numbers only. */
 const SOC_IMG = /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/, SOC_CHUNK = 900000, SOC_PARTS = 6, SOC_ID = /^[a-f0-9]{32}$/;
@@ -7085,7 +7085,10 @@ const Social = (() => {
   const str = (v, n = 300) => typeof v === "string" ? v.slice(0, n) : "";
   const num = v => typeof v === "number" && isFinite(v) && v >= 0 && v < 1000 ? Math.round(v) : null;
   const flags = o => { const r = {}; if(plain(o)) for(const k of ["fb", "ig", "x", "tt"]) if(k in o) r[k] = !!o[k]; return r; };
-  const who = p => plain(p) ? {n:str(p.n, 3).replace(/\D/g, ""), name:str(p.name, 60), gr:str(p.gr, 4), pos:str(p.pos, 12)} : null;
+  // A kid's id (the book's pid) rides with each starter (0.36.0), so a starter is a kid, not whoever wears that number.
+  const PID = /^[A-Za-z0-9-]{1,40}$/;
+  const who = p => { if(!plain(p)) return null; const r = {n:str(p.n, 3).replace(/\D/g, ""), name:str(p.name, 60), gr:str(p.gr, 4), pos:str(p.pos, 12)};
+    if(typeof p.id === "string" && PID.test(p.id)) r.id = p.id; return r; };
   // Only what the generator writes on a game, each the shape it should be.
   function cleanGame(o){
     const r = {}; if(!plain(o)) return r;
@@ -7094,6 +7097,9 @@ const Social = (() => {
     if(plain(o.gfx)){ r.gfx = {}; for(const k of ["gd", "lu", "q", "fin"]) if(plain(o.gfx[k])){ const x = {}; for(const f of ["side", "hero", "sponsor", "style"]) if(f in o.gfx[k]) x[f] = str(o.gfx[k][f], 40); r.gfx[k] = x; } }
     for(const k of ["theme", "note", "live_note", "top"]) if(k in o) r[k] = str(o[k], 500);
     for(const k of ["gb", "opp"]) if(k in o) r[k] = num(o[k]);
+    // Numbers tonight (Kevin, 0.36.0): {pid: "5"} another number for this game, "out" not dressing, "" back to his own.
+    if(plain(o.alt)){ r.alt = {}; for(const k of Object.keys(o.alt).slice(0, 60)){ const v = o.alt[k];
+      if(PID.test(k) && typeof v === "string" && (v === "" || v === "out" || /^\d{1,3}$/.test(v))) r.alt[k] = v; } }
     if(plain(o.periods)){ r.periods = {}; for(const k of ["q1", "q2", "q3", "q4", "ot1", "ot2"]) if(plain(o.periods[k])) r.periods[k] = {gb:num(o.periods[k].gb), opp:num(o.periods[k].opp)}; }
     return r;
   }
@@ -7106,7 +7112,27 @@ const Social = (() => {
   // A game Social can post about: on the schedule, not a scrimmage, not postponed or cancelled.
   const postable = g => g && !g.deleted && !g.practice && !g.scrim && !g.off;
   const grade = p => p && p.grade ? String(p.grade).replace(/\.$/, "") + "." : "";
-  const kid = (g, p) => ({n:String(p.num || ""), name:noPub(g, "us", p) ? "" : pShort(p), gr:grade(p), pos:String(p.pos || "")});
+  const kid = (g, p) => ({n:String(p.num || ""), name:noPub(g, "us", p) ? "" : pShort(p), gr:grade(p), pos:String(p.pos || ""), id:p.pid});
+  // Numbers tonight (Kevin, 0.36.0: "other number tonight" without the kids getting tangled). The game's kids, each with his
+  // number tonight (n): Social's pick for this game, else the book's for it (a uniform number or "Wearing #N tonight"), else
+  // his own. reg is his number on Rosters, which his photos go by; out = not dressing tonight. Social's numbers never go in
+  // the book (only starters use them, not the stats).
+  function gameRos(g, alt){
+    const season = ((S.teams[g.team] || {}).roster) || [];
+    return roster(g, "us").filter(p => p && typeof p.pid === "string" && PID.test(p.pid)).map(p => {
+      const sp = season.find(q => q.pid === p.pid), book = String(p.num == null ? "" : p.num), a = typeof alt[p.pid] === "string" ? alt[p.pid] : "";
+      const r = {id:p.pid, n:a === "out" ? "" : (a || book), reg:sp ? String(sp.num == null ? "" : sp.num) : book, book, name:noPub(g, "us", p) ? "" : pShort(p), gr:grade(p), pos:String(p.pos || "")};
+      if(a === "out") r.out = true; return r;
+    });
+  }
+  // A saved starter as the kid he is tonight: by id, else (saved before 0.36.0) by full name, else a number-only kid by number.
+  function tonight(ros, s){
+    let k = s.id ? ros.find(r => r.id === s.id) : null;
+    if(!k && !s.id && s.name){ const nm = s.name.toLowerCase(), h = ros.filter(r => r.name && r.name.toLowerCase() === nm); if(h.length === 1) k = h[0]; }
+    if(!k && !s.id && !s.name && s.n){ const h = ros.filter(r => r.n === s.n); if(h.length === 1) k = h[0]; }
+    if(!k) return s;
+    const r = {n:k.n, name:k.name, gr:k.gr || s.gr || "", pos:k.pos || s.pos || "", id:k.id, reg:k.reg}; if(k.out) r.out = true; return r;
+  }
   // Everything the generator reads, in its own shapes: {games, rosters, photos, sponsors, settings}.
   function snap(){
     const d = st.doc || {}, over = plain(d.games) ? d.games : {}, games = {};
@@ -7117,12 +7143,14 @@ const Social = (() => {
         district:!!g.district, event:g.event || "", gb:null, opp:null, top:"", note:"", live_note:"", periods:{}, posted:{}, ...o, _book:played};
       if(played){ const p = scorebookPayload(g, true); x.periods = p.periods; x.gb = p.final ? p.gb : null; x.opp = p.final ? p.opp : null; x.top = p.top; if(!o.live_note) x.live_note = p.live_note; }
       // The starting five: the book's once the scorer has them, else the PA's picks (startersOf), unless Social saved its own.
+      x.ros = gameRos(g, o.alt || {});
       if(!o.starters){ const r = roster(g, "us"), five = S.booth[g.id] ? startersOf(g, "us").map(pid => paPlayer(g, "us", pid)) : bookFive(g, "us").map(pid => r.find(p => p.pid === pid));
         x.starters = five.filter(Boolean).slice(0, 5).map(p => kid(g, p)); }
+      x.starters = (x.starters || []).map(s => tonight(x.ros, s));
       games[g.id] = x;
     }
     const rosters = {};   // the generator's roster documents: {players:[{n, name, gr, pos}]}
-    for(const [k, T] of [["Girls", (S.teams || {}).girls], ["Boys", (S.teams || {}).boys]]) rosters[k] = {players:((T && T.roster) || []).map(p => ({n:String(p.num || ""), name:p.nopub ? "" : pShort(p), gr:grade(p), pos:String(p.pos || "")}))};
+    for(const [k, T] of [["Girls", (S.teams || {}).girls], ["Boys", (S.teams || {}).boys]]) rosters[k] = {players:((T && T.roster) || []).map(p => ({n:String(p.num || ""), name:p.nopub ? "" : pShort(p), gr:grade(p), pos:String(p.pos || ""), id:p.pid, reg:String(p.num || "")}))};
     const list = c => { const o = {}; if(plain(d[c])) for(const id of Object.keys(d[c])) if(SOC_ID.test(id) && plain(d[c][id])) o[id] = cleanMeta(c, d[c][id]); return o; };
     const t = S.teams || {}, settings = {girls_name:(t.girls || {}).name || "Lady Cats", boys_name:(t.boys || {}).name || "Bobcats", hashtags:"#GreenbrierBasketball #GoBobcats",
       strip_tag:"VOTClive.com", strip_tag2:"#CatchTheseCats #GreenbrierBasketball", ...cleanCfg(d.cfg), _imported:typeof d.imported === "number" ? d.imported : 0};

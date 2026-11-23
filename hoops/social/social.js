@@ -1,7 +1,9 @@
 /* Brier Stats, Social tab (Admins only, 0.35.0): Kevin's social post generator, running inside the app.
    This first part stands in for the runtime the generator was written for (its db, its file store and its downloads), on
    top of the app's socialApi(): games, scores and rosters from the book, what Social adds in hoopsBook/social, pictures in
-   hoopsBook/simg-<id>, and files through the iPad's share sheet. The generator below is Kevin's, changed only where marked. */
+   hoopsBook/simg-<id>, and files through the iPad's share sheet. The generator below is Kevin's, changed only where marked.
+   From 0.36.0 this file is the generator's source (edit it here, then run stamp.py): starters are kids (ids) with each
+   game's numbers tonight (Numbers tonight), so a borrowed number never mixes two kids up. */
 (function () {
   "use strict";
   var api = null;
@@ -645,12 +647,21 @@
     return lines.map(parsePlayer).filter(Boolean);
   }
   function lastName(p) { var w = String(p.name || "").split(" "); return w[w.length - 1].toLowerCase(); }
-  function enrich(team, p) { // fill in a number-only or last-name-only starter from the roster
-    var ros = state.rosters[team] || [], hit = null;
-    if (p.n) hit = ros.filter(function (r) { return r.n === p.n; })[0];
-    if (!hit && p.name) hit = ros.filter(function (r) { return r.name.toLowerCase() === p.name.toLowerCase(); })[0] || (ros.filter(function (r) { return lastName(r) === lastName(p); }).length === 1 ? ros.filter(function (r) { return lastName(r) === lastName(p); })[0] : null);
+  // Numbers tonight (Brier Stats, 0.36.0). A game's kids come from the book with their number for that game (g.ros: id, n
+  // tonight, reg = his own number, out = not dressing). A starter is a kid (his id), not "whoever wears #5", so a kid wearing
+  // another kid's number for a night never pulls in the other kid's name, grade, photo or captions.
+  function gros(g) { return (g && g.ros) || (g && state.rosters[g.team]) || []; }
+  function rosIn(g) { return gros(g).filter(function (r) { return !r.out; }); }
+  function enrich(g, p) { // fill in a number-only or last-name-only starter from the roster (g: a game, or a team's name)
+    var ros = typeof g === "string" ? (state.rosters[g] || []) : rosIn(g), hit = null, full = !!(p.name && p.name.split(" ").length > 1);
+    var one = function (f) { var h = ros.filter(f); return h.length === 1 ? h[0] : null; };
+    if (p.id) hit = ros.filter(function (r) { return r.id === p.id; })[0] || null;
+    if (!hit && full) hit = one(function (r) { return r.name && r.name.toLowerCase() === p.name.toLowerCase(); });
+    if (!hit && p.n) hit = ros.filter(function (r) { return r.n === p.n; })[0];
+    if (!hit && p.name) hit = ros.filter(function (r) { return r.name && r.name.toLowerCase() === p.name.toLowerCase(); })[0] || one(function (r) { return lastName(r) === lastName(p); });
     if (!hit) return p;
-    return { n: p.n || hit.n, name: p.name && p.name.split(" ").length > 1 ? p.name : hit.name || p.name, gr: p.gr || hit.gr, pos: p.pos || hit.pos };
+    if (hit.id) return { n: hit.n, name: hit.name || "", gr: hit.gr || p.gr || "", pos: hit.pos || p.pos || "", id: hit.id, reg: hit.reg };
+    return { n: p.n || hit.n, name: full ? p.name : hit.name || p.name, gr: p.gr || hit.gr, pos: p.pos || hit.pos };
   }
   function playerLine(p, detail) {
     var bits = detail ? [p.gr, p.pos].filter(Boolean) : [];
@@ -663,7 +674,7 @@
   }
 
   function lineupTake(g, tier, platform) {
-    var five = (g.starters || []).map(function (p) { return enrich(g.team, p); });
+    var five = (g.starters || []).map(function (p) { return enrich(g, p); });
     var n = nick(g.team), rival = isRival(g.opponent), mo = mascotOf(g.opponent), v = { n: n, N: n.toUpperCase(), opp: g.opponent, mas: theMas(g.opponent), Mas: cap1(theMas(g.opponent)), masV: theMas(g.opponent).replace(/^the /, "") };
     var head = tier === "straight" ? "STARTING FIVE | " + n + " Basketball" :
       fillT(pick(LU[tier].any.concat(rival ? LU[tier].rival : []), g, "lu-" + tier), v);
@@ -1285,9 +1296,10 @@
 
   // Quick swap (Kevin, 2026-11-19): change any saved starter on the fly. Picking a player saves at once and redraws the graphic.
   // Choices come from the roster, plus anyone in the photo Library; "Other number" types in a number not on either.
-  function swapPool(team) {
-    var seen = {}, out = [];
-    (state.rosters[team] || []).concat(photoList(team).map(function (p) { return { n: p.n, name: p.name }; })).forEach(function (r) {
+  function swapPool(g) {
+    var seen = {}, out = [], team = g.team, kids = rosIn(g);
+    kids.concat(photoList(team).filter(function (p) { return !kids.some(function (k) { return (k.name && p.name && k.name.toLowerCase() === p.name.toLowerCase()) || (k.reg && k.reg === p.n); }); })
+      .map(function (p) { return { n: p.n, name: p.name }; })).forEach(function (r) {
       var k = (r.n || "") + "|" + String(r.name || "").toLowerCase(); if (!r.n && !r.name) return;
       if (r.n && out.some(function (x) { return x.n === r.n; })) return; // one entry per number, roster first
       if (!seen[k]) { seen[k] = 1; out.push(r); }
@@ -1295,11 +1307,12 @@
     return out.sort(function (a, b) { return (parseInt(a.n, 10) || 999) - (parseInt(b.n, 10) || 999); });
   }
   function swapHTML(g, id, ro) {
-    var pool = swapPool(g.team), dis = ro ? " disabled" : "";
+    var pool = swapPool(g), dis = ro ? " disabled" : "";
+    var key = function (r) { return r.id ? "id:" + r.id : (r.n || "") + "|" + (r.name || ""); };
     var rows = g.starters.slice(0, 5).map(function (p, i) {
-      var cur = (p.n || "") + "|" + (p.name || ""), opts = pool.map(function (r) { return [(r.n || "") + "|" + (r.name || ""), (r.n ? "#" + r.n + " " : "") + (r.name || "")]; });
-      if (!opts.some(function (o) { return o[0] === cur; })) opts.unshift([cur, (p.n ? "#" + p.n + " " : "") + (p.name || "")]);
-      opts.push(["__other", "Other number…"]);
+      var cur = key(p), opts = pool.map(function (r) { return [key(r), (r.n ? "#" + r.n + " " : "") + (r.name || "")]; });
+      if (!opts.some(function (o) { return o[0] === cur; })) opts.unshift([cur, (p.n ? "#" + p.n + " " : "") + (p.name || "") + (p.out ? " (not dressing)" : "")]);
+      opts.push(["__other", "Other number tonight…"]);
       return '<label class="gsel"><span>Starter ' + (i + 1) + '</span><select class="sel" data-swap="' + i + '" data-game="' + id + '"' + dis + ">" + opts.map(function (o) {
         return '<option value="' + esc(o[0]) + '"' + (o[0] === cur ? " selected" : "") + ">" + esc(o[1]) + "</option>"; }).join("") + "</select></label>";
     }).join("");
@@ -1310,13 +1323,15 @@
     var list = (g.starters || []).map(function (p) { return Object.assign({}, p); }), np;
     if (val === "__other") {
       var cur = list[i] || {};
+      if (cur.id) { numsOpen(id, cur.id); render(); var ni = $("numval-" + id); if (ni) { ni.focus(); if (ni.scrollIntoView) ni.scrollIntoView({ block: "center" }); } return; } // a kid: Numbers tonight
       var box = $("swst-" + id); if (!box) return;
       box.innerHTML = 'New number for ' + esc(cur.name || "starter " + (i + 1)) + ': <input class="num" id="swnum-' + id + '" inputmode="numeric" maxlength="2" aria-label="New jersey number"> <button type="button" class="btn small" data-swapnum="' + i + '" data-game="' + id + '">Save number</button>';
       var inp = $("swnum-" + id); if (inp) inp.focus();
       return;
     }
-    var parts = val.split("|"); np = enrich(g.team, { n: parts[0], name: parts.slice(1).join("|") });
-    if (list.some(function (p, j) { return j !== i && np.n && p.n === np.n; })) { swapMsg(id, "#" + np.n + " is already in this five."); render(); return; }
+    if (val.indexOf("id:") === 0) { np = enrich(g, { id: val.slice(3) }); if (!np.n && !np.name) { render(); return; } } // gone from the roster since the list was drawn
+    else { var parts = val.split("|"); np = enrich(g, { n: parts[0], name: parts.slice(1).join("|") }); }
+    if (list.some(function (p, j) { return j !== i && ((np.id && p.id === np.id) || (np.n && p.n === np.n)); })) { swapMsg(id, (np.n ? "#" + np.n : np.name || "That player") + " is already in this five."); render(); return; }
     list[i] = np; saveSwap(id, list, (np.n ? "#" + np.n + " " : "") + (np.name || "") + " is in.");
   }
   var swapMsgs = {};
@@ -1326,12 +1341,121 @@
     var next = Object.assign({}, state.games); next[id] = Object.assign({}, state.games[id], { starters: list }); state.games = next; render(); // snapshots are frozen: copy, don't edit
     db.doc("games/" + id).update({ starters: list }).then(function () { swapMsg(id, msg + " Graphic and posts updated."); }, function (e) { handleWriteError(e, "swst-" + id); });
   }
+  // ---------- Numbers tonight (Kevin, Brier Stats 0.36.0) ----------
+  // "Other number tonight": a kid wears another number for one game. If that's another kid's number (his own, or his for
+  // tonight), that kid comes off it, and nothing saves until he has one too (or isn't dressing). So two kids never share a
+  // number and never get mixed up. Saved on the game as alt {id: "5" | "out" | ""}; the scorebook's numbers aren't touched
+  // (only starters use these, not the stats). Starters, the tweets, the graphics and the video go by tonight's numbers;
+  // photos stay with the kid.
+  var numUI = {}; // game id -> {open, kid, plan, fixed, ask, msg, busy}
+  function numsOpen(id, kid) { var u = numUI[id] || (numUI[id] = {}); u.kid = kid || u.kid || ""; u.ask = null; u.plan = null; u.fixed = null; u.msg = ""; }
+  function redraw() { var ae = document.activeElement; if (ae && ae.blur && ae.tagName === "INPUT") ae.blur(); render(); }
+  function effNum(r, plan) { var a = plan[r.id]; return a === "out" ? "" : (typeof a === "string" && a ? a : r.book); }
+  function kidName(r) { return r.name || ("No. " + (r.reg || r.book || "?")); }
+  function kidById(g, kid) { return gros(g).filter(function (r) { return r.id === kid; })[0] || null; }
+  // The next two kids on one number: the one who just got it (or whose own number it is) keeps it, the other is asked.
+  function nextClash(g, plan, fixed) {
+    var ros = gros(g).filter(function (r) { return r.id; });
+    for (var i = 0; i < ros.length; i++) {
+      var n = effNum(ros[i], plan); if (!n) continue;
+      var same = ros.filter(function (x) { return effNum(x, plan) === n; }); if (same.length < 2) continue;
+      var keep = same.filter(function (x) { return fixed.indexOf(x.id) >= 0; })[0] || same.filter(function (x) { return x.reg === n; })[0] || same[0];
+      var who = same.filter(function (x) { return x !== keep && fixed.indexOf(x.id) < 0; })[0]; if (!who) continue;
+      return { kid: who.id, by: keep.id, num: n };
+    }
+    return null;
+  }
+  function numsStep(id) {
+    var g = state.games[id], u = numUI[id]; if (!g || !u || !u.plan) return;
+    var c = nextClash(g, u.plan, u.fixed);
+    if (c) { u.ask = c; u.msg = ""; redraw(); var ai = $("numask-" + id); if (ai) ai.focus(); return; }
+    u.ask = null; numsSave(id);
+  }
+  function numsSave(id) {
+    var g = state.games[id], u = numUI[id], alt = g.alt || {}, plan = {}, ros = gros(g);
+    Object.keys(alt).forEach(function (k) { plan[k] = ""; }); // a merge never drops a key: one set back is ""
+    Object.keys(u.plan).forEach(function (k) { plan[k] = u.plan[k]; });
+    ros.forEach(function (r) { if (plan[r.id] && plan[r.id] !== "out" && plan[r.id] === r.book) plan[r.id] = ""; });
+    var moved = ros.filter(function (r) { return r.id && (effNum(r, plan) !== r.n || (plan[r.id] === "out") !== !!r.out); });
+    if (!moved.length && JSON.stringify(plan) === JSON.stringify(alt)) { u.plan = u.fixed = null; u.msg = "Nothing changed."; redraw(); return; }
+    // An unsaved pick list goes with the kids to their new numbers.
+    var d = state.drafts[id];
+    if (d && d.lu != null) d.lu = playersText(parseList(d.lu).map(function (p) { var k = enrich(g, p); if (!k.id) return p; var r = kidById(g, k.id); return Object.assign({}, k, { n: r ? effNum(r, plan) : k.n }); }));
+    var said = moved.map(function (r) { return kidName(r) + (plan[r.id] === "out" ? " isn't dressing" : " is #" + effNum(r, plan)); }).join(", ");
+    u.busy = true; u.msg = "Saving…"; redraw();
+    db.doc("games/" + id).update({ alt: plan }).then(function () {
+      u.busy = false; u.plan = u.fixed = null; u.msg = (said ? said + " tonight. " : "") + "Starters, posts and graphics updated."; redraw();
+    }, function (e) { u.busy = false; u.msg = ""; redraw(); handleWriteError(e, "numst-" + id); });
+  }
+  function numsHTML(g, id, ro) {
+    var ros = gros(g).filter(function (r) { return r.id; }); if (!ros.length) return "";
+    var u = numUI[id] || {}, alt = g.alt || {}, off = ro || (u.busy ? " disabled" : "");
+    var rows = ros.filter(function (r) { return r.out || r.n !== r.reg; }).map(function (r) {
+      var mine = !!alt[r.id], note = [r.reg && !r.out ? "usually #" + r.reg : "", mine ? "" : "from the scorebook"].filter(Boolean).join(", ");
+      return "<li><strong>" + esc(r.out ? "Not dressing" : "#" + r.n) + "</strong> " + esc(kidName(r)) + (note ? ' <span class="hint">(' + esc(note) + ")</span>" : "") +
+        (mine ? ' <button type="button" class="btn small" data-numback="' + esc(r.id) + '" data-game="' + id + '"' + off + ">" + esc(r.out ? "Dressing after all" : "Back to #" + r.book) + "</button>" : "") + "</li>";
+    }).join("");
+    var outFive = (g.starters || []).filter(function (p) { return p.out; }).map(kidName);
+    var html = '<div class="nums" id="nums-' + id + '"><h4>Numbers tonight</h4>' + (rows ? '<ul class="nums-list">' + rows + "</ul>" : '<div class="hint">Everyone wears their own number. A kid in another number for this game? Set it here, and the starters, tweets, graphics and video use it.</div>');
+    if (outFive.length) html += '<div class="nums-warn">' + esc(outFive.join(" and ")) + (outFive.length > 1 ? " are" : " is") + " in the starting five but not dressing.</div>";
+    if (u.ask) {
+      var a = kidById(g, u.ask.kid) || {}, b = kidById(g, u.ask.by) || {};
+      var why = a.reg === u.ask.num ? "#" + u.ask.num + " is " + kidName(a) + "'s number, and " + kidName(b) + " is wearing it tonight." : kidName(a) + " had #" + u.ask.num + " tonight, and " + kidName(b) + " is taking it.";
+      html += '<div class="nums-ask"><p><strong>' + esc(why) + "</strong> What's " + esc(kidName(a)) + " wearing tonight?</p>" +
+        '<div class="nums-row"><input class="num" id="numask-' + id + '" inputmode="numeric" maxlength="2" placeholder="#" aria-label="' + esc(kidName(a)) + "'s number tonight" + '"' + off + ">" +
+        '<button type="button" class="btn small primary" data-numans="' + id + '"' + off + ">Save numbers</button>" +
+        '<button type="button" class="btn small" data-numout="' + id + '"' + off + ">Not dressing tonight</button>" +
+        '<button type="button" class="btn small" data-numcancel="' + id + '"' + off + ">Cancel</button></div></div>";
+    } else {
+      html += '<div class="nums-row"><select class="sel" id="numkid-' + id + '" aria-label="Player"' + off + '><option value="">Player…</option>' + ros.map(function (r) {
+        return '<option value="' + esc(r.id) + '"' + (u.kid === r.id ? " selected" : "") + ">" + esc((r.out ? "(not dressing) " : "#" + r.n + " ") + kidName(r)) + "</option>"; }).join("") + "</select>" +
+        '<input class="num" id="numval-' + id + '" inputmode="numeric" maxlength="2" placeholder="#" aria-label="Number tonight"' + off + ">" +
+        '<button type="button" class="btn small" data-numset="' + id + '"' + off + ">Other number tonight</button></div>";
+      var prev = allGames().filter(function (x) { return x.team === g.team && x.date < g.date && x.alt && Object.keys(x.alt).some(function (k) { return x.alt[k]; }); }).pop();
+      var acts = [];
+      if (prev) acts.push('<button type="button" class="btn small" data-numprev="' + id + '" data-from="' + esc(prev.id) + '"' + off + ">Same numbers as " + esc(shortDate(prev.date)) + "</button>");
+      if (Object.keys(alt).some(function (k) { return alt[k]; })) acts.push('<button type="button" class="btn small" data-numclear="' + id + '"' + off + ">Everyone back to their own</button>");
+      if (acts.length) html += '<div class="nums-row">' + acts.join("") + "</div>";
+    }
+    return html + '<div class="status" id="numst-' + id + '" aria-live="polite">' + esc(u.msg || "") + "</div></div>";
+  }
+  function numsClick(t) {
+    var id = t.dataset.game || t.dataset.numset || t.dataset.numans || t.dataset.numout || t.dataset.numcancel || t.dataset.numprev || t.dataset.numclear;
+    var g = state.games[id]; if (!g || !db) return;
+    var u = numUI[id] || (numUI[id] = {}), alt = g.alt || {}, cur = {};
+    Object.keys(alt).forEach(function (k) { if (alt[k]) cur[k] = alt[k]; });
+    var start = function (plan, fixed) { u.plan = plan; u.fixed = fixed; u.ask = null; u.msg = ""; numsStep(id); };
+    if (t.dataset.numset) {
+      var kid = ($("numkid-" + id) || {}).value || "", v = String(($("numval-" + id) || {}).value || "").replace(/\D/g, ""), r = kidById(g, kid);
+      u.kid = kid;
+      if (!r) { setStatus("numst-" + id, "Pick the player first."); return; }
+      if (!v) { setStatus("numst-" + id, "Type the number " + kidName(r) + " is wearing tonight."); return; }
+      if (!r.out && v === r.n) { setStatus("numst-" + id, kidName(r) + " is already #" + v + " tonight."); return; }
+      cur[kid] = v; start(cur, [kid]); return;
+    }
+    if (t.dataset.numans && u.ask && u.plan) {
+      var w = String(($("numask-" + id) || {}).value || "").replace(/\D/g, ""), a = kidById(g, u.ask.kid);
+      if (!w) { setStatus("numst-" + id, "Type a number, or tap Not dressing tonight."); return; }
+      var taken = u.fixed.map(function (k) { return kidById(g, k); }).filter(function (x) { return x && effNum(x, u.plan) === w; })[0];
+      if (taken) { setStatus("numst-" + id, "#" + w + " is " + kidName(taken) + "'s tonight. Pick another."); return; }
+      u.plan[u.ask.kid] = w; u.fixed.push(u.ask.kid); numsStep(id); return;
+    }
+    if (t.dataset.numout && u.ask && u.plan) { u.plan[u.ask.kid] = "out"; u.fixed.push(u.ask.kid); numsStep(id); return; }
+    if (t.dataset.numcancel) { u.ask = null; u.plan = u.fixed = null; u.msg = "Nothing changed."; redraw(); return; }
+    if (t.dataset.numback) { var bk = t.dataset.numback; if (!kidById(g, bk)) return; cur[bk] = ""; start(cur, [bk]); return; }
+    if (t.dataset.numclear) { start({}, []); return; }
+    if (t.dataset.numprev) {
+      var pg = state.games[t.dataset.from], from = (pg && pg.alt) || {}, plan = {}, fixed = [];
+      Object.keys(from).forEach(function (k) { if (from[k] && kidById(g, k)) { plan[k] = from[k]; fixed.push(k); } });
+      start(plan, fixed); return;
+    }
+  }
   function lineupHTML(g, id, ro) {
-    var ros = state.rosters[g.team] || [];
+    var ros = rosIn(g);
     var txt = draftVal(g, "lu", playersText(g.starters));
     var picked = parseList(txt);
-    var has = function (r) { return picked.some(function (p) { return (p.n && p.n === r.n) || (p.name && p.name.toLowerCase() === r.name.toLowerCase()); }); };
-    var html = '<div class="part">';
+    var has = function (r) { return picked.some(function (p) { return (p.n && p.n === r.n) || (p.name && r.name && p.name.toLowerCase() === r.name.toLowerCase()); }); };
+    var html = '<div class="part">' + numsHTML(g, id, ro);
     if (ros.length) html += '<div class="status">Tap five. ' + picked.length + " of 5 picked.</div>" + '<div class="roster">' + ros.map(function (r, ri) {
       return '<button type="button" data-lupick="' + ri + '" data-game="' + id + '" aria-pressed="' + has(r) + '"' + ro + ">" + esc((r.n ? "#" + r.n + " " : "") + r.name) + "</button>";
     }).join("") + "</div>";
@@ -1373,7 +1497,8 @@
     document.querySelectorAll("[data-viewlink]").forEach(function (a) { if (a.dataset.viewlink === state.view) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
     var ae = document.activeElement;
     if (state.view === "gameday" && !(ae && ae.id === "gd-theme")) $("gd").innerHTML = gdHTML();
-    if (state.view === "starters" && !(ae && ae.dataset && ae.dataset.f === "lu")) $("lu").innerHTML = luViewHTML();
+    var typing = ae && ae.closest && ae.tagName === "INPUT" && ae.closest(".nums, .swap"); // a number half typed in stays put
+    if (state.view === "starters" && !(ae && ae.dataset && ae.dataset.f === "lu") && !typing) $("lu").innerHTML = luViewHTML();
     var pickedFiles = ["lib-file", "lib-spfile", "lib-import"].some(function (id) { var el = $(id); return el && el.files && el.files.length; });
     if (state.view === "library" && !pickedFiles && !(ae && ae.closest && ae.closest("#lib") && ae.tagName !== "BUTTON")) $("lib").innerHTML = libHTML();
     fill("sec-need", "list-need", "cnt-need", need, "need");
@@ -1443,8 +1568,9 @@
       if (!nv) { setStatus("swst-" + sid, "Type a number first."); return; }
       var sl = (state.games[sid].starters || []).map(function (p) { return Object.assign({}, p); });
       if (sl.some(function (p, j) { return j !== si && p.n === nv; })) { setStatus("swst-" + sid, "#" + nv + " is already in this five."); return; }
-      var byNum = (state.rosters[state.games[sid].team] || []).filter(function (r) { return r.n === nv; })[0];
-      sl[si] = byNum ? Object.assign({}, byNum) : Object.assign({}, sl[si], { n: nv }); // a roster player with that number, or just the new number
+      var byNum = rosIn(state.games[sid]).filter(function (r) { return r.n === nv; })[0];
+      if (byNum) { setStatus("swst-" + sid, "#" + nv + " is " + (byNum.name || "someone else") + " tonight. Pick them from the list, or change numbers under Numbers tonight."); return; }
+      sl[si] = Object.assign({}, sl[si], { n: nv }); // not on the roster: just the new number
       saveSwap(sid, sl, "#" + nv + " is in."); return;
     }
     if (t.dataset.striptag && db) {
@@ -1463,8 +1589,9 @@
       state.week = { text: wtxt || "No games in those seven days.", label: lbl + ", " + wt + " take, " + (wtxt ? wtxt.split("━━ ").length - 1 : 0) + " posts" };
       render(); return;
     }
+    if (t.dataset.numset || t.dataset.numans || t.dataset.numout || t.dataset.numcancel || t.dataset.numback || t.dataset.numprev || t.dataset.numclear) { numsClick(t); return; }
     if (t.dataset.lupick) { togglePick(t.dataset.game, Number(t.dataset.lupick)); return; }
-    if (t.dataset.luprev) { var pg = state.games[t.dataset.luprev], pv = lastStarters(Object.assign({ id: t.dataset.luprev }, pg)); if (pv) { (state.drafts[t.dataset.luprev] || (state.drafts[t.dataset.luprev] = {})).lu = playersText(pv.starters); render(); } return; }
+    if (t.dataset.luprev) { var pg = state.games[t.dataset.luprev], pv = lastStarters(Object.assign({ id: t.dataset.luprev }, pg)); if (pv) { (state.drafts[t.dataset.luprev] || (state.drafts[t.dataset.luprev] = {})).lu = playersText(pv.starters.map(function (p) { return p.id ? enrich(pg, { id: p.id, name: p.name }) : p; })); render(); } return; }
     if (t.dataset.lusave) { saveLineup(t.dataset.lusave, t); return; }
     if (t.dataset.rsave) { saveRoster(t.dataset.rsave, t); return; }
     if (t.dataset.psave) { savePeriod(t.dataset.game, t.dataset.psave, t); return; }
@@ -1518,11 +1645,11 @@
   });
 
   function togglePick(id, ri) {
-    var g = Object.assign({ id: id }, state.games[id]), r = (state.rosters[g.team] || [])[ri];
+    var g = Object.assign({ id: id }, state.games[id]), r = rosIn(g)[ri];
     if (!r) return;
     var d = state.drafts[id] || (state.drafts[id] = {});
     var list = parseList(d.lu != null ? d.lu : playersText(g.starters));
-    var at = -1; list.forEach(function (p, i) { if ((p.n && p.n === r.n) || (p.name && p.name.toLowerCase() === r.name.toLowerCase())) at = i; });
+    var at = -1; list.forEach(function (p, i) { if ((p.n && p.n === r.n) || (p.name && r.name && p.name.toLowerCase() === r.name.toLowerCase())) at = i; });
     if (at >= 0) list.splice(at, 1);
     else if (list.length >= 5) { setStatus("lust-" + id, "That's five already. Tap one to drop it first."); return; }
     else list.push(r);
@@ -1530,7 +1657,7 @@
   }
   function saveLineup(id, btn) {
     if (!db) return;
-    var g = state.games[id], ta = $("lu-" + id), list = parseList(ta ? ta.value : "").map(function (p) { return enrich(g.team, p); });
+    var g = state.games[id], ta = $("lu-" + id), list = parseList(ta ? ta.value : "").map(function (p) { return enrich(g, p); });
     if (!list.length) { setStatus("lust-" + id, "Type at least one starter."); return; }
     if (list.length > 5) { setStatus("lust-" + id, "That's " + list.length + " players. A starting five is five."); return; }
     btn.disabled = true; setStatus("lust-" + id, "Saving…");
@@ -1679,7 +1806,9 @@
     return pool[Math.round(dateObj(g0.date) / 864e5) % pool.length].id;
   }
   function fivePhoto(team, p) {
-    var mine = photoList(team).filter(function (x) { return (p.n && x.n === String(p.n)) || (!p.n && p.name && lastWord(x.name) === lastWord(p.name)); });
+    var all = photoList(team), num = p.id ? p.reg : p.n, mine = [];
+    if (p.name && p.name.split(" ").length > 1) mine = all.filter(function (x) { return x.name && x.name.toLowerCase() === p.name.toLowerCase(); });
+    if (!mine.length) mine = all.filter(function (x) { return (num && x.n === String(num)) || (!num && p.name && lastWord(x.name) === lastWord(p.name)); });
     var hit = mine.filter(function (x) { return x.kind === "head"; })[0] || mine[0];
     return hit ? hit.id : "";
   }
